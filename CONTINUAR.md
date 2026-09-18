@@ -32,7 +32,7 @@ No están implementados auth, catálogo, rutinas, optimizador, importadores ni j
 | `docker info --format '{{.ServerVersion}}'` | Motor disponible: 28.5.2 |
 | `git diff --check` | Correcto antes del cierre |
 
-Los logs y capturas están en `.cache/verification/`, ignorados por Git. Los procesos temporales de verificación se detienen al cerrar; para abrir la app usar `npm.cmd run dev`. No existe suite E2E de compras todavía.
+Los logs y capturas están en `.cache/verification/`, ignorados por Git. Los procesos temporales de verificación se detuvieron; para abrir la app usar `npm.cmd run dev`. No existe suite E2E de compras todavía.
 
 ## Decisiones y problemas resueltos
 
@@ -48,7 +48,7 @@ Los logs y capturas están en `.cache/verification/`, ignorados por Git. Los pro
 El usuario pidió **commit y push al completar cada paso**, sin confirmaciones ordinarias. Actualizar documentación, revisar cambios, excluir secretos/generados, hacer commit con ID del paso y push. No usar force push ni sobrescribir trabajo ajeno.
 
 - P0-01: commit `bf6653b`, push a `origin/main` confirmado.
-- P1-01: listo para commit/push de cierre; registrar confirmación luego de publicar.
+- P1-01: commit `0f84809`, push a `origin/main` confirmado. Este checkpoint registra el cierre después de verificar la publicación.
 - Si el push falla, guardar el error y reintentar con el mecanismo autorizado; no afirmar que se publicó.
 
 ## Cómo seguir con P1-02
