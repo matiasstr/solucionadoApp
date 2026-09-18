@@ -57,5 +57,5 @@ async function recreateDatabase() {
   if (!/No pending migrations/i.test(second)) fail('la segunda aplicación de migraciones no fue un no-op.');
   run('migrate diff (drift)', 'npx', ['prisma', 'migrate', 'diff', '--from-config-datasource', '--to-schema', 'prisma/schema.prisma', '--exit-code']);
   run('build', 'npm', ['run', 'build']);
-  run('tests de integración', 'node', ['--test', '--test-concurrency=1', 'test/integration/database.test.cjs']);
+  run('tests de integración', 'node', ['--test', '--test-concurrency=1', 'test/integration/database.test.cjs', 'test/integration/auth.test.cjs']);
 })();

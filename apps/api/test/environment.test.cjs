@@ -10,16 +10,30 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
     CORS_ORIGINS: 'https://tusofertas.example, https://app.tusofertas.example,https://tusofertas.example',
     DATABASE_URL: 'postgresql://app:private-fixture@db.internal:5432/tusofertas',
     REDIS_URL: 'redis://unused-private-fixture',
+    JWT_ACCESS_SECRET: 'private-fixture-secret-with-32-chars-min',
+    ACCESS_TOKEN_TTL_SECONDS: '600',
   }), {
     nodeEnv: 'production',
     port: 4100,
     host: '0.0.0.0',
     corsOrigins: ['https://tusofertas.example', 'https://app.tusofertas.example'],
     databaseUrl: 'postgresql://app:private-fixture@db.internal:5432/tusofertas',
+    auth: {
+      accessSecret: 'private-fixture-secret-with-32-chars-min',
+      issuer: 'tusofertas-api',
+      audience: 'tusofertas-web',
+      accessTtlSeconds: 600,
+      refreshTtlDays: 30,
+      rateLimitPerMinute: 10,
+      secureCookies: true,
+    },
   });
 });
 
-const validDb = { DATABASE_URL: 'postgresql://app:pw@localhost:5432/tusofertas' };
+const validDb = {
+  DATABASE_URL: 'postgresql://app:pw@localhost:5432/tusofertas',
+  JWT_ACCESS_SECRET: 'x'.repeat(32),
+};
 
 test('invalid ports, unknown modes, empty hosts and unsafe origins prevent startup', () => {
   const invalid = [
@@ -33,6 +47,9 @@ test('invalid ports, unknown modes, empty hosts and unsafe origins prevent start
     { DATABASE_URL: 'mysql://app:private-fixture@localhost/db' },
     { DATABASE_URL: 'postgresql://app:private-fixture@localhost' },
     { DATABASE_URL: 'private-fixture' },
+    { JWT_ACCESS_SECRET: undefined }, { JWT_ACCESS_SECRET: 'private-fixture-short' },
+    { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'solo-desarrollo-cambiar-por-un-valor-aleatorio-largo' },
+    { ACCESS_TOKEN_TTL_SECONDS: '30' }, { REFRESH_TOKEN_TTL_DAYS: '0' }, { JWT_AUDIENCE: 'Bad Audience' },
   ];
   for (const input of invalid) {
     assert.throws(() => validateEnvironment({ ...validDb, ...input }), (error) => {

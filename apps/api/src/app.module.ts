@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
 import type { DynamicModule } from '@nestjs/common';
+import { ConfigModule } from './config/config.module';
 import type { ApiConfig } from './config/environment';
 import { DatabaseModule } from './database/database.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { HealthController } from './modules/health/health.controller';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({})
 export class AppModule {
   static forRoot(config: ApiConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [DatabaseModule.forRoot(config.databaseUrl)],
+      imports: [ConfigModule.forRoot(config), DatabaseModule.forRoot(config.databaseUrl), AuthModule, UsersModule],
       controllers: [HealthController],
     };
   }

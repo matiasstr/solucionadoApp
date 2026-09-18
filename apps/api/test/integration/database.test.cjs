@@ -76,7 +76,7 @@ describe('esquema y extensiones', () => {
   test('readiness real responde 200 con la base disponible', async () => {
     assert.equal(await prisma.isReady(), true);
     const app = await createApp(
-      validateEnvironment({ NODE_ENV: 'test', DATABASE_URL: url }),
+      validateEnvironment({ NODE_ENV: 'test', DATABASE_URL: url, JWT_ACCESS_SECRET: 'x'.repeat(32) }),
       new JsonLogger(() => {}),
     );
     await app.init();

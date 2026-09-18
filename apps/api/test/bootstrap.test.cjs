@@ -11,6 +11,7 @@ before(async () => {
     NODE_ENV: 'test',
     // Puerto cerrado: la API arranca igual y readiness debe informar la falla.
     DATABASE_URL: 'postgresql://fixture:private-fixture@127.0.0.1:1/unreachable',
+    JWT_ACCESS_SECRET: 'unit-test-secret-with-at-least-32-characters',
   }), new JsonLogger(() => {}));
   await app.init();
 });

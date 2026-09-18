@@ -6,7 +6,7 @@ Este repositorio ya tiene implementación y un plan de continuidad. Antes de tra
 2. Leer `CONTINUAR.md`: contiene el último estado verificado, el próximo paso, comandos y pendientes. Es la fuente de continuidad; no depender del historial del chat.
 3. Consultar `ROADMAP.md`, la guía correspondiente en `docs/steps/` y los ADRs (0001–0006) antes de implementar.
 
-Estado al 2026-09-18: **P0-01, P1-01 y P1-02 completos**. Próximo paso: **P1-03 — Auth backend y perfil**.
+Estado al 2026-09-18: **P0-01, P1-01, P1-02 y P1-03 completos**. Próximo paso: **P1-04 — Auth frontend** (cierra la fase 1).
 
 Comandos clave (PowerShell, usar `npm.cmd`/`npx.cmd`): `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run verify` (sin DB), `npm.cmd run test:db` (integración con PostgreSQL/PostGIS real en una base `*_test` aislada).
 

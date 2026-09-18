@@ -4,7 +4,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 ## Estado actual
 
-Diseño inicial, monorepo Next.js/NestJS y base de datos operativa implementados (**P0-01/P1-01/P1-02**). Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Todavía no hay autenticación, catálogo, precios reales ni optimizador en funcionamiento: las tablas existen, pero sus módulos se implementan en los pasos siguientes.
+Diseño inicial, monorepo Next.js/NestJS, base de datos operativa y autenticación backend implementados (**P0-01/P1-01/P1-02/P1-03**). Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. La API ya permite registro, login, refresh rotativo, logout y perfil (ver [ADR 0003](docs/architecture-decisions/0003-auth-sessions.md)); las pantallas de login/registro llegan en P1-04. Todavía no hay catálogo, precios reales ni optimizador en funcionamiento.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -87,6 +87,20 @@ npm.cmd audit
 `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
 
 Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
+
+## API de autenticación y perfil
+
+Prefijo `/api`. Las rutas `/auth/*` exigen `Origin` permitido y el header `X-Requested-With: tusofertas-web` (CSRF); el refresh viaja en la cookie HttpOnly `tusofertas_refresh` (path `/api/auth`), nunca en el cuerpo.
+
+| Método y ruta | Resultado |
+| --- | --- |
+| `POST /auth/register` `{email, password}` | 201 `{accessToken, tokenType, expiresIn, user}` + cookie; 409 `EMAIL_TAKEN` |
+| `POST /auth/login` `{email, password}` | 200 igual que registro; 401 `INVALID_CREDENTIALS` |
+| `POST /auth/refresh` | 200 con token y cookie nuevos; 401 `SESSION_EXPIRED` (y borra cookie) |
+| `POST /auth/logout` | 204, revoca la familia y borra cookie |
+| `GET /users/me` / `PATCH /users/me` (Bearer) | Perfil y preferencias; 400 con `fields` si hay datos inválidos |
+
+Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, nunca valores. Configuración en `apps/api/.env.example` (`JWT_ACCESS_SECRET` obligatorio, ≥ 32 caracteres; generar uno propio).
 
 ## Migraciones y seeds
 
