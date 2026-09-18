@@ -6,7 +6,7 @@ Leer primero `../../CONTINUAR.md`, `../../ROADMAP.md`, `../ARCHITECTURE.md`, `..
 
 ## P1-01 — Monorepo y aplicaciones ejecutables
 
-**Dependencia:** P0-01. **Estado inicial:** EN CURSO; consultar ROADMAP para el estado actualizado.
+**Dependencia:** P0-01. **Estado:** COMPLETO (2026-09-18); resultados en CONTINUAR. Consultar ROADMAP para el estado actualizado.
 
 **Alcance y archivos:** raíz `package.json`, lockfile, `.gitignore`, `.env.example`, configuración de Node/TypeScript/lint, `docker-compose.yml` o el nombre de Compose elegido, `apps/web`, `apps/api`, `packages/shared`, `packages/ui`, `packages/config`. Usar Nest 11 según ADR 0001 y conservar la resolución del lockfile.
 

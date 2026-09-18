@@ -45,7 +45,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | Paso | Entregable | Dependencias | Estado |
 | --- | --- | --- | --- |
 | P0-01 | Arquitectura, carpetas, dominio, Prisma inicial, Docker Compose, ADRs, riesgos, roadmap y guía de continuidad | — | COMPLETO |
-| P1-01 | Bootstrap npm workspaces, Next.js, NestJS, paquetes, Compose y scripts | P0-01 | EN CURSO |
+| P1-01 | Bootstrap npm workspaces, Next.js, NestJS, paquetes, Compose y scripts | P0-01 | COMPLETO |
 | P1-02 | PostgreSQL/PostGIS, Prisma operativo, migración inicial y comprobación de integridad | P1-01 | PENDIENTE |
 | P1-03 | Auth backend, sesiones refresh seguras, perfil y tests | P1-02 | PENDIENTE |
 | P1-04 | Auth frontend y navegación protegida | P1-03 | PENDIENTE |

@@ -4,7 +4,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 ## Estado actual
 
-Diseño inicial y planificación preparados. El monorepo ejecutable comienza en **P1-01**. Todavía no hay autenticación, catálogo, precios reales ni optimizador en funcionamiento. El esquema Prisma modela las etapas siguientes; no se ha aplicado a una base de datos.
+Diseño inicial y monorepo Next.js/NestJS implementados (**P0-01/P1-01**). Incluye portada adaptable, TanStack Query, API health, configuración validada, errores centralizados, logging JSON y pruebas de bootstrap. Todavía no hay autenticación, catálogo, precios reales ni optimizador en funcionamiento. El esquema Prisma modela las etapas siguientes; no se ha aplicado a una base de datos.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -29,11 +29,11 @@ El dominio es independiente de SEPA y de otras fuentes externas. La primera expe
 ## Repositorio
 
 ```text
-apps/web                 Frontend Next.js (P1-01)
+apps/web                 Frontend Next.js
 apps/api                 API NestJS y esquema Prisma
-packages/shared          Contratos compartidos (P1-01)
-packages/ui              Componentes reutilizables (P1-01)
-packages/config          Configuración común (P1-01)
+packages/shared          Contratos compartidos
+packages/ui              Componentes reutilizables
+packages/config          Configuración común
 docs/steps               Instrucciones de las diez fases
 docs/architecture-decisions/  Decisiones y sus consecuencias
 CONTINUAR.md             Estado verificado y próximo paso
@@ -46,8 +46,22 @@ docker-compose.yml       PostgreSQL/PostGIS y Redis locales
 Requisitos: Node 22.18+ compatible, npm 10+ y Docker Desktop con contenedores Linux. En Windows PowerShell usar `npm.cmd`/`npx.cmd` si los wrappers `.ps1` están bloqueados.
 
 ```powershell
-cd C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp
+git clone git@github.com:matiasstr/solucionadoApp.git
+cd solucionadoApp
 Copy-Item .env.example .env
+Copy-Item apps/api/.env.example apps/api/.env
+Copy-Item apps/web/.env.example apps/web/.env.local
+npm.cmd ci
+npm.cmd run db:validate
+npm.cmd run db:generate
+npm.cmd run dev
+```
+
+Abrir [web local](http://localhost:3000) y [API health](http://localhost:3001/api/health). Las apps actuales funcionan sin DB/Redis; `/api/health` confirma solamente que el proceso está vivo. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
+
+Para preparar los servicios de datos (P1-02 comprueba su operación):
+
+```powershell
 docker compose config --quiet
 docker compose up -d
 docker compose ps
@@ -55,7 +69,23 @@ docker compose ps
 
 Compose publica PostgreSQL en `127.0.0.1:5432` y Redis en `127.0.0.1:6379`, con volúmenes persistentes y healthchecks. Las credenciales del ejemplo son solamente para desarrollo local. `docker compose down` detiene los servicios conservando sus datos. No usar `down -v` para resolver problemas: elimina los volúmenes.
 
-Los comandos de instalación y ejecución de aplicaciones se agregan y verifican al cerrar P1-01. La disponibilidad del motor Docker queda registrada en CONTINUAR; tener el CLI instalado no acredita que los servicios estén corriendo.
+La API carga primero `.env` raíz y luego `apps/api/.env`; variables del proceso tienen precedencia. Prisma CLI carga `.env` raíz. Next carga `apps/web/.env.local`. No copiar ejemplos sobre archivos existentes con configuración propia. La disponibilidad del motor Docker queda registrada en CONTINUAR; tener el CLI instalado no acredita que los servicios estén corriendo.
+
+## Verificaciones y build
+
+`npm.cmd run verify` ejecuta validación/generación Prisma, typecheck, lint, tests y build. Para correr controles individuales:
+
+```powershell
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run build
+npm.cmd audit
+```
+
+Los tests actuales verifican health/headers, CORS, validación de entorno, errores y redacción de secretos. Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
+
+Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
 
 ## Migraciones y seeds
 
