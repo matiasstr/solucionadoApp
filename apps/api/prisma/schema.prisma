@@ -1,0 +1,378 @@
+// Modelo inicial. Las reglas CHECK, PostGIS y append-only requieren migraciones SQL.
+// Ver docs/DOMAIN.md antes de implementar repositorios o generar la primera migración.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MeasurementUnit {
+  KG
+  G
+  L
+  ML
+  UNIT
+}
+
+enum BaseUnit {
+  KG
+  L
+  UNIT
+}
+
+enum SaleMode {
+  PACKAGED
+  VARIABLE_WEIGHT
+}
+
+enum PromotionType {
+  PERCENTAGE
+  SECOND_UNIT
+  TWO_FOR_ONE
+  FIXED_PRICE
+  BANK_DISCOUNT
+}
+
+enum PaymentMethod {
+  CASH
+  DEBIT_CARD
+  CREDIT_CARD
+  TRANSFER
+  WALLET
+}
+
+enum DiscountCapPeriod {
+  PURCHASE
+  WEEK
+  MONTH
+  CAMPAIGN
+}
+
+enum ShoppingPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  EXPIRED
+}
+
+model User {
+  id                       String             @id @default(uuid()) @db.Uuid
+  email                    String             @unique @db.VarChar(254)
+  passwordHash             String             @db.VarChar(255)
+  city                     String?            @db.VarChar(120)
+  province                 String?            @db.VarChar(120)
+  latitude                 Decimal?           @db.Decimal(9, 6)
+  longitude                Decimal?           @db.Decimal(9, 6)
+  maxTravelDistanceKm      Decimal            @default(5) @db.Decimal(7, 2)
+  // null significa sin límite; cero no es una preferencia válida.
+  maxStoresPerShoppingPlan Int?               @default(2)
+  storeVisitPenalty        Decimal            @default(0) @db.Decimal(14, 2)
+  distancePenaltyPerKm     Decimal            @default(0) @db.Decimal(14, 2)
+  paymentMethods           PaymentMethod[]    @default([])
+  banks                    String[]           @default([])
+  membershipPrograms       String[]           @default([])
+  onboardingCompletedAt    DateTime?          @db.Timestamptz(3)
+  createdAt                DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime           @updatedAt @db.Timestamptz(3)
+  refreshSessions          RefreshSession[]
+  shoppingRoutines         ShoppingRoutine[]
+  inventory                UserInventory[]
+  shoppingPlans            ShoppingPlan[]
+}
+
+model RefreshSession {
+  id           String          @id @default(uuid()) @db.Uuid
+  userId       String          @db.Uuid
+  tokenHash    String          @unique @db.VarChar(128)
+  familyId     String          @default(uuid()) @db.Uuid
+  replacedById String?         @unique @db.Uuid
+  expiresAt    DateTime        @db.Timestamptz(3)
+  rotatedAt    DateTime?       @db.Timestamptz(3)
+  revokedAt    DateTime?       @db.Timestamptz(3)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy   RefreshSession? @relation("RefreshRotation", fields: [replacedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replaces     RefreshSession? @relation("RefreshRotation")
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
+}
+
+model Category {
+  id                String             @id @default(uuid()) @db.Uuid
+  name              String             @db.VarChar(120)
+  slug              String             @unique @db.VarChar(140)
+  parentId          String?            @db.Uuid
+  parent            Category?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children          Category[]         @relation("CategoryTree")
+  products          Product[]
+  canonicalProducts CanonicalProduct[]
+
+  @@index([parentId])
+}
+
+model CanonicalProduct {
+  id             String                @id @default(uuid()) @db.Uuid
+  name           String                @db.VarChar(200)
+  normalizedName String                @db.VarChar(200)
+  categoryId     String                @db.Uuid
+  defaultUnit    BaseUnit
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(3)
+  category       Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  products       Product[]
+  promotions     Promotion[]
+  routineItems   ShoppingRoutineItem[]
+  inventories    UserInventory[]
+  planItems      ShoppingPlanItem[]
+
+  @@index([categoryId])
+  @@index([normalizedName])
+}
+
+model Product {
+  id                 String                @id @default(uuid()) @db.Uuid
+  ean                String?               @unique @db.VarChar(14)
+  name               String                @db.VarChar(240)
+  normalizedName     String                @db.VarChar(240)
+  brand              String?               @db.VarChar(120)
+  categoryId         String                @db.Uuid
+  canonicalProductId String?               @db.Uuid
+  // Contenido total del paquete o base de cotización para venta por peso.
+  quantity           Decimal               @db.Decimal(14, 4)
+  unit               MeasurementUnit
+  saleMode           SaleMode              @default(PACKAGED)
+  // Informativo: cantidad de envases en el paquete, no multiplica quantity.
+  packageCount       Int                   @default(1)
+  imageUrl           String?               @db.Text
+  isActive           Boolean               @default(true)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime              @updatedAt @db.Timestamptz(3)
+  category           Category              @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  canonicalProduct   CanonicalProduct?     @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+  prices             ProductPrice[]
+  promotions         Promotion[]
+  preferredByItems   ShoppingRoutineItem[] @relation("PreferredProduct")
+  planItems          ShoppingPlanItem[]
+
+  @@index([normalizedName])
+  @@index([categoryId])
+  @@index([canonicalProductId])
+}
+
+model StoreChain {
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String      @unique @db.VarChar(120)
+  logoUrl    String?     @db.Text
+  stores     Store[]
+  promotions Promotion[]
+}
+
+model Store {
+  id         String                                  @id @default(uuid()) @db.Uuid
+  chainId    String                                  @db.Uuid
+  name       String                                  @db.VarChar(180)
+  address    String                                  @db.VarChar(240)
+  city       String                                  @db.VarChar(120)
+  province   String                                  @db.VarChar(120)
+  latitude   Decimal?                                @db.Decimal(9, 6)
+  longitude  Decimal?                                @db.Decimal(9, 6)
+  // Prisma no opera este campo: SQL parametrizado y GiST en migración futura.
+  location   Unsupported("geography(Point,4326)")?
+  isActive   Boolean                                 @default(true)
+  createdAt  DateTime                                @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime                                @updatedAt @db.Timestamptz(3)
+  chain      StoreChain                              @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  prices     ProductPrice[]
+  promotions Promotion[]
+  planItems  ShoppingPlanItem[]
+
+  @@index([chainId])
+  @@index([province, city])
+}
+
+model ProductPrice {
+  id             String             @id @default(uuid()) @db.Uuid
+  productId      String             @db.Uuid
+  storeId        String             @db.Uuid
+  // ARS por paquete completo o por base de cotización de Product.
+  price          Decimal            @db.Decimal(14, 2)
+  unitPrice      Decimal            @db.Decimal(18, 6)
+  unitPriceUnit  BaseUnit
+  currency       String             @default("ARS") @db.Char(3)
+  source         String             @db.VarChar(80)
+  idempotencyKey String             @db.VarChar(200)
+  importBatchId  String?            @db.VarChar(120)
+  observedAt     DateTime           @db.Timestamptz(3)
+  ingestedAt     DateTime           @default(now()) @db.Timestamptz(3)
+  product        Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  store          Store              @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  planItems      ShoppingPlanItem[]
+
+  @@unique([source, idempotencyKey])
+  @@index([productId, storeId, observedAt(sort: Desc)])
+  @@index([storeId, observedAt(sort: Desc)])
+  @@index([importBatchId])
+}
+
+model Promotion {
+  id                 String             @id @default(uuid()) @db.Uuid
+  productId          String?            @db.Uuid
+  canonicalProductId String?            @db.Uuid
+  storeId            String?            @db.Uuid
+  chainId            String?            @db.Uuid
+  name               String             @db.VarChar(200)
+  type               PromotionType
+  discountPercentage Decimal?           @db.Decimal(5, 2)
+  // Precio final por unidad de venta; no es el precio total del lote.
+  fixedPrice         Decimal?           @db.Decimal(14, 2)
+  requiredQuantity   Int?
+  paymentMethod      PaymentMethod?
+  bank               String?            @db.VarChar(120)
+  membershipProgram  String?            @db.VarChar(120)
+  minimumSpend       Decimal?           @db.Decimal(14, 2)
+  discountCap        Decimal?           @db.Decimal(14, 2)
+  capPeriod          DiscountCapPeriod?
+  // ISO 1=lunes ... 7=domingo; vacío significa todos los días.
+  eligibleWeekdays   Int[]              @default([])
+  isStackable        Boolean            @default(false)
+  terms              String?            @db.Text
+  source             String             @db.VarChar(80)
+  externalId         String?            @db.VarChar(200)
+  validFrom          DateTime           @db.Timestamptz(3)
+  validUntil         DateTime           @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+  product            Product?           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  canonicalProduct   CanonicalProduct?  @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+  store              Store?             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  chain              StoreChain?        @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  planItems          ShoppingPlanItem[]
+
+  @@unique([source, externalId])
+  @@index([productId, validUntil])
+  @@index([canonicalProductId, validUntil])
+  @@index([storeId, validFrom, validUntil])
+  @@index([chainId, validFrom, validUntil])
+}
+
+model ShoppingRoutine {
+  id            String                @id @default(uuid()) @db.Uuid
+  userId        String                @db.Uuid
+  name          String                @db.VarChar(120)
+  frequencyDays Int                   @default(7)
+  anchorDate    DateTime              @db.Date
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime              @updatedAt @db.Timestamptz(3)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items         ShoppingRoutineItem[]
+
+  @@index([userId])
+}
+
+model ShoppingRoutineItem {
+  id                 String           @id @default(uuid()) @db.Uuid
+  routineId          String           @db.Uuid
+  canonicalProductId String           @db.Uuid
+  preferredProductId String?          @db.Uuid
+  quantity           Decimal          @db.Decimal(14, 4)
+  unit               BaseUnit
+  // null hereda ambos valores de la rutina.
+  frequencyDays      Int?
+  anchorDate         DateTime?        @db.Date
+  allowSubstitutes   Boolean          @default(true)
+  preferredBrands    String[]         @default([])
+  excludedBrands     String[]         @default([])
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  routine            ShoppingRoutine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+  preferredProduct   Product?         @relation("PreferredProduct", fields: [preferredProductId], references: [id], onDelete: Restrict)
+
+  @@unique([routineId, canonicalProductId])
+  @@index([canonicalProductId])
+  @@index([preferredProductId])
+}
+
+model UserInventory {
+  id                 String           @id @default(uuid()) @db.Uuid
+  userId             String           @db.Uuid
+  canonicalProductId String           @db.Uuid
+  quantity           Decimal          @db.Decimal(14, 4)
+  unit               BaseUnit
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, canonicalProductId])
+  @@index([canonicalProductId])
+}
+
+model ShoppingPlan {
+  id                     String             @id @default(uuid()) @db.Uuid
+  userId                 String             @db.Uuid
+  startDate              DateTime           @db.Date
+  endDate                DateTime           @db.Date
+  estimatedRegularCost   Decimal            @db.Decimal(14, 2)
+  optimizedCost          Decimal            @db.Decimal(14, 2)
+  estimatedSavings       Decimal            @db.Decimal(14, 2)
+  storeVisitPenaltyCost  Decimal            @db.Decimal(14, 2)
+  distancePenaltyCost    Decimal            @db.Decimal(14, 2)
+  effectiveCost          Decimal            @db.Decimal(14, 2)
+  totalDistanceKm        Decimal?           @db.Decimal(10, 3)
+  currency               String             @default("ARS") @db.Char(3)
+  status                 ShoppingPlanStatus @default(DRAFT)
+  optimizerVersion       String             @db.VarChar(80)
+  baselineMethod         String             @db.VarChar(80)
+  // Preferencias, rutinas, inventario y políticas utilizados al generar.
+  inputSnapshot          Json
+  unfulfilledNeeds       Json               @default("[]")
+  generatedAt            DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime           @updatedAt @db.Timestamptz(3)
+  completedAt            DateTime?          @db.Timestamptz(3)
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                  ShoppingPlanItem[]
+
+  @@index([userId, startDate(sort: Desc)])
+  @@index([status, endDate])
+}
+
+model ShoppingPlanItem {
+  id                    String           @id @default(uuid()) @db.Uuid
+  shoppingPlanId        String           @db.Uuid
+  canonicalProductId    String           @db.Uuid
+  productId             String           @db.Uuid
+  storeId               String           @db.Uuid
+  productPriceId        String           @db.Uuid
+  promotionId           String?          @db.Uuid
+  neededQuantity        Decimal          @db.Decimal(14, 4)
+  quantity              Decimal          @db.Decimal(14, 4)
+  unit                  BaseUnit
+  // Número entero de paquetes comprados; null para venta por peso.
+  packageCount          Int?
+  // Importes totales de la línea, ya consideran quantity y promociones.
+  price                 Decimal          @db.Decimal(14, 2)
+  estimatedRegularPrice Decimal          @db.Decimal(14, 2)
+  estimatedSavings      Decimal          @db.Decimal(14, 2)
+  recommendedDate       DateTime         @db.Date
+  reason                String           @db.Text
+  // Nombres, presentación, precio/fuente/fecha y condiciones promocionales.
+  snapshot              Json
+  shoppingPlan          ShoppingPlan     @relation(fields: [shoppingPlanId], references: [id], onDelete: Cascade)
+  canonicalProduct      CanonicalProduct @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+  product               Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  store                 Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  productPrice          ProductPrice     @relation(fields: [productPriceId], references: [id], onDelete: Restrict)
+  promotion             Promotion?       @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+
+  @@index([shoppingPlanId, recommendedDate])
+  @@index([canonicalProductId])
+  @@index([productId])
+  @@index([storeId])
+  @@index([productPriceId])
+  @@index([promotionId])
+}

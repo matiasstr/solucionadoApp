@@ -1,0 +1,15 @@
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+!.env.*.example
+apps/api/src/generated/
+.cache/
+.npm-cache/
+.DS_Store
+Thumbs.db
