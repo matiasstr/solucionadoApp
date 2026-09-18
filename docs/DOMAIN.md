@@ -1,6 +1,6 @@
 # Modelo de dominio inicial
 
-Estado: diseño para implementación incremental. El archivo `apps/api/prisma/schema.prisma` describe el modelo objetivo; todavía no existen migraciones, datos ni repositorios de estas entidades. Una regla documentada aquí **no está implementada** por el solo hecho de figurar en el documento. Antes de persistir datos se deben agregar las migraciones SQL y validaciones indicadas.
+Estado: diseño para implementación incremental. Desde P1-02 existe la migración inicial `20260918120000_init` con tablas, PostGIS y las reglas SQL marcadas abajo; todavía no hay datos ni repositorios de dominio. Una regla documentada aquí **no está implementada** por el solo hecho de figurar en el documento.
 
 ## Responsabilidades y relaciones
 
@@ -118,7 +118,9 @@ El plan guarda `inputSnapshot` con las preferencias, rutinas, existencias, fecha
 
 Los estados iniciales son `DRAFT`, `ACTIVE`, `COMPLETED` y `EXPIRED`. Pasar a completado requiere una acción del usuario. No hay comprobantes ni registro de gasto real en este modelo: los indicadores del dashboard son **ahorro estimado** y deben etiquetarse así. Sumar planes regenerados o superpuestos puede duplicar ahorro; la implementación debe seleccionar la versión activa/completada válida por período.
 
-## Integridad pendiente de implementación
+## Integridad: implementada en SQL y pendiente
+
+Implementado en P1-02 y probado en `apps/api/test/integration/database.test.cjs` contra PostgreSQL/PostGIS real: email normalizado + `lower(email)` único; coordenadas completas y en rango (usuario y sucursal); radio/máximo de sucursales/penalizaciones; cantidades, precios, envases y EAN numérico opcional; moneda ARS; `parentId != id`; `ProductPrice` append-only por trigger; `Store.location` derivado por trigger + GiST; alcance, vigencia, porcentaje, tope/período, días ISO y campos por tipo de promoción; intervalo de rutina, reemplazo conjunto frecuencia/ancla, preferido obligatorio sin sustitutos y marcas no solapadas; fechas del plan y sumas `effectiveCost`/`estimatedSavings`; cantidades de línea. Ver ADR 0006. La columna "Lugar" sigue indicando qué parte queda en dominio/aplicación.
 
 Prisma expresa claves primarias, relaciones, unicidad e índices declarados. Las siguientes reglas requieren migraciones y/o aplicación, y se verificarán antes de habilitar cada módulo:
 

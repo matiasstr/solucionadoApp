@@ -1,5 +1,5 @@
-// Modelo inicial. Las reglas CHECK, PostGIS y append-only requieren migraciones SQL.
-// Ver docs/DOMAIN.md antes de implementar repositorios o generar la primera migración.
+// Modelo inicial. CHECKs, triggers (append-only, Store.location) e índice lower(email)
+// viven en SQL de prisma/migrations; Prisma no los expresa. Ver docs/DOMAIN.md.
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -181,7 +181,7 @@ model Store {
   province   String                                  @db.VarChar(120)
   latitude   Decimal?                                @db.Decimal(9, 6)
   longitude  Decimal?                                @db.Decimal(9, 6)
-  // Prisma no opera este campo: SQL parametrizado y GiST en migración futura.
+  // Derivado por trigger desde longitud/latitud; consultas con SQL parametrizado (StoreProximityRepository).
   location   Unsupported("geography(Point,4326)")?
   isActive   Boolean                                 @default(true)
   createdAt  DateTime                                @default(now()) @db.Timestamptz(3)
@@ -193,6 +193,7 @@ model Store {
 
   @@index([chainId])
   @@index([province, city])
+  @@index([location], type: Gist, map: "Store_location_gist_idx")
 }
 
 model ProductPrice {

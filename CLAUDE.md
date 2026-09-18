@@ -4,6 +4,10 @@ Este repositorio ya tiene implementación y un plan de continuidad. Antes de tra
 
 1. Leer `AGENTS.md` y respetar las reglas del proyecto.
 2. Leer `CONTINUAR.md`: contiene el último estado verificado, el próximo paso, comandos y pendientes. Es la fuente de continuidad; no depender del historial del chat.
-3. Consultar `ROADMAP.md`, la guía correspondiente en `docs/steps/` y los ADRs antes de implementar.
+3. Consultar `ROADMAP.md`, la guía correspondiente en `docs/steps/` y los ADRs (0001–0006) antes de implementar.
 
-No reiniciar el proyecto ni rehacer pasos completos. Implementar y verificar cada paso; actualizar el checkpoint antes de terminar o agotar contexto. El usuario autorizó commit y push por paso completado, sin confirmaciones rutinarias. No usar force push, publicar secretos ni dar por ejecutadas pruebas pendientes. Las restricciones del entorno siguen aplicando.
+Estado al 2026-09-18: **P0-01, P1-01 y P1-02 completos**. Próximo paso: **P1-03 — Auth backend y perfil**.
+
+Comandos clave (PowerShell, usar `npm.cmd`/`npx.cmd`): `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run verify` (sin DB), `npm.cmd run test:db` (integración con PostgreSQL/PostGIS real en una base `*_test` aislada).
+
+No reiniciar el proyecto ni rehacer pasos completos. Implementar y verificar cada paso. Al cerrar cada paso (y antes de agotar contexto) actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** para que otra IA (Claude o Codex) pueda retomar. El usuario autorizó commit y push por paso completado, sin confirmaciones rutinarias. No usar force push, publicar secretos ni dar por ejecutadas pruebas pendientes. Las restricciones del entorno siguen aplicando.

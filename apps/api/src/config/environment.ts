@@ -37,6 +37,10 @@ class Environment {
   @ArrayNotEmpty()
   @IsString({ each: true })
   CORS_ORIGINS: string[] = ['http://localhost:3000'];
+
+  @IsString()
+  @IsNotEmpty()
+  DATABASE_URL!: string;
 }
 
 export interface ApiConfig {
@@ -44,6 +48,17 @@ export interface ApiConfig {
   readonly port: number;
   readonly host: string;
   readonly corsOrigins: readonly string[];
+  /** Secreto: no registrar ni devolver. */
+  readonly databaseUrl: string;
+}
+
+function isPostgresUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return ['postgres:', 'postgresql:'].includes(url.protocol) && Boolean(url.hostname) && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
 }
 
 function isExactHttpOrigin(value: string): boolean {
@@ -63,7 +78,7 @@ function isExactHttpOrigin(value: string): boolean {
 export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
   // Copy only known keys: process.env also contains credentials for other services.
   const input: Record<string, unknown> = {};
-  for (const key of ['NODE_ENV', 'PORT', 'HOST', 'CORS_ORIGINS']) {
+  for (const key of ['NODE_ENV', 'PORT', 'HOST', 'CORS_ORIGINS', 'DATABASE_URL']) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
   const env = plainToInstance(Environment, input);
@@ -77,6 +92,9 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
   ) {
     invalidKeys.push('CORS_ORIGINS');
   }
+  if (typeof env.DATABASE_URL === 'string' && !isPostgresUrl(env.DATABASE_URL)) {
+    invalidKeys.push('DATABASE_URL');
+  }
   if (invalidKeys.length) {
     // Report variable names without exposing their possibly sensitive values.
     throw new Error(`Configuración inválida: ${[...new Set(invalidKeys)].sort().join(', ')}`);
@@ -87,5 +105,6 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     port: env.PORT,
     host: env.HOST,
     corsOrigins: Object.freeze([...new Set(env.CORS_ORIGINS)]),
+    databaseUrl: env.DATABASE_URL,
   });
 }

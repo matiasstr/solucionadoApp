@@ -12,7 +12,7 @@ export async function createApp(
   config: ApiConfig,
   logger = new JsonLogger(),
 ): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { logger, abortOnError: false });
+  const app = await NestFactory.create(AppModule.forRoot(config), { logger, abortOnError: false });
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.enableCors({

@@ -4,7 +4,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 ## Estado actual
 
-Diseño inicial y monorepo Next.js/NestJS implementados (**P0-01/P1-01**). Incluye portada adaptable, TanStack Query, API health, configuración validada, errores centralizados, logging JSON y pruebas de bootstrap. Todavía no hay autenticación, catálogo, precios reales ni optimizador en funcionamiento. El esquema Prisma modela las etapas siguientes; no se ha aplicado a una base de datos.
+Diseño inicial, monorepo Next.js/NestJS y base de datos operativa implementados (**P0-01/P1-01/P1-02**). Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Todavía no hay autenticación, catálogo, precios reales ni optimizador en funcionamiento: las tablas existen, pero sus módulos se implementan en los pasos siguientes.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -52,14 +52,15 @@ Copy-Item .env.example .env
 Copy-Item apps/api/.env.example apps/api/.env
 Copy-Item apps/web/.env.example apps/web/.env.local
 npm.cmd ci
-npm.cmd run db:validate
+docker compose up -d
 npm.cmd run db:generate
+npm.cmd run db:deploy
 npm.cmd run dev
 ```
 
-Abrir [web local](http://localhost:3000) y [API health](http://localhost:3001/api/health). Las apps actuales funcionan sin DB/Redis; `/api/health` confirma solamente que el proceso está vivo. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
+Abrir [web local](http://localhost:3000), [API health](http://localhost:3001/api/health) y [readiness](http://localhost:3001/api/health/ready). `/api/health` confirma solamente que el proceso está vivo (no consulta la DB); `/api/health/ready` ejecuta una consulta real y responde 503 `{status:"unavailable"}` si PostgreSQL no está disponible. La API exige `DATABASE_URL` válida para arrancar, pero conecta de forma diferida. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
 
-Para preparar los servicios de datos (P1-02 comprueba su operación):
+Servicios de datos:
 
 ```powershell
 docker compose config --quiet
@@ -83,13 +84,25 @@ npm.cmd run build
 npm.cmd audit
 ```
 
-Los tests actuales verifican health/headers, CORS, validación de entorno, errores y redacción de secretos. Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
+`npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
 
 Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
 
 ## Migraciones y seeds
 
-El [schema inicial](apps/api/prisma/schema.prisma) todavía no tiene migraciones. **P1-02** crea y prueba la migración SQL, PostGIS, índices y constraints. **P2-01** implementa el seed repetible con cadenas, sucursales ficticias, productos y precios históricos; **P2-03** agrega promociones demo. No hay seeds ni precios reales disponibles todavía.
+Migración inicial: [`20260918120000_init`](apps/api/prisma/migrations/20260918120000_init/migration.sql). Se generó con `prisma migrate diff --from-empty` y se completó a mano con `CREATE EXTENSION postgis`, CHECKs de dominio, índice único `lower(email)`, trigger append-only de `ProductPrice`, trigger que deriva `Store.location` de longitud/latitud e índice GiST. Decisiones en [ADR 0006](docs/architecture-decisions/0006-database-runtime.md).
+
+| Comando | Uso |
+| --- | --- |
+| `npm.cmd run db:deploy` | Aplica migraciones pendientes (`prisma migrate deploy`). Usar en entornos compartidos/producción y para preparar la DB local. |
+| `npm.cmd run db:migrate` | Desarrollo: `prisma migrate dev` crea una migración nueva tras cambiar el schema (usa base shadow temporal; PostGIS se instala desde la propia migración). Revisar el SQL antes de commitear. No usar `db push`. |
+| `npm.cmd run db:status` | Estado de migraciones de `DATABASE_URL`. |
+| `npm.cmd run db:generate` | Genera el cliente Prisma en `apps/api/src/generated` (ignorado por Git; solo backend). |
+| `npm.cmd run test:db` | Recrea la base **de prueba** `TEST_DATABASE_URL` (debe terminar en `_test`; nunca la de desarrollo), aplica migraciones dos veces (la segunda debe ser no-op), verifica que no haya drift contra el schema y corre `apps/api/test/integration`. |
+
+Prisma no expresa CHECKs, triggers ni índices por expresión: cualquier cambio a esas reglas se hace con SQL en una migración nueva. El índice GiST sí está declarado en el schema para que `migrate dev` no lo elimine. Consultas espaciales: `StoreProximityRepository` (SQL parametrizado con `ST_DWithin` en metros).
+
+**P2-01** implementa el seed repetible con cadenas, sucursales ficticias, productos y precios históricos; **P2-03** agrega promociones demo. No hay seeds ni precios reales disponibles todavía.
 
 ## Calidad y evolución
 

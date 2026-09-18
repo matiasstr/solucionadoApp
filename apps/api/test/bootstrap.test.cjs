@@ -7,7 +7,11 @@ const { validateEnvironment } = require('../dist/config/environment');
 
 let app;
 before(async () => {
-  app = await createApp(validateEnvironment({ NODE_ENV: 'test' }), new JsonLogger(() => {}));
+  app = await createApp(validateEnvironment({
+    NODE_ENV: 'test',
+    // Puerto cerrado: la API arranca igual y readiness debe informar la falla.
+    DATABASE_URL: 'postgresql://fixture:private-fixture@127.0.0.1:1/unreachable',
+  }), new JsonLogger(() => {}));
   await app.init();
 });
 after(async () => {
@@ -19,6 +23,17 @@ test('health reports process liveness and security headers without claiming data
   assert.deepEqual(response.body, { status: 'ok', service: 'tusofertas-api' });
   assert.equal(response.headers['x-content-type-options'], 'nosniff');
   assert.equal(response.headers['x-powered-by'], undefined);
+});
+
+test('readiness reports 503 when the database is unreachable without leaking connection details', async () => {
+  const response = await request(app.getHttpServer()).get('/api/health/ready').expect(503);
+  assert.deepEqual(response.body, {
+    status: 'unavailable',
+    service: 'tusofertas-api',
+    checks: { database: 'down' },
+  });
+  assert.equal(response.text.includes('private-fixture'), false);
+  assert.equal(response.text.includes('127.0.0.1'), false);
 });
 
 test('unknown routes return a stable JSON error without reflecting private query values', async () => {
