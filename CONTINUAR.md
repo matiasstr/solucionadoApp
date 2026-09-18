@@ -1,5 +1,11 @@
 # Punto de continuación
 
+## Traspaso a Claude — leer esto primero
+
+El usuario pidió dejar el proyecto listo para continuar con **Claude**, sin depender de este chat. **No rehacer la planificación ni el bootstrap**: están implementados y publicados. Empezar por **P1-02** y avanzar por los pasos del roadmap, guardando el progreso después de cada paso y antes de agotar el contexto. Resolver decisiones rutinarias siguiendo los ADRs, sin pedir confirmaciones innecesarias.
+
+Este archivo es la fuente del estado de trabajo. `AGENTS.md` contiene las reglas del proyecto y `docs/steps/phase-01.md` las instrucciones de implementación y pruebas. Los resultados de abajo son el registro de la sesión del 2026-09-18, no una garantía del estado de servicios o auditorías en una fecha posterior. No hay bloqueos de código conocidos ni implementación parcial de P1-02 que recuperar.
+
 ## Estado: 2026-09-18 — P0-01 y P1-01 completos
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`.
@@ -49,6 +55,7 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 
 - P0-01: commit `bf6653b`, push a `origin/main` confirmado.
 - P1-01: commit `0f84809`, push a `origin/main` confirmado. Este checkpoint registra el cierre después de verificar la publicación.
+- Checkpoint posterior: `d92b6e4`, también publicado. El árbol estaba limpio y `HEAD` coincidía con `origin/main` antes de preparar este traspaso a Claude.
 - Si el push falla, guardar el error y reintentar con el mecanismo autorizado; no afirmar que se publicó.
 
 ## Cómo seguir con P1-02
@@ -64,6 +71,31 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 
 **Cierre de P1-02:** SQL versionado, cliente conectado, PostGIS/GiST/constraints comprobados, readiness verdadero y comandos reproducibles. Si hay un bloqueo, dejar paso EN CURSO y el próximo comando exacto.
 
-## Prompt para retomar con 5.6 Sol
+### Archivos concretos para empezar
 
-> Continuá TusOfertasApp desde solucionadoApp/CONTINUAR.md. P0-01 y P1-01 están completos; implementá P1-02 siguiendo docs/steps/phase-01.md. Leé AGENTS.md, ROADMAP y los ADRs, verificá el estado real, ejecutá las pruebas del paso y guardá un checkpoint antes de terminar. Hacé commit y push cuando el paso esté completo. No implementes todas las fases juntas ni marques como probado algo que no pudiste ejecutar.
+- `apps/api/prisma/schema.prisma`: modelo ya definido; revisar invariantes en `docs/DOMAIN.md` antes de migrar.
+- `apps/api/prisma.config.ts`: configuración Prisma 7; carga `.env` raíz. No mover la URL al schema como en versiones anteriores.
+- `apps/api/package.json` y `package.json`: agregar dependencias del adaptador y scripts de migraciones manteniendo workspaces y lockfile.
+- `apps/api/prisma/migrations/`: crear SQL versionado. Revisar SQL antes de aplicarlo; PostGIS debe existir antes de crear el campo geography, también en la base shadow de desarrollo.
+- `apps/api/src/`: incorporar módulo/servicio de DB e integrarlo en `app.module.ts`. Encapsular consultas espaciales parametrizadas.
+- `apps/api/src/modules/health/`: conservar liveness; añadir readiness que devuelva indisponibilidad si falla DB.
+- `apps/api/test/`: agregar pruebas contra una base PostgreSQL/PostGIS aislada. La suite actual no requiere DB; mantener clara esa separación.
+- `README.md`, `ROADMAP.md`, `CONTINUAR.md`: actualizar comandos, resultados, estado y próxima acción al cerrar.
+
+### Primeros comandos de inspección (PowerShell)
+
+```powershell
+cd C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp
+git status --short --branch
+git log -4 --oneline
+node --version
+npm.cmd --version
+docker compose config --quiet
+docker compose ps
+```
+
+Si se retoma en otro equipo, ajustar únicamente la ruta y usar `npm ci` para instalar desde el lockfile. No reinstalar dependencias ni repetir todas las pruebas sin motivo si el entorno actual sigue preparado. No hacer `git reset --hard`, force push ni `docker compose down -v` para resolver diferencias.
+
+## Prompt listo para pegar en Claude
+
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md, AGENTS.md y CONTINUAR.md. No necesito otra planificación: P0-01 y P1-01 ya están implementados, probados y publicados. El próximo paso es P1-02, descrito en docs/steps/phase-01.md. Implementalo, probá migraciones y PostGIS con una base real, corregí los errores y actualizá README, ROADMAP y CONTINUAR. Tenés autorización para los comandos necesarios y para hacer commit y push al completar cada paso; no pidas confirmaciones rutinarias y respetá los controles del entorno. Trabajá por pasos y guardá un checkpoint al cerrar cada uno y antes de agotar contexto, con comandos ejecutados, resultados, pendientes y próxima acción exacta. No marques como probado lo que no ejecutaste. Después de P1-02 sigue P1-03, autenticación backend.
