@@ -53,6 +53,15 @@ No están implementados catálogo, comparador, rutinas, optimizador, importadore
 - Para auth en producción: desplegar la API Nest (p. ej. Cloud Run o Render) con PostgreSQL + PostGIS (p. ej. Neon o Supabase), configurar `DATABASE_URL`, `JWT_ACCESS_SECRET` propio, `CORS_ORIGINS=https://tusofertas.vercel.app`, `TRUST_PROXY` según el proveedor, correr `npm run db:deploy`, y definir `API_ORIGIN` en Vercel (`vercel env add API_ORIGIN production`) + redeploy. Es una decisión de infraestructura/costos pendiente del usuario.
 - Lockfile: el original (generado en Windows) no tenía las variantes Linux de binarios opcionales (lightningcss, @tailwindcss/oxide, @next/swc, sharp, unrs-resolver) ni su `integrity` — bug npm/cli#4828 — y el build de Vercel fallaba. Se regeneraron esas entradas en una copia limpia sin `node_modules`, con **las mismas versiones**; `npm ci` + `verify` locales siguen en verde. Si vuelve a pasar tras actualizar dependencias: quitar del lock esos paquetes **y sus padres** y correr `npm install --package-lock-only` en un directorio sin `node_modules`.
 
+### EN CURSO (2026-09-18): API + Supabase gratis
+
+Decisión del usuario: plan gratuito; Supabase si cumple (cumple: PostGIS, triggers/CHECKs, pooler IPv4 en modo sesión 5432 para migraciones y transacción 6543 para runtime), si no Neon.
+
+- Hecho: proyecto Vercel `tusofertas-api` (id `prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY`; root `apps/api`, framework other, Node 22, install `cd ../.. && npm ci --include=dev`, build `npm run db:generate && npm run build && mkdir -p public`). Variables de producción cargadas: `JWT_ACCESS_SECRET` (aleatoria, sensible), `CORS_ORIGINS=https://tusofertas.vercel.app`. Adaptador serverless `apps/api/api/index.js` + `apps/api/vercel.json` (región gru1, todo reescrito a `/api/index`), **probado en local** con la base de Docker (ready 200, validación 400, ruta inexistente 404) y commiteado.
+- Bloqueo (reintentado 2026-09-18, sigue pendiente): `vercel integration add supabase` requiere que el usuario acepte los términos del Marketplace en https://vercel.com/matiasstrs-projects/~/integrations/accept-terms/supabase?source=cli
+- Próximo comando (con el proyecto API, sin cambiar `.vercel/` de la web): `VERCEL_ORG_ID=<orgId de .vercel/project.json> VERCEL_PROJECT_ID=prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY vercel integration add supabase --name tusofertas-db -m region=gru1 --no-env-pull --non-interactive`.
+- Después: mapear la URL pooled de la integración a `DATABASE_URL`, revisar SSL de `pg` con el pooler, `prisma migrate deploy` contra la URL de sesión (5432), deploy de la API, `API_ORIGIN=https://tusofertas-api.vercel.app` en el proyecto web + redeploy, smoke de registro/login en producción, ADR 0008.
+
 ## Git y autorización persistente
 
 El usuario pidió **commit y push al completar cada paso**, sin confirmaciones ordinarias. No usar force push ni sobrescribir trabajo ajeno. Excluir `.env`, generados y logs.
