@@ -102,6 +102,10 @@ Prefijo `/api`. Las rutas `/auth/*` exigen `Origin` permitido y el header `X-Req
 
 Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, nunca valores. Configuración en `apps/api/.env.example` (`JWT_ACCESS_SECRET` obligatorio, ≥ 32 caracteres; generar uno propio).
 
+## Deploy
+
+La web está publicada en **https://tusofertas.vercel.app** (Vercel, root `apps/web`, install `cd ../.. && npm ci --include=dev`). La API y la base todavía no están desplegadas: sin `API_ORIGIN` la web informa que el servicio no está disponible. Redeploy manual: `vercel deploy --prod` desde la raíz del repo. Detalles y pasos pendientes en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--solo-la-web).
+
 ## Migraciones y seeds
 
 Migración inicial: [`20260918120000_init`](apps/api/prisma/migrations/20260918120000_init/migration.sql). Se generó con `prisma migrate diff --from-empty` y se completó a mano con `CREATE EXTENSION postgis`, CHECKs de dominio, índice único `lower(email)`, trigger append-only de `ProductPrice`, trigger que deriva `Store.location` de longitud/latitud e índice GiST. Decisiones en [ADR 0006](docs/architecture-decisions/0006-database-runtime.md).

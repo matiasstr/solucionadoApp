@@ -13,3 +13,4 @@ apps/api/src/generated/
 .npm-cache/
 .DS_Store
 Thumbs.db
+.vercel

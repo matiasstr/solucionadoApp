@@ -45,16 +45,20 @@ No están implementados catálogo, comparador, rutinas, optimizador, importadore
 - El E2E crea cuentas `e2e-*@example.com` en la base de desarrollo (datos ficticios). Requiere `npm.cmd run dev` corriendo y `docker compose up -d`.
 - `npm test` no requiere DB; `test:db` requiere Docker. PowerShell: usar `npm.cmd`/`npx.cmd`. Node 22.18.0; npm 10.9.3.
 
-## Deploy
+## Deploy (Vercel) — solo la web
 
-Hasta este checkpoint no hay nada desplegado. El usuario pidió desplegar en Vercel cuando sea posible: la CLI está instalada y con sesión (`vercel whoami` = matiasstr). La web puede ir a Vercel (root `apps/web`); la API Nest + PostgreSQL/PostGIS necesitan otro hosting (p. ej. Cloud Run + Neon/Supabase con PostGIS) y luego configurar `API_ORIGIN` en Vercel. Sin `API_ORIGIN` la web muestra la portada y el login informa que el servicio no está disponible. El resultado del deploy de esta sesión se registra en el siguiente checkpoint.
+- **URL de producción: https://tusofertas.vercel.app** (proyecto Vercel `tusofertas`, cuenta `matiasstr`, scope `matiasstrs-projects`). Desplegado el 2026-09-18 desde la CLI (`vercel deploy --prod --yes` en la raíz del repo; `.vercel/` ignorado por Git).
+- Configuración del proyecto: root directory `apps/web`, framework Next.js, Node 22.x, install command `cd ../.. && npm ci --include=dev` (instala el monorepo desde el lockfile raíz). `.vercelignore` impide subir `.env`, `.cache`, `node_modules`, `dist`, `.next`.
+- **La API y la base no están desplegadas.** Sin `API_ORIGIN` no hay rewrite: `/api/*` responde 404 y los formularios muestran "No pudimos conectar con el servicio" (verificado en producción). Portada, /login y /register cargan (200); /inicio redirige a login.
+- Para auth en producción: desplegar la API Nest (p. ej. Cloud Run o Render) con PostgreSQL + PostGIS (p. ej. Neon o Supabase), configurar `DATABASE_URL`, `JWT_ACCESS_SECRET` propio, `CORS_ORIGINS=https://tusofertas.vercel.app`, `TRUST_PROXY` según el proveedor, correr `npm run db:deploy`, y definir `API_ORIGIN` en Vercel (`vercel env add API_ORIGIN production`) + redeploy. Es una decisión de infraestructura/costos pendiente del usuario.
+- Lockfile: el original (generado en Windows) no tenía las variantes Linux de binarios opcionales (lightningcss, @tailwindcss/oxide, @next/swc, sharp, unrs-resolver) ni su `integrity` — bug npm/cli#4828 — y el build de Vercel fallaba. Se regeneraron esas entradas en una copia limpia sin `node_modules`, con **las mismas versiones**; `npm ci` + `verify` locales siguen en verde. Si vuelve a pasar tras actualizar dependencias: quitar del lock esos paquetes **y sus padres** y correr `npm install --package-lock-only` en un directorio sin `node_modules`.
 
 ## Git y autorización persistente
 
 El usuario pidió **commit y push al completar cada paso**, sin confirmaciones ordinarias. No usar force push ni sobrescribir trabajo ajeno. Excluir `.env`, generados y logs.
 
-- P0-01 `bf6653b`; P1-01 `0f84809`; P1-02 `e16ba35`; **P1-03 `6d04203`** (publicados).
-- P1-04: commit `feat(P1-04): ...` en `main`; su hash se informa al cerrar la sesión y se registra en el siguiente checkpoint.
+- P0-01 `bf6653b`; P1-01 `0f84809`; P1-02 `e16ba35`; P1-03 `6d04203`; **P1-04 `0e236d6`** (publicados).
+- Deploy Vercel + lockfile multiplataforma: commit `chore(deploy): ...` posterior a `0e236d6`; su hash se informa al cerrar la sesión.
 
 ## Cómo seguir con P2-01
 

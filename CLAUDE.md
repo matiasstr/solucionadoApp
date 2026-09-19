@@ -6,7 +6,7 @@ Este repositorio ya tiene implementación y un plan de continuidad. Antes de tra
 2. Leer `CONTINUAR.md`: contiene el último estado verificado, el próximo paso, comandos y pendientes. Es la fuente de continuidad; no depender del historial del chat.
 3. Consultar `ROADMAP.md`, la guía correspondiente en `docs/steps/` y los ADRs (0001–0006) antes de implementar.
 
-Estado al 2026-09-18: **fase 1 completa (P0-01, P1-01 a P1-04)**. Próximo paso: **P2-01 — Catálogo, sucursales, precios históricos, unidades y seed**.
+Estado al 2026-09-18: **fase 1 completa (P0-01, P1-01 a P1-04)**. Próximo paso: **P2-01 — Catálogo, sucursales, precios históricos, unidades y seed**. Web publicada en https://tusofertas.vercel.app (sin API todavía; ver sección Deploy de CONTINUAR.md). El usuario pidió desplegar en Vercel cuando haya algo desplegable.
 
 Comandos clave (PowerShell, usar `npm.cmd`/`npx.cmd`): `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run verify` (sin DB), `npm.cmd run test:db` (integración con PostgreSQL/PostGIS real en una base `*_test` aislada), `npm.cmd run test:e2e` (Edge real; requiere `npm.cmd run dev` corriendo). Antes de tocar `apps/web`, leer `apps/web/AGENTS.md` (guías de Next 16 en `node_modules/next/dist/docs/`).
 
