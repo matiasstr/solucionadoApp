@@ -4,7 +4,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 ## Estado actual
 
-Diseño inicial, monorepo Next.js/NestJS, base de datos operativa y autenticación backend implementados (**P0-01/P1-01/P1-02/P1-03**). Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. La API ya permite registro, login, refresh rotativo, logout y perfil (ver [ADR 0003](docs/architecture-decisions/0003-auth-sessions.md)); las pantallas de login/registro llegan en P1-04. Todavía no hay catálogo, precios reales ni optimizador en funcionamiento.
+Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)). Todavía no hay catálogo, precios reales ni optimizador en funcionamiento.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -58,7 +58,7 @@ npm.cmd run db:deploy
 npm.cmd run dev
 ```
 
-Abrir [web local](http://localhost:3000), [API health](http://localhost:3001/api/health) y [readiness](http://localhost:3001/api/health/ready). `/api/health` confirma solamente que el proceso está vivo (no consulta la DB); `/api/health/ready` ejecuta una consulta real y responde 503 `{status:"unavailable"}` si PostgreSQL no está disponible. La API exige `DATABASE_URL` válida para arrancar, pero conecta de forma diferida. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
+Abrir la [web local](http://127.0.0.1:3000) (crear cuenta en `/register`), [API health](http://localhost:3001/api/health) y [readiness](http://localhost:3001/api/health/ready). La web reenvía `/api/*` a la API (`API_ORIGIN` en `apps/web/.env.local`): el navegador usa un solo origen y la cookie de sesión es first-party. `/api/health` confirma solamente que el proceso está vivo (no consulta la DB); `/api/health/ready` ejecuta una consulta real y responde 503 `{status:"unavailable"}` si PostgreSQL no está disponible. La API exige `DATABASE_URL` válida para arrancar, pero conecta de forma diferida. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
 
 Servicios de datos:
 
@@ -84,7 +84,7 @@ npm.cmd run build
 npm.cmd audit
 ```
 
-`npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
+`npm.cmd run test:e2e` corre el E2E de auth en Edge real (`playwright-core`, sin descargar navegadores) contra `npm.cmd run dev` ya iniciado; crea cuentas ficticias `e2e-*@example.com` en la base de desarrollo y guarda capturas en `.cache/verification/p1-04`. `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
 
 Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
 

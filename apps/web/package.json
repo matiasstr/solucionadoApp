@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "test:e2e": "node --test --test-concurrency=1 e2e/auth.e2e.cjs"
   },
   "dependencies": {
     "@tanstack/react-query": "5.103.1",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
+    "playwright-core": "1.63.0",
     "tailwindcss": "^4.1.0"
   }
 }

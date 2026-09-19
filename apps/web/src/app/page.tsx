@@ -1,5 +1,6 @@
 import { Brand, Surface } from '@tusofertas/ui';
 import Link from 'next/link';
+import { HeaderAuthLinks } from '../components/auth/header-auth-links';
 
 const steps = [
   { number: '01', title: 'Contanos qué comprás', text: 'Tus productos de siempre, las cantidades y lo que ya tenés en casa.' },
@@ -14,7 +15,7 @@ export default function HomePage() {
       <div className="announcement">Hecho para tus compras de todos los días <span aria-hidden="true">·</span> Argentina</div>
       <header className="site-header mx-auto flex max-w-6xl items-center justify-between px-6">
         <Link href="/" className="brand-link"><Brand /></Link>
-        <a className="nav-link" href="#como-funciona">Cómo funciona <span aria-hidden="true">↗</span></a>
+        <HeaderAuthLinks />
       </header>
       <main id="contenido">
         <section className="hero mx-auto grid max-w-6xl items-center gap-12 px-6 lg:grid-cols-2">
@@ -22,8 +23,11 @@ export default function HomePage() {
             <p className="eyebrow"><span className="status-dot" /> MENOS GASTO, MÁS PLAN</p>
             <h1>¿Cuánto podés<br />ahorrar <span>esta semana?</span></h1>
             <p className="hero-copy">Tus compras de siempre pueden costar menos. Estamos preparando una forma simple de comparar precios y armar un plan que te convenga.</p>
-            <a className="primary-link" href="#como-funciona">Conocé la propuesta <span aria-hidden="true">→</span></a>
-            <p className="launch-note">En preparación. Todavía no hay precios disponibles para consultar.</p>
+            <div className="hero-actions">
+              <Link className="primary-link" href="/register">Creá tu cuenta <span aria-hidden="true">→</span></Link>
+              <a className="text-link" href="#como-funciona">Conocé la propuesta</a>
+            </div>
+            <p className="launch-note">En preparación. Ya podés crear tu cuenta; todavía no hay precios disponibles para consultar.</p>
           </div>
           <div className="preview-area">
             <div className="preview-decoration" aria-hidden="true" />

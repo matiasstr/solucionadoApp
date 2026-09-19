@@ -27,7 +27,8 @@
     "test:db": "npm run test:db --workspace=@tusofertas/api",
     "db:format": "npm run db:format --workspace=@tusofertas/api",
     "infra:up": "docker compose up -d",
-    "infra:down": "docker compose down"
+    "infra:down": "docker compose down",
+    "test:e2e": "npm run test:e2e --workspace=@tusofertas/web"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

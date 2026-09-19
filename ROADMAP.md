@@ -48,7 +48,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P1-01 | Bootstrap npm workspaces, Next.js, NestJS, paquetes, Compose y scripts | P0-01 | COMPLETO |
 | P1-02 | PostgreSQL/PostGIS, Prisma operativo, migración inicial y comprobación de integridad | P1-01 | COMPLETO |
 | P1-03 | Auth backend, sesiones refresh seguras, perfil y tests | P1-02 | COMPLETO |
-| P1-04 | Auth frontend y navegación protegida | P1-03 | PENDIENTE |
+| P1-04 | Auth frontend y navegación protegida | P1-03 | COMPLETO |
 | P2-01 | Catálogo, sucursales, precios históricos, conversión de unidades y seed | P1-02 | PENDIENTE |
 | P2-02 | API de productos, canónicos, sucursales y precios actuales | P2-01 | PENDIENTE |
 | P2-03 | Motor básico de promociones con tests y datos demo | P2-01 | PENDIENTE |

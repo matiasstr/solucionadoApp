@@ -16,7 +16,11 @@ import { OriginGuard } from './origin.guard';
     // Almacenamiento en memoria: válido para una instancia. Con varias réplicas, mover a Redis (P8).
     ThrottlerModule.forRootAsync({
       inject: [API_CONFIG],
-      useFactory: (config: ApiConfig) => [{ ttl: 60_000, limit: config.auth.rateLimitPerMinute }],
+      // Refresh corre en cada carga de la web: 6× el límite de login/registro.
+      useFactory: (config: ApiConfig) => [{
+        ttl: 60_000,
+        limit: (context) => config.auth.rateLimitPerMinute * (context.getHandler().name === 'refresh' ? 6 : 1),
+      }],
     }),
   ],
   controllers: [AuthController],

@@ -36,6 +36,10 @@ class Environment {
   @Matches(/^[a-zA-Z0-9.:[\]-]+$/)
   HOST = '127.0.0.1';
 
+  // Proxies confiables para X-Forwarded-For (IP real en rate limit). Vacío = ninguno.
+  @IsIn(['', 'loopback', 'uniquelocal', 'loopback,uniquelocal'])
+  TRUST_PROXY = '';
+
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.split(',').map((origin) => origin.trim()) : value,
   )
@@ -88,6 +92,8 @@ export interface ApiConfig {
   readonly port: number;
   readonly host: string;
   readonly corsOrigins: readonly string[];
+  /** Valor para Express `trust proxy`; false si no hay proxy delante. */
+  readonly trustProxy: string | false;
   /** Secreto: no registrar ni devolver. */
   readonly databaseUrl: string;
   readonly auth: {
@@ -132,7 +138,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
   for (const key of [
     'NODE_ENV', 'PORT', 'HOST', 'CORS_ORIGINS', 'DATABASE_URL',
     'JWT_ACCESS_SECRET', 'JWT_ISSUER', 'JWT_AUDIENCE', 'ACCESS_TOKEN_TTL_SECONDS', 'REFRESH_TOKEN_TTL_DAYS',
-    'AUTH_RATE_LIMIT_PER_MINUTE',
+    'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -163,6 +169,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     port: env.PORT,
     host: env.HOST,
     corsOrigins: Object.freeze([...new Set(env.CORS_ORIGINS)]),
+    trustProxy: env.TRUST_PROXY || false,
     databaseUrl: env.DATABASE_URL,
     auth: Object.freeze({
       accessSecret: env.JWT_ACCESS_SECRET,

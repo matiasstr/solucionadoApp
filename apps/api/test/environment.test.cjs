@@ -12,11 +12,13 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
     REDIS_URL: 'redis://unused-private-fixture',
     JWT_ACCESS_SECRET: 'private-fixture-secret-with-32-chars-min',
     ACCESS_TOKEN_TTL_SECONDS: '600',
+    TRUST_PROXY: 'loopback',
   }), {
     nodeEnv: 'production',
     port: 4100,
     host: '0.0.0.0',
     corsOrigins: ['https://tusofertas.example', 'https://app.tusofertas.example'],
+    trustProxy: 'loopback',
     databaseUrl: 'postgresql://app:private-fixture@db.internal:5432/tusofertas',
     auth: {
       accessSecret: 'private-fixture-secret-with-32-chars-min',
@@ -49,7 +51,7 @@ test('invalid ports, unknown modes, empty hosts and unsafe origins prevent start
     { DATABASE_URL: 'private-fixture' },
     { JWT_ACCESS_SECRET: undefined }, { JWT_ACCESS_SECRET: 'private-fixture-short' },
     { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'solo-desarrollo-cambiar-por-un-valor-aleatorio-largo' },
-    { ACCESS_TOKEN_TTL_SECONDS: '30' }, { REFRESH_TOKEN_TTL_DAYS: '0' }, { JWT_AUDIENCE: 'Bad Audience' },
+    { ACCESS_TOKEN_TTL_SECONDS: '30' }, { REFRESH_TOKEN_TTL_DAYS: '0' }, { JWT_AUDIENCE: 'Bad Audience' }, { TRUST_PROXY: 'true' },
   ];
   for (const input of invalid) {
     assert.throws(() => validateEnvironment({ ...validDb, ...input }), (error) => {

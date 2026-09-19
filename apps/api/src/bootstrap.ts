@@ -16,6 +16,8 @@ export async function createApp(
 ): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule.forRoot(config), { logger, abortOnError: false });
   app.setGlobalPrefix('api');
+  // Con el rewrite de Next (mismo origen) la API recibe la IP del cliente en X-Forwarded-For.
+  if (config.trustProxy) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.enableCors({
     origin: [...config.corsOrigins],
