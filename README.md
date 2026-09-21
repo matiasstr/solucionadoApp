@@ -4,7 +4,9 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 ## Estado actual
 
-Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)). Todavía no hay catálogo, precios reales ni optimizador en funcionamiento.
+Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
+
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). Todavía no hay endpoints públicos de catálogo (P2-02), promociones (P2-03), comparador ni optimizador, y **ningún precio es real**.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -117,10 +119,40 @@ Migración inicial: [`20260918120000_init`](apps/api/prisma/migrations/202609181
 | `npm.cmd run db:status` | Estado de migraciones de `DATABASE_URL`. |
 | `npm.cmd run db:generate` | Genera el cliente Prisma en `apps/api/src/generated` (ignorado por Git; solo backend). |
 | `npm.cmd run test:db` | Recrea la base **de prueba** `TEST_DATABASE_URL` (debe terminar en `_test`; nunca la de desarrollo), aplica migraciones dos veces (la segunda debe ser no-op), verifica que no haya drift contra el schema y corre `apps/api/test/integration`. |
+| `npm.cmd run db:seed` | Carga el dataset **DEMO** (P2-01) en `DATABASE_URL`. Opciones: `-- --anchor=AAAA-MM-DD --days=31`. Repetible: no duplica ni borra nada. |
 
 Prisma no expresa CHECKs, triggers ni índices por expresión: cualquier cambio a esas reglas se hace con SQL en una migración nueva. El índice GiST sí está declarado en el schema para que `migrate dev` no lo elimine. Consultas espaciales: `StoreProximityRepository` (SQL parametrizado con `ST_DWithin` en metros).
 
-**P2-01** implementa el seed repetible con cadenas, sucursales ficticias, productos y precios históricos; **P2-03** agrega promociones demo. No hay seeds ni precios reales disponibles todavía.
+### Dataset DEMO
+
+`npm.cmd run db:seed` carga 7 categorías, 18 productos canónicos, 28 presentaciones, 5 cadenas, 10 sucursales y ~7.200 observaciones de precio (31 días). **Los nombres de las cadenas son reales; las sucursales, marcas, productos y todos los precios son inventados**: llevan el sufijo `(DEMO)` y sus observaciones usan `source = 'demo-seed'` e `importBatchId = demo-seed:<fecha ancla>`. Nunca deben presentarse como una consulta real.
+
+El dataset incluye a propósito casos difíciles: misma necesidad en varias presentaciones (arroz 1 kg vs 500 g), packs cuyo contenido total ya está en `quantity` (6 × 2,25 L = 13,5 L), venta por peso (queso, banana, pollo), una sucursal sin coordenadas (solo localidad, no habilita distancias), una que informa día por medio y otra que dejó de informar hace 12 días.
+
+Es idempotente: los ids son UUID v5 deterministas y cada observación tiene la clave `demo:<producto>:<sucursal>:<día>`, así que correrlo dos veces con la misma fecha ancla inserta cero filas. Usar `--anchor` fija el día del precio más reciente para que las pruebas no caduquen. No se ejecuta con `NODE_ENV=production` ni contra una base remota sin `SEED_ALLOW_REMOTE=true`, y nunca borra datos del usuario.
+
+```bash
+npm.cmd run db:deploy
+npm.cmd run db:seed -- --anchor=2026-09-18 --days=31
+```
+
+### Unidades, precio por unidad base y frescura
+
+Los importes y las cantidades se calculan con decimales exactos (`DecimalValue`, entero escalado con redondeo HALF_UP) y viajan como texto; nunca se usa `number` para dinero. `unitPrice = price / contenido en unidad base`: `1000 G = 1 KG`, `1000 ML = 1 L`, y no existe conversión entre masa, volumen y unidades. El precio por 100 g es una presentación del precio por KG (÷10), no una dimensión nueva.
+
+| Presentación | Precio | Precio por unidad base |
+| --- | --- | --- |
+| Arroz 1 kg | 1290,00 | 1290,000000 / KG |
+| Arroz 500 g | 720,00 | 1440,000000 / KG |
+| Aceite 900 ml | 2890,00 | 3211,111111 / L |
+| Pack 6 × 2,25 L (13,5 L) | 13900,00 | 1029,629630 / L |
+| Docena de huevos (12 UNIT) | 3890,00 | 324,166667 / UNIT |
+
+El normalizador rechaza en vez de corregir en silencio: precios con más de dos decimales, cantidades con más de cuatro, valores cero o negativos, venta por peso con unidad de conteo y productos cuya dimensión no coincide con la de su canónico.
+
+El precio actual de un producto en una sucursal es su observación más reciente; los empates se resuelven por precedencia de fuente (`PRICE_SOURCE_PRECEDENCE`), fecha de ingesta, nombre de fuente e id. Pasados `PRICE_MAX_AGE_DAYS` días (7 por defecto) la observación se marca desactualizada, **pero se sigue mostrando con su fecha y su fuente**: un precio viejo no es disponibilidad garantizada. La historia es append-only; un trigger de la base rechaza `UPDATE` y `DELETE`.
+
+**P2-02** expone estos datos por HTTP y **P2-03** agrega promociones demo. No hay precios reales disponibles todavía.
 
 ## Calidad y evolución
 

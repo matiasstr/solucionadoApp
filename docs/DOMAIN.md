@@ -1,6 +1,6 @@
 # Modelo de dominio inicial
 
-Estado: diseño para implementación incremental. Desde P1-02 existe la migración inicial `20260918120000_init` con tablas, PostGIS y las reglas SQL marcadas abajo; todavía no hay datos ni repositorios de dominio. Una regla documentada aquí **no está implementada** por el solo hecho de figurar en el documento.
+Estado: diseño para implementación incremental. Desde P1-02 existe la migración inicial `20260918120000_init` con tablas, PostGIS y las reglas SQL marcadas abajo. Desde **P2-01** hay repositorios y dominio para catálogo, comercios y precios (conversión de unidades, normalizador, precio actual con frescura) y un dataset DEMO repetible; ver [ADR 0008](architecture-decisions/0008-catalog-prices-demo-data.md). Promociones, rutinas, inventario y planes siguen siendo solo modelo. Una regla documentada aquí **no está implementada** por el solo hecho de figurar en el documento.
 
 ## Responsabilidades y relaciones
 
@@ -129,11 +129,11 @@ Prisma expresa claves primarias, relaciones, unicidad e índices declarados. Las
 | Email normalizado y unicidad sin distinguir mayúsculas | Aplicación + índice SQL. |
 | Coordenadas completas o ambas nulas; latitud entre -90 y 90, longitud entre -180 y 180 | `CHECK` SQL + DTO. |
 | Radio positivo, máximo de sucursales positivo o nulo; penalizaciones no negativas | `CHECK` SQL + DTO. |
-| Cantidades, precio, precio normalizado y tamaño de envase positivos; inventario no negativo | `CHECK` SQL + dominio. |
+| Cantidades, precio, precio normalizado y tamaño de envase positivos; inventario no negativo | `CHECK` SQL + dominio (`normalizePrice`, P2-01). |
 | Moneda ARS inicial y consistencia de unidad normalizada | `CHECK` SQL para moneda; dominio para conversión. |
-| Árbol de categorías sin ciclos | Aplicación transaccional; `parentId != id` también en SQL. |
-| Dimensión compatible entre producto, canónico, inventario y rutinas | Dominio; relaciones simples no comparan unidades. |
-| Observaciones inmutables y clave de importación estable | Trigger/permisos SQL + importador. |
+| Árbol de categorías sin ciclos | `CategoryRepository` recorre ancestros antes de escribir (P2-01); `parentId != id` también en SQL. |
+| Dimensión compatible entre producto, canónico, inventario y rutinas | Producto/canónico: `ProductRepository` y `normalizePrice` (P2-01). Inventario y rutinas: pendiente. |
+| Observaciones inmutables y clave de importación estable | Trigger SQL + `buildIdempotencyKey` y `ProductPriceRepository` (P2-01). |
 | Punto geográfico, coordenadas e índice GiST consistentes | Migración SQL. |
 | Exactamente un alcance comercial y como máximo un alcance de producto por promoción | `CHECK` SQL + DTO. |
 | Vigencia positiva, porcentaje en `(0,100]`, mínimos/topes válidos y días ISO sin duplicados | SQL cuando sea posible + validador del dominio. |

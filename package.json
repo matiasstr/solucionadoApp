@@ -24,6 +24,7 @@
     "db:migrate": "npm run db:migrate --workspace=@tusofertas/api",
     "db:deploy": "npm run db:deploy --workspace=@tusofertas/api",
     "db:status": "npm run db:status --workspace=@tusofertas/api",
+    "db:seed": "npm run db:seed --workspace=@tusofertas/api",
     "test:db": "npm run test:db --workspace=@tusofertas/api",
     "db:format": "npm run db:format --workspace=@tusofertas/api",
     "infra:up": "docker compose up -d",

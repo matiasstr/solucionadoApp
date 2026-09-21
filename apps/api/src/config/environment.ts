@@ -82,6 +82,22 @@ class Environment {
   @Min(1)
   @Max(10000)
   AUTH_RATE_LIMIT_PER_MINUTE = 10;
+
+  // Antigüedad máxima de una observación para considerarla vigente (ADR 0008).
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  PRICE_MAX_AGE_DAYS = 7;
+
+  // Fuentes preferidas ante igual fecha observada, de mayor a menor prioridad.
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.split(',').map((source) => source.trim()).filter(Boolean) : value,
+  )
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(/^[a-z0-9._-]{1,80}$/, { each: true })
+  PRICE_SOURCE_PRECEDENCE: string[] = [];
 }
 
 /** Token de inyección de la configuración validada. */
@@ -106,6 +122,12 @@ export interface ApiConfig {
     readonly rateLimitPerMinute: number;
     /** Cookie Secure: siempre en producción. */
     readonly secureCookies: boolean;
+  };
+  readonly prices: {
+    /** Días tras los cuales una observación se muestra como desactualizada. */
+    readonly maxAgeDays: number;
+    /** Desempate por fuente ante igual `observedAt`; vacío = orden alfabético. */
+    readonly sourcePrecedence: readonly string[];
   };
 }
 
@@ -139,6 +161,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     'NODE_ENV', 'PORT', 'HOST', 'CORS_ORIGINS', 'DATABASE_URL',
     'JWT_ACCESS_SECRET', 'JWT_ISSUER', 'JWT_AUDIENCE', 'ACCESS_TOKEN_TTL_SECONDS', 'REFRESH_TOKEN_TTL_DAYS',
     'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
+    'PRICE_MAX_AGE_DAYS', 'PRICE_SOURCE_PRECEDENCE',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -179,6 +202,10 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
       refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
       rateLimitPerMinute: env.AUTH_RATE_LIMIT_PER_MINUTE,
       secureCookies: env.NODE_ENV === 'production',
+    }),
+    prices: Object.freeze({
+      maxAgeDays: env.PRICE_MAX_AGE_DAYS,
+      sourcePrecedence: Object.freeze([...new Set(env.PRICE_SOURCE_PRECEDENCE)]),
     }),
   });
 }

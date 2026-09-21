@@ -29,7 +29,20 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
       rateLimitPerMinute: 10,
       secureCookies: true,
     },
+    prices: { maxAgeDays: 7, sourcePrecedence: [] },
   });
+});
+
+test('la política de precios se configura por entorno y rechaza valores inválidos', () => {
+  const config = validateEnvironment({
+    ...validDb,
+    PRICE_MAX_AGE_DAYS: '14',
+    PRICE_SOURCE_PRECEDENCE: 'oficial, scraper ,oficial',
+  });
+  assert.deepEqual(config.prices, { maxAgeDays: 14, sourcePrecedence: ['oficial', 'scraper'] });
+  for (const input of [{ PRICE_MAX_AGE_DAYS: '0' }, { PRICE_MAX_AGE_DAYS: '400' }, { PRICE_MAX_AGE_DAYS: '2.5' }, { PRICE_SOURCE_PRECEDENCE: 'Fuente Oficial' }]) {
+    assert.throws(() => validateEnvironment({ ...validDb, ...input }), /Configuración inválida:/);
+  }
 });
 
 const validDb = {
