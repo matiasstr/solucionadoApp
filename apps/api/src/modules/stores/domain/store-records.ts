@@ -18,3 +18,8 @@ export interface StoreRecord {
   readonly longitude: string | null;
   readonly isActive: boolean;
 }
+
+/** Sucursal con el nombre de su cadena: lo que necesita mostrar un precio. */
+export interface StoreSummaryRecord extends StoreRecord {
+  readonly chainName: string;
+}

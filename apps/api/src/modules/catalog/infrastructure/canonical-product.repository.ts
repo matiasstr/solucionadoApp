@@ -1,8 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import { DEFAULT_PAGE_LIMIT, keysetFilter, toPage } from '../../../common/pagination';
+import type { KeysetCursor, PageResult } from '../../../common/pagination';
 import { PrismaService } from '../../../database/prisma.service';
 import type { CanonicalProductRecord } from '../domain/catalog-records';
 import { normalizeName } from '../domain/naming';
 import type { BaseUnit } from '../domain/units';
+
+export interface CanonicalProductSearchQuery {
+  readonly term?: string;
+  readonly categoryId?: string;
+  readonly limit?: number;
+  readonly cursor?: KeysetCursor | null;
+}
 
 export interface CanonicalProductInput {
   /** Id estable provisto por el seed o el importador. */
@@ -59,6 +68,22 @@ export class CanonicalProductRepository {
       take: limit,
     });
     return rows.map(toRecord);
+  }
+
+  /** Búsqueda paginada por cursor con orden estable `(normalizedName, id)`. */
+  async search(query: CanonicalProductSearchQuery): Promise<PageResult<CanonicalProductRecord>> {
+    const limit = query.limit ?? DEFAULT_PAGE_LIMIT;
+    const term = query.term ? normalizeName(query.term, 200) : '';
+    const rows = await this.prisma.canonicalProduct.findMany({
+      where: {
+        ...(term ? { normalizedName: { contains: term } } : {}),
+        ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+        ...keysetFilter('normalizedName', query.cursor ?? null),
+      },
+      orderBy: [{ normalizedName: 'asc' }, { id: 'asc' }],
+      take: limit + 1,
+    });
+    return toPage(rows.map(toRecord), limit, (canonical) => ({ key: canonical.normalizedName, id: canonical.id }));
   }
 
   async upsert(input: CanonicalProductInput): Promise<CanonicalProductRecord> {

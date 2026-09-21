@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { DEFAULT_PAGE_LIMIT, keysetFilter, toPage } from '../../../common/pagination';
+import type { KeysetCursor, PageResult } from '../../../common/pagination';
 import { PrismaService } from '../../../database/prisma.service';
 import type { ProductRecord } from '../domain/catalog-records';
 import { CatalogValidationError } from '../domain/catalog.errors';
@@ -12,6 +14,14 @@ import type { DecimalLike } from './decimal-mapper';
 /** Product.quantity es Decimal(14,4): más decimales los truncaría la base. */
 const QUANTITY_SCALE = 4;
 const EAN_PATTERN = /^[0-9]{8,14}$/;
+
+export interface ProductSearchQuery {
+  readonly term?: string;
+  readonly categoryId?: string;
+  readonly canonicalProductId?: string;
+  readonly limit?: number;
+  readonly cursor?: KeysetCursor | null;
+}
 
 export interface ProductInput {
   /** Id estable provisto por el seed o el importador. */
@@ -95,6 +105,28 @@ export class ProductRepository {
       take: limit,
     });
     return rows.map(toRecord);
+  }
+
+  /**
+   * Búsqueda paginada por cursor. Orden estable `(normalizedName, id)`: el mismo
+   * que usa el índice `Product_normalizedName_idx`.
+   */
+  async search(query: ProductSearchQuery): Promise<PageResult<ProductRecord>> {
+    const limit = query.limit ?? DEFAULT_PAGE_LIMIT;
+    const term = query.term ? normalizeName(query.term) : '';
+    const rows = await this.prisma.product.findMany({
+      where: {
+        isActive: true,
+        ...(term ? { normalizedName: { contains: term } } : {}),
+        ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+        ...(query.canonicalProductId ? { canonicalProductId: query.canonicalProductId } : {}),
+        ...keysetFilter('normalizedName', query.cursor ?? null),
+      },
+      orderBy: [{ normalizedName: 'asc' }, { id: 'asc' }],
+      // Una fila extra indica si hay página siguiente sin contar toda la tabla.
+      take: limit + 1,
+    });
+    return toPage(rows.map(toRecord), limit, (product) => ({ key: product.normalizedName, id: product.id }));
   }
 
   async upsert(input: ProductInput): Promise<ProductRecord> {

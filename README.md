@@ -6,7 +6,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
 
-**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). Todavía no hay endpoints públicos de catálogo (P2-02), promociones (P2-03), comparador ni optimizador, y **ningún precio es real**.
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. Todavía no hay promociones (P2-03), comparador, rutinas ni optimizador, y **ningún precio es real**.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -103,6 +103,50 @@ Prefijo `/api`. Las rutas `/auth/*` exigen `Origin` permitido y el header `X-Req
 | `GET /users/me` / `PATCH /users/me` (Bearer) | Perfil y preferencias; 400 con `fields` si hay datos inválidos |
 
 Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, nunca valores. Configuración en `apps/api/.env.example` (`JWT_ACCESS_SECRET` obligatorio, ≥ 32 caracteres; generar uno propio).
+
+## API de catálogo y precios
+
+Prefijo `/api`. Son endpoints públicos de lectura (no requieren sesión). Contratos en [`packages/shared/src/index.ts`](packages/shared/src/index.ts): decimales como texto, fechas ISO 8601 en UTC y ninguna entidad Prisma expuesta tal cual.
+
+| Método y ruta | Resultado |
+| --- | --- |
+| `GET /products?search=&categoryId=&canonicalProductId=&limit=&cursor=` | Página de presentaciones concretas |
+| `GET /products/:id` | Producto con su categoría y su canónico |
+| `GET /products/:id/prices?latitude=&longitude=&radiusKm=&city=&province=&includeStale=` | Precio actual por sucursal, del más barato por unidad base al más caro |
+| `GET /canonical-products?search=&categoryId=&limit=&cursor=` | Página de necesidades equivalentes |
+| `GET /canonical-products/:id` | Canónico con sus alternativas |
+| `GET /stores?search=&chainId=&city=&province=&latitude=&longitude=&radiusKm=&limit=&cursor=` | Sucursales; con coordenadas ordena por distancia |
+| `GET /stores/:id` | Sucursal |
+
+Reglas de estos endpoints:
+
+- **Paginación por cursor**, no por número de página: `page.nextCursor` es opaco y `null` cuando no hay más. `limit` va de 1 a 50 (20 por defecto). Insertar filas no saltea ni repite resultados. La búsqueda por cercanía ordena por distancia y no admite cursor.
+- **Filtros estrictos**: un parámetro desconocido o fuera de rango responde `400 VALIDATION_FAILED` con `fields`. Un id mal formado es `400`, no `404`.
+- **Distancias solo con coordenadas.** `radiusKm` (0,1 a 100) exige latitud y longitud; se convierte a metros para PostGIS. Por localidad (`city` + `province`) se listan sucursales con `distanceMeters: null`: sin ubicación precisa no se inventa una distancia. `scope` informa cuál de los tres alcances se aplicó (`COORDINATES`, `LOCALITY`, `ALL`).
+- **Todo precio viaja con procedencia**: `source`, `freshness.observedAt`, `ageDays` y `isStale`. Los precios viejos se muestran marcados, salvo que se pida `includeStale=false`.
+
+Ejemplo real contra el dataset DEMO (`GET /api/products/<id>/prices?latitude=-34.6187&longitude=-58.4407&radiusKm=5`, recortado a una sucursal):
+
+```json
+{
+  "product": { "id": "43d81156-…", "name": "Arroz largo fino Pampa 1 kg (DEMO)", "quantity": "1", "unit": "KG" },
+  "scope": { "origin": "COORDINATES", "radiusKm": 5, "distancesAvailable": true, "storesConsidered": 3, "maxAgeDays": 7, "includeStale": true },
+  "prices": [
+    {
+      "store": { "id": "331b0ba2-…", "chainName": "Vea", "name": "Vea Flores (DEMO)", "city": "Ciudad Autónoma de Buenos Aires", "distanceMeters": 2372.74540579 },
+      "price": "1267.57",
+      "currency": "ARS",
+      "unitPrice": "1267.570000",
+      "unitPriceUnit": "KG",
+      "unitPricePer100g": "126.757000",
+      "source": "demo-seed",
+      "freshness": { "observedAt": "2026-09-21T12:00:00.000Z", "ageDays": 0, "maxAgeDays": 7, "isStale": false }
+    }
+  ]
+}
+```
+
+Los importes de ese ejemplo son **ficticios** (`source: "demo-seed"`): no son precios reales de esa cadena.
 
 ## Deploy
 

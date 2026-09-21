@@ -25,9 +25,18 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
   throw new Error('Los tests de integración requieren DATABASE_URL de una base *_test (usar npm run test:db).');
 }
 
-/** Fecha ancla fija: la historia demo no caduca con el paso del tiempo. */
-const ANCHOR = new Date('2026-09-18T12:00:00.000Z');
+/**
+ * Ancla en el mediodía UTC de hoy: la historia demo se mueve con el reloj, así que
+ * las aserciones son relativas al ancla y no caducan. Otros archivos de integración
+ * cargan el mismo dataset; el seed es idempotente y las fechas coinciden.
+ */
+const now = new Date();
+const ANCHOR = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
 const HISTORY_DAYS = 31;
+const MS_PER_DAY = 86_400_000;
+/** Instante de la observación de hace `offset` días (negativo = futuro). */
+const dayAt = (offset) => new Date(ANCHOR.getTime() - offset * MS_PER_DAY);
+const dayKey = (offset) => dayAt(offset).toISOString().slice(0, 10);
 const config = { prices: { maxAgeDays: 7, sourcePrecedence: [] } };
 
 let prisma;
@@ -46,9 +55,8 @@ after(async () => {
 
 describe('seed demo', () => {
   test('carga catálogo, sucursales e historia con datos marcados como ficticios', async () => {
-    assert.equal(firstRun.anchorDate, '2026-09-18');
+    assert.equal(firstRun.anchorDate, dayKey(0));
     assert.equal(firstRun.source, DEMO_SOURCE);
-    assert.equal(firstRun.observationsInserted, firstRun.observationsGenerated);
     assert.ok(firstRun.observationsGenerated > 5000, 'la historia demo debería tener miles de observaciones');
 
     const [categories, canonical, products, chains, stores] = await Promise.all([
@@ -77,7 +85,7 @@ describe('seed demo', () => {
     const sources = await prisma.productPrice.groupBy({ by: ['source'] });
     assert.deepEqual(sources.map((row) => row.source), [DEMO_SOURCE]);
     const batches = await prisma.productPrice.groupBy({ by: ['importBatchId'] });
-    assert.deepEqual(batches.map((row) => row.importBatchId), [`${DEMO_SOURCE}:2026-09-18`]);
+    assert.deepEqual(batches.map((row) => row.importBatchId), [`${DEMO_SOURCE}:${dayKey(0)}`]);
   });
 
   test('correrlo de nuevo no duplica nada ni reescribe la historia', async () => {
@@ -110,10 +118,10 @@ describe('seed demo', () => {
   test('conserva un historial diario con fuente y fecha visibles', async () => {
     const productId = demoProductId('arroz-pampa-1kg');
     const storeId = demoStoreId('coto-caballito');
-    const history = await prices.findHistory(productId, storeId, { limit: 1000 });
+    const history = await prices.findHistory(productId, storeId, { from: dayAt(HISTORY_DAYS - 1), to: dayAt(0), limit: 1000 });
     assert.equal(history.length, HISTORY_DAYS);
-    assert.equal(history[0].observedAt.toISOString(), '2026-09-18T12:00:00.000Z');
-    assert.equal(history.at(-1).observedAt.toISOString(), '2026-08-19T12:00:00.000Z');
+    assert.equal(history[0].observedAt.toISOString(), dayAt(0).toISOString());
+    assert.equal(history.at(-1).observedAt.toISOString(), dayAt(HISTORY_DAYS - 1).toISOString());
     for (const observation of history) {
       assert.equal(observation.source, DEMO_SOURCE);
       assert.equal(observation.currency, 'ARS');
@@ -124,10 +132,7 @@ describe('seed demo', () => {
     const days = history.map((observation) => observation.observedAt.toISOString().slice(0, 10));
     assert.equal(new Set(days).size, history.length);
 
-    const ranged = await prices.findHistory(productId, storeId, {
-      from: new Date('2026-09-12T00:00:00.000Z'),
-      to: new Date('2026-09-18T23:59:59.000Z'),
-    });
+    const ranged = await prices.findHistory(productId, storeId, { from: dayAt(6), to: dayAt(0) });
     assert.equal(ranged.length, 7);
   });
 
@@ -151,6 +156,7 @@ describe('seed demo', () => {
 describe('precio actual y frescura', () => {
   test('elige la última observación de cada sucursal y marca las desactualizadas', async () => {
     const views = await currentPrices.execute(demoProductId('leche-vallealto-sachet'), { now: ANCHOR });
+    // `now` es el mediodía UTC del ancla: las sucursales diarias quedan en cero días.
     assert.ok(views.length >= 5);
     const byStore = new Map(views.map((view) => [view.storeId, view]));
     assert.equal(byStore.size, views.length, 'una sola fila por sucursal');
@@ -160,7 +166,7 @@ describe('precio actual y frescura', () => {
     if (stale) {
       assert.equal(stale.freshness.ageDays, 12);
       assert.equal(stale.freshness.isStale, true);
-      assert.equal(stale.observedAt.toISOString(), '2026-09-06T12:00:00.000Z');
+      assert.equal(stale.observedAt.toISOString(), dayAt(12).toISOString());
     }
     const daily = byStore.get(demoStoreId('coto-caballito'));
     assert.equal(daily.freshness.ageDays, 0);
@@ -191,7 +197,7 @@ describe('precio actual y frescura', () => {
     assert.ok(onlyFresh.length <= withStale.length);
     assert.equal(onlyFresh.every((view) => !view.freshness.isStale), true);
     // Con un umbral muy chico, toda la vista queda vieja salvo las observaciones de hoy.
-    const ancient = await currentPrices.execute(product, { now: new Date('2026-12-31T12:00:00.000Z') });
+    const ancient = await currentPrices.execute(product, { now: dayAt(-400) });
     assert.equal(ancient.every((view) => view.freshness.isStale), true);
   });
 });
@@ -233,7 +239,7 @@ describe('historia append-only', () => {
     assert.equal(await prices.countByProduct(productId), before);
 
     // Otro día sí es una observación nueva y no pisa la anterior.
-    const newDay = new Date('2026-09-19T12:00:00.000Z');
+    const newDay = dayAt(-1);
     const created = await recordObservation.execute({
       productId,
       storeId,
