@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: la fase 1 completa (P0-01, P1-01 a P1-04) y la **fase 2 completa (P2-01, P2-02, P2-03)**. Empezar por **P3-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009), sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: las fases 1 y 2 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03) y **P3-01**. Empezar por **P3-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 y 2026-09-21, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P3-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18, 2026-09-21 y 2026-09-22, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P3-02 que recuperar.
 
-## Estado: 2026-09-21 — Fases 1 y 2 completas
+## Estado: 2026-09-22 — Fases 1 y 2 completas + P3-01
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P3-01 — Consultas de búsqueda y comparación** (`docs/steps/phase-03.md`, ADR 0002, 0008 y 0009).
-No están implementados el comparador web, las rutinas, el inventario, el optimizador, los importadores ni los jobs.
+**Próximo paso: P3-02 — Pantallas de consumidor** (`docs/steps/phase-03.md`, `apps/web/AGENTS.md`, `docs/API.md`).
+No están implementadas las pantallas de búsqueda y comparación, las rutinas, el inventario, el optimizador, los importadores ni los jobs.
 
 ## Qué ya existe
 
@@ -41,6 +41,23 @@ No están implementados el comparador web, las rutinas, el inventario, el optimi
   - `DecimalValue` sumó `floorToInteger`, `isInteger` y `toTrimmedString`.
   - `PromotionRepository` (upsert validado, `findActiveFor`, `search` paginado por `(validUntil, id)`) y `GET /promotions` + `GET /promotions/:id` con el campo `automatic`.
   - Seed: 9 promociones demo con vigencia relativa al ancla (activas, una futura, una vencida, una solo los martes, una con mínimo de compra y una bancaria que no se aplica). ADR 0009.
+- **P3-01 (esta sesión): búsqueda y comparación.**
+  - `catalog/domain/search-term.ts`: un término de 8 a 14 dígitos es EAN exacto; el resto se normaliza sin tildes para nombre y marca. Un texto que se queda sin letras devuelve cero resultados, no el catálogo.
+  - `GET /products` suma `brand`, `chainId`, `city`+`province` y `latitude`+`longitude`+`radiusKm` (disponibilidad real: el producto tiene precio observado ahí) y devuelve `scope` con el alcance aplicado. **Cambio de contrato**: la respuesta ahora incluye `scope`.
+  - `GET /canonical-products/:id/prices` (`CanonicalPricesController` en el módulo de precios): compara todas las presentaciones por sucursal, con `matchType` EXACT/ALTERNATIVE según `productId`, precio regular, precio por unidad base, distancia, frescura y la promoción automática con su `minimumQuantity` y `promotionalUnitPrice`.
+  - `sortBy` (`UNIT_PRICE` por defecto, `PRICE`, `DISTANCE`) en las dos rutas de precios; ordenar por distancia sin coordenadas es 400.
+  - `StoreScopeResolver` (módulo de comercios) reemplaza la resolución de alcance duplicada; `ProductPriceRepository.findCurrentByProducts` resuelve varias presentaciones en una sola consulta (`DISTINCT ON (productId, storeId)`), sin N+1.
+  - **`docs/API.md`**: formato estable de todas las respuestas públicas, con parámetros, límites y ejemplos reales del dataset DEMO.
+
+## Verificaciones ejecutadas (P3-01, 2026-09-22)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **68/68** unitarios, build API + web) |
+| `npm.cmd run test:db` | **67/67** integración real (56 previos + **11** de `test/integration/search-api.test.cjs`) |
+| Smoke manual | API en el puerto 3010 contra la base de desarrollo: `GET /api/canonical-products/:id/prices` con coordenadas devolvió ofertas ordenadas por precio por kilo, con distancia y con la promoción del 20% de Carrefour Almagro; esa respuesta quedó como ejemplo en `docs/API.md` |
+
+Qué cubren los tests nuevos: búsqueda con y sin tildes que da el mismo resultado; término sin letras que devuelve cero y no el catálogo; búsqueda por marca y por EAN exacto (y EAN inexistente sin caer en texto); filtros por cadena, localidad y radio con el `scope` informado; radio mayor que alcanza más sucursales; localidad sin sucursales; filtros combinados y paginación sin repetir; comparación con todas las presentaciones en la misma unidad base; exacto contra alternativa; orden por envase y por kilo que difieren (el paquete más barato no es el más barato por kilo); orden por distancia solo con coordenadas; promoción con cantidad mínima 1 (porcentaje), 2 (2x1) y precio fijo, conservando el precio regular; promoción bancaria que no aparece como precio; `includeStale`, `limit`, canónico inexistente y `sortBy` inválido.
 
 ## Verificaciones ejecutadas (P2-03, 2026-09-21)
 
@@ -76,6 +93,15 @@ Qué cubren los tests HTTP nuevos: paginación por cursor sin repetir ni saltear
 Qué cubren los tests nuevos: seed dos veces sin duplicar y sin reescribir observaciones; historial diario de 31 días con fuente/fecha/moneda; normalización por presentación (1 kg, 500 g, pack 6 × 2,25 L); precio actual por sucursal con `ageDays`/`isStale` (sucursal que dejó de informar hace 12 días) y filtro por sucursal; precio por 100 g; reintento `duplicate`, conflicto de contenido `conflict` y observación nueva `created`; rechazo de `UPDATE`/`DELETE` sobre `ProductPrice` desde Prisma; consulta espacial en metros que excluye la sucursal sin coordenadas; `DIMENSION_MISMATCH` y `CATEGORY_CYCLE`.
 
 No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P3-01)
+
+- **`GET /products` ahora devuelve `scope`** además de `items` y `page`. Es un cambio de contrato: quien consuma la API debe ignorar campos nuevos o actualizarse (el test de P2-02 se ajustó).
+- **Los filtros de ubicación filtran por disponibilidad real**: solo productos con precio observado en esas sucursales. Listar algo que no se consigue cerca sería peor que no listarlo.
+- **El orden no considera promociones.** Se ordena por precio regular y el beneficio se muestra al lado con su cantidad mínima, porque depende de cuántas unidades se compren. Optimizar la canasta es trabajo de la fase 5.
+- **Ordenar por distancia sin coordenadas es 400**, no un orden arbitrario.
+- La comparación del canónico está acotada a 50 ofertas y resuelve precios de todas las presentaciones en **una** consulta; las promociones se traen también en una sola por canónico.
+- `docs/API.md` es ahora la referencia del formato de respuesta: si cambia un contrato, se actualiza junto con `packages/shared`.
 
 ## Decisiones y notas (P2-03)
 
@@ -129,20 +155,21 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - P0-01 `bf6653b`; P1-01 `0f84809`; P1-02 `e16ba35`; P1-03 `6d04203`; P1-04 `0e236d6`; deploy web `277fa36`; adaptador serverless de la API `1cc2fae` (publicados).
 - **P2-01** `df94c12` (publicado).
 - **P2-02** `1aa5e5c` (publicado).
-- **P2-03**: commit `feat(P2-03): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
+- **P2-03** `c1ffb10` (publicado).
+- **P3-01**: commit `feat(P3-01): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P3-01
+## Cómo seguir con P3-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-03.md` (P3-01), ADR 0002, 0008 y 0009, y las secciones de API del README.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose ps` (si no corre: `docker compose up -d`), `npm.cmd run db:status`, `npm.cmd run db:seed`.
-3. Extender `GET /products` (búsqueda por nombre, marca y EAN, filtros por categoría, cadena, localidad y radio) y `GET /products/:id/prices`; agregar precios del canónico para comparar alternativas. Reusar `common/pagination.ts` y los repositorios existentes.
-4. Ordenar por precio de presentación, por precio por unidad base y por distancia; el orden por envase y por kilo **puede diferir** y hay que poder demostrarlo (500 g contra 1 kg). No mezclar dimensiones ni fechas sin mostrarlo.
-5. Distinguir coincidencia exacta de alternativa. Cuando una promoción cambia el precio, mostrar condiciones y cantidad mínima y **conservar el precio sin promoción** como comparación: usar `priceLine` del dominio, no recalcular reglas.
-6. Mantener fecha, fuente y `isStale` en cada precio, y ausencia de distancia cuando no hay coordenadas. Revisar índices y evitar N+1.
-7. Tests: tildes, cadena vacía, EAN, filtros combinados, paginación sin duplicados, orden decimal y por unidad, exacto contra alternativa, promociones condicionales y datos antiguos. Agregar los archivos nuevos a `apps/api/scripts/test-db.cjs`.
-8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push.
+1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (Next 16; las guías están en `node_modules/next/dist/docs/`), `ROADMAP.md`, `docs/steps/phase-03.md` (P3-02) y **`docs/API.md`**.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`, `npm.cmd run dev` (la web reenvía `/api/*` a la API por el rewrite de `API_ORIGIN`).
+3. Rutas nuevas en `apps/web`: `/` (landing con el buscador conectado), `/buscar` (query y filtros en la URL) y `/producto/[id]` (ficha con comparación por sucursal y alternativas etiquetadas). La comparación pública **no** exige login.
+4. Consumir `GET /products`, `GET /products/:id`, `GET /canonical-products/:id/prices` y `GET /stores` con TanStack Query, con claves que incluyan los filtros, debounce y cancelación. Reusar `lib/api.ts` (mismo origen, errores tipados).
+5. Mostrar siempre precio, unidad base, sucursal, distancia **solo si existe**, fecha/fuente del precio y la etiqueta DEMO. Distinguir `EXACT` de `ALTERNATIVE` y mostrar la cantidad mínima de una promoción junto al precio regular. Formato `es-AR` de moneda y fecha.
+6. Mobile-first, teclado, labels, foco visible, contraste y tamaños táctiles; estados vacío, carga y error con reintento, sin perder los filtros.
+7. Tests: E2E en Edge real (`npm.cmd run test:e2e`) del recorrido buscar → filtrar → ordenar → producto, URL compartible y vuelta atrás, más `npm.cmd run verify`. No dar por probado lo que no se ejecutó.
+8. Actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. La fase 1 (P0-01, P1-01 a P1-04) y la fase 2 completa (P2-01 catálogo y seed demo, P2-02 API de catálogo y precios, P2-03 motor de promociones) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P3-01 (consultas de búsqueda y comparación), descrito en docs/steps/phase-03.md. Reusá los repositorios, la paginación por cursor y el calculador priceLine que ya existen; probalo contra la base real con npm.cmd run test:db y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 y 2 (P0-01, P1-01 a P1-04, P2-01 a P2-03) y P3-01 (búsqueda y comparación por API) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P3-02 (pantallas de consumidor: landing, buscador y ficha de producto en apps/web), descrito en docs/steps/phase-03.md. Los endpoints y el formato de las respuestas están en docs/API.md; leé apps/web/AGENTS.md antes de tocar la web y probá con npm.cmd run test:e2e y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

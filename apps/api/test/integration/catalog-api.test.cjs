@@ -97,7 +97,12 @@ describe('GET /api/products', () => {
     assert.equal(byCanonical.body.items.length, 3);
 
     const empty = await get('/api/products?search=producto-que-no-existe').expect(200);
-    assert.deepEqual(empty.body, { items: [], page: { limit: 20, nextCursor: null } });
+    // Desde P3-01 la respuesta informa además con qué alcance se buscó.
+    assert.deepEqual(empty.body, {
+      items: [],
+      page: { limit: 20, nextCursor: null },
+      scope: { origin: 'ALL', radiusKm: null, storesConsidered: null },
+    });
 
     await expectValidationError('/api/products?search=a', ['search']);
     await expectValidationError('/api/products?limit=0', ['limit']);

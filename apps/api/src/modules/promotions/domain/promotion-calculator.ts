@@ -53,6 +53,15 @@ export interface PromotionEvaluation {
   readonly chargedUnits: string | null;
 }
 
+/**
+ * Unidades que hay que llevar para que la promoción tenga efecto: las de pares
+ * necesitan al menos dos, el resto respeta su cantidad mínima declarada.
+ */
+export function minimumQuantityFor(rule: PromotionRule): number {
+  const required = rule.requiredQuantity ?? 1;
+  return rule.type === 'TWO_FOR_ONE' || rule.type === 'SECOND_UNIT' ? Math.max(2, required) : required;
+}
+
 export interface LineCharge {
   readonly regularTotal: string;
   readonly total: string;

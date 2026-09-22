@@ -55,6 +55,7 @@ interface ObservationRow {
 
 interface CurrentPriceRow {
   id: string;
+  productId: string;
   storeId: string;
   price: string;
   unitPrice: string;
@@ -82,6 +83,7 @@ const toRecord = (row: ObservationRow): PriceObservationRecord => ({
 
 const toCurrentRecord = (row: CurrentPriceRow): CurrentPriceRecord => ({
   id: row.id,
+  productId: row.productId,
   storeId: row.storeId,
   price: row.price,
   unitPrice: row.unitPrice,
@@ -169,12 +171,26 @@ export class ProductPriceRepository {
     productId: string,
     options: { storeIds?: readonly string[]; sourcePrecedence?: readonly string[] } = {},
   ): Promise<CurrentPriceRecord[]> {
+    return this.findCurrentByProducts([productId], options);
+  }
+
+  /**
+   * Igual que `findCurrentByProduct` para varios productos en **una** consulta:
+   * comparar alternativas de un canónico no debe disparar una consulta por producto.
+   */
+  async findCurrentByProducts(
+    productIds: readonly string[],
+    options: { storeIds?: readonly string[]; sourcePrecedence?: readonly string[] } = {},
+  ): Promise<CurrentPriceRecord[]> {
+    if (!productIds.length) return [];
     // Sin sucursales (o lista vacía) devuelve el precio actual de todas.
     const storeIds = options.storeIds?.length ? [...options.storeIds] : null;
     const precedence = [...(options.sourcePrecedence ?? [])];
+    const products = [...productIds];
     const rows = await this.prisma.$queryRaw<CurrentPriceRow[]>`
-      SELECT DISTINCT ON (p."storeId")
+      SELECT DISTINCT ON (p."productId", p."storeId")
         p."id"::text AS "id",
+        p."productId"::text AS "productId",
         p."storeId"::text AS "storeId",
         p."price"::text AS "price",
         p."unitPrice"::text AS "unitPrice",
@@ -184,9 +200,10 @@ export class ProductPriceRepository {
         p."observedAt" AS "observedAt",
         p."ingestedAt" AS "ingestedAt"
       FROM "ProductPrice" p
-      WHERE p."productId" = ${productId}::uuid
+      WHERE p."productId" = ANY (${products}::uuid[])
         AND (${storeIds}::uuid[] IS NULL OR p."storeId" = ANY (${storeIds}::uuid[]))
       ORDER BY
+        p."productId",
         p."storeId",
         p."observedAt" DESC,
         array_position(${precedence}::text[], p."source") NULLS LAST,

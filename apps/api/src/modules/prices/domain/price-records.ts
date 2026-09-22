@@ -21,6 +21,7 @@ export interface PriceObservationRecord {
 /** Última observación válida de un producto en una sucursal. */
 export interface CurrentPriceRecord {
   readonly id: string;
+  readonly productId: string;
   readonly storeId: string;
   readonly price: string;
   readonly unitPrice: string;

@@ -6,6 +6,7 @@ import type { ProductRecord } from '../domain/catalog-records';
 import { CatalogValidationError } from '../domain/catalog.errors';
 import { DecimalValue } from '../domain/decimal';
 import { normalizeName } from '../domain/naming';
+import { parseSearchTerm } from '../domain/search-term';
 import { baseUnitOf } from '../domain/units';
 import type { MeasurementUnit, SaleMode } from '../domain/units';
 import { toQuantityString } from './decimal-mapper';
@@ -16,9 +17,14 @@ const QUANTITY_SCALE = 4;
 const EAN_PATTERN = /^[0-9]{8,14}$/;
 
 export interface ProductSearchQuery {
+  /** Texto libre: EAN exacto si son dígitos, si no nombre y marca normalizados. */
   readonly term?: string;
   readonly categoryId?: string;
   readonly canonicalProductId?: string;
+  readonly brand?: string;
+  /** Solo productos con precio observado en esas sucursales; `null` no filtra. */
+  readonly storeIds?: readonly string[] | null;
+  readonly chainId?: string;
   readonly limit?: number;
   readonly cursor?: KeysetCursor | null;
 }
@@ -113,13 +119,38 @@ export class ProductRepository {
    */
   async search(query: ProductSearchQuery): Promise<PageResult<ProductRecord>> {
     const limit = query.limit ?? DEFAULT_PAGE_LIMIT;
-    const term = query.term ? normalizeName(query.term) : '';
+    const term = parseSearchTerm(query.term);
+    // Un texto que se queda sin contenido al normalizar no devuelve el catálogo entero.
+    if (query.term !== undefined && term.kind === 'EMPTY') return { items: [], nextCursor: null };
+    // Un alcance vacío de sucursales es "ninguna", no "todas".
+    if (query.storeIds && query.storeIds.length === 0) return { items: [], nextCursor: null };
+
     const rows = await this.prisma.product.findMany({
       where: {
         isActive: true,
-        ...(term ? { normalizedName: { contains: term } } : {}),
+        ...(term.kind === 'EAN' ? { ean: term.ean } : {}),
+        ...(term.kind === 'TEXT'
+          ? {
+              OR: [
+                { normalizedName: { contains: term.normalized } },
+                { brand: { contains: term.raw, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
         ...(query.categoryId ? { categoryId: query.categoryId } : {}),
         ...(query.canonicalProductId ? { canonicalProductId: query.canonicalProductId } : {}),
+        ...(query.brand ? { brand: { equals: query.brand, mode: 'insensitive' as const } } : {}),
+        // Disponibilidad: el producto tiene alguna observación de precio en esas sucursales.
+        ...(query.storeIds || query.chainId
+          ? {
+              prices: {
+                some: {
+                  ...(query.storeIds ? { storeId: { in: [...query.storeIds] } } : {}),
+                  ...(query.chainId ? { store: { chainId: query.chainId } } : {}),
+                },
+              },
+            }
+          : {}),
         ...keysetFilter('normalizedName', query.cursor ?? null),
       },
       orderBy: [{ normalizedName: 'asc' }, { id: 'asc' }],

@@ -52,7 +52,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P2-01 | Catálogo, sucursales, precios históricos, conversión de unidades y seed | P1-02 | COMPLETO |
 | P2-02 | API de productos, canónicos, sucursales y precios actuales | P2-01 | COMPLETO |
 | P2-03 | Motor básico de promociones con tests y datos demo | P2-01 | COMPLETO |
-| P3-01 | Búsqueda y comparación API con filtros y paginación | P2-02, P2-03 | PENDIENTE |
+| P3-01 | Búsqueda y comparación API con filtros y paginación | P2-02, P2-03 | COMPLETO |
 | P3-02 | Landing, buscador y ficha de producto | P3-01, P1-04 | PENDIENTE |
 | P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | PENDIENTE |
 | P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | PENDIENTE |
@@ -81,6 +81,14 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 Verificado al cerrar la fase: `npm.cmd run verify` (64/64 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (56/56 contra PostgreSQL/PostGIS real, incluidos 22 tests HTTP). Los ejemplos de requests y responses están en el README.
 
 **Siguiente: P3-01** (búsqueda y comparación API con filtros y paginación).
+
+## Estado de la fase 3 (comparador)
+
+**P3-01 — COMPLETO.** `GET /products` busca por nombre, marca o EAN (8 a 14 dígitos se tratan como código exacto) y acota por categoría, canónico, marca, cadena, localidad o radio, devolviendo el alcance aplicado. `GET /canonical-products/:id/prices` compara todas las presentaciones de una necesidad en cada sucursal: precio de envase y precio por unidad base, coincidencia exacta contra alternativa, distancia cuando hay coordenadas, frescura de cada observación y la promoción automática que corresponda, con su cantidad mínima y el precio regular conservado. `sortBy` admite `UNIT_PRICE`, `PRICE` y `DISTANCE`; ordenar por distancia sin coordenadas es un error explícito. El precio actual de varias presentaciones se resuelve en una sola consulta (`DISTINCT ON` por producto y sucursal), sin N+1. Formato estable documentado en [docs/API.md](docs/API.md).
+
+Verificado al cerrar P3-01: `npm.cmd run verify` (68/68 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (67/67 contra PostgreSQL/PostGIS real, incluidos los 11 tests HTTP nuevos de búsqueda y comparación).
+
+**Pendiente de la fase: P3-02** (pantallas de consumidor: landing, buscador y ficha de producto).
 
 ## Las diez fases
 

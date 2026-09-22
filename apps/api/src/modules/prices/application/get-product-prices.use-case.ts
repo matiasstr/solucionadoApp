@@ -4,13 +4,14 @@ import { API_CONFIG } from '../../../config/environment';
 import type { ApiConfig } from '../../../config/environment';
 import { ProductRepository } from '../../catalog/infrastructure/product.repository';
 import { toProductDto } from '../../catalog/presentation/catalog.mappers';
-import { DEFAULT_RADIUS_KM, MAX_NEARBY_STORES, radiusToMeters } from '../../stores/domain/geo';
-import { StoreProximityRepository } from '../../stores/infrastructure/store-proximity.repository';
+import { StoreScopeResolver } from '../../stores/application/resolve-store-scope.use-case';
+import type { ResolvedStoreScope } from '../../stores/application/resolve-store-scope.use-case';
 import { StoreRepository } from '../../stores/infrastructure/store.repository';
 import { toStoreDto } from '../../stores/presentation/store.contracts';
 import type { StoreSummaryRecord } from '../../stores/domain/store-records';
 import type { CurrentPriceView } from '../domain/price-records';
-import type { PriceScopeOrigin, ProductPricesDto, StorePriceDto } from '../presentation/price.contracts';
+import type { PriceSortBy, ProductPricesDto, StorePriceDto } from '../presentation/price.contracts';
+import { DecimalValue } from '../../catalog/domain/decimal';
 import { GetCurrentPricesUseCase } from './get-current-prices.use-case';
 
 export interface ProductPricesQuery {
@@ -20,15 +21,9 @@ export interface ProductPricesQuery {
   readonly city?: string;
   readonly province?: string;
   readonly includeStale?: boolean;
+  readonly sortBy?: PriceSortBy;
   /** Momento de referencia; los tests lo fijan. */
   readonly now?: Date;
-}
-
-interface StoreScope {
-  readonly origin: PriceScopeOrigin;
-  readonly radiusKm: number | null;
-  readonly storeIds: string[] | null;
-  readonly distances: Map<string, number>;
 }
 
 /**
@@ -41,7 +36,7 @@ export class GetProductPricesUseCase {
   constructor(
     private readonly products: ProductRepository,
     private readonly stores: StoreRepository,
-    private readonly proximity: StoreProximityRepository,
+    private readonly storeScope: StoreScopeResolver,
     private readonly currentPrices: GetCurrentPricesUseCase,
     @Inject(API_CONFIG) private readonly config: ApiConfig,
   ) {}
@@ -50,9 +45,16 @@ export class GetProductPricesUseCase {
     const product = await this.products.findById(productId);
     if (!product) throw new PublicHttpException(404, 'NOT_FOUND', 'No encontramos ese producto.');
 
-    const scope = await this.resolveScope(query);
+    const scope: ResolvedStoreScope = await this.storeScope.resolve(query);
     const includeStale = query.includeStale ?? true;
     const maxAgeDays = this.config.prices.maxAgeDays;
+    const sortBy = query.sortBy ?? 'UNIT_PRICE';
+    // Sin coordenadas no hay distancia que ordenar; decirlo es mejor que inventar un orden.
+    if (sortBy === 'DISTANCE' && scope.origin !== 'COORDINATES') {
+      throw new PublicHttpException(400, 'VALIDATION_FAILED', 'Ordenar por distancia necesita latitud y longitud.', [
+        'sortBy',
+      ]);
+    }
 
     // Alcance vacío: no hay sucursales que evaluar, y eso no es lo mismo que "sin precios".
     const views = scope.storeIds?.length === 0
@@ -77,50 +79,32 @@ export class GetProductPricesUseCase {
         maxAgeDays,
         includeStale,
       },
-      prices: views.flatMap((view) => {
-        const store = stores.get(view.storeId);
-        // Una sucursal desactivada después de la observación deja de listarse.
-        return store ? [this.toStorePriceDto(view, store, scope.distances.get(view.storeId) ?? null)] : [];
-      }),
+      sortBy,
+      prices: this.sort(
+        views.flatMap((view) => {
+          const store = stores.get(view.storeId);
+          // Una sucursal desactivada después de la observación deja de listarse.
+          return store ? [this.toStorePriceDto(view, store, scope.distances.get(view.storeId) ?? null)] : [];
+        }),
+        sortBy,
+      ),
     };
   }
 
-  private async resolveScope(query: ProductPricesQuery): Promise<StoreScope> {
-    const hasLatitude = query.latitude !== undefined;
-    if (hasLatitude !== (query.longitude !== undefined)) {
-      throw new PublicHttpException(400, 'VALIDATION_FAILED', 'Latitud y longitud se envían juntas.', [
-        'latitude',
-        'longitude',
-      ]);
-    }
-    if (query.latitude !== undefined && query.longitude !== undefined) {
-      const radiusKm = query.radiusKm ?? DEFAULT_RADIUS_KM;
-      const nearby = await this.proximity.findActiveWithin(
-        { latitude: query.latitude, longitude: query.longitude },
-        radiusToMeters(radiusKm),
-        MAX_NEARBY_STORES,
-      );
-      return {
-        origin: 'COORDINATES',
-        radiusKm,
-        storeIds: nearby.map((store) => store.storeId),
-        distances: new Map(nearby.map((store) => [store.storeId, store.distanceMeters])),
-      };
-    }
-    if (query.radiusKm !== undefined) {
-      throw new PublicHttpException(400, 'VALIDATION_FAILED', 'Un radio necesita latitud y longitud.', ['radiusKm']);
-    }
-    if (query.city || query.province) {
-      if (!query.city || !query.province) {
-        throw new PublicHttpException(400, 'VALIDATION_FAILED', 'Indicá ciudad y provincia juntas.', [
-          'city',
-          'province',
-        ]);
+  /** Orden estable: el criterio elegido y, ante empate, el id de la sucursal. */
+  private sort(prices: StorePriceDto[], sortBy: PriceSortBy): StorePriceDto[] {
+    return prices.sort((a, b) => {
+      if (sortBy === 'DISTANCE') {
+        const distance =
+          (a.store.distanceMeters ?? Number.POSITIVE_INFINITY) - (b.store.distanceMeters ?? Number.POSITIVE_INFINITY);
+        if (distance !== 0) return distance;
+      } else {
+        const field = sortBy === 'PRICE' ? 'price' : 'unitPrice';
+        const comparison = DecimalValue.parse(a[field]).compare(DecimalValue.parse(b[field]));
+        if (comparison !== 0) return comparison;
       }
-      const local = await this.stores.listActiveByCity(query.province, query.city, MAX_NEARBY_STORES);
-      return { origin: 'LOCALITY', radiusKm: null, storeIds: local.map((store) => store.id), distances: new Map() };
-    }
-    return { origin: 'ALL', radiusKm: null, storeIds: null, distances: new Map() };
+      return a.store.id < b.store.id ? -1 : a.store.id > b.store.id ? 1 : 0;
+    });
   }
 
   private toStorePriceDto(

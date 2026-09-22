@@ -6,7 +6,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
 
-**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). Todavía no hay comparador web, rutinas ni optimizador, y **ningún precio es real**.
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). **P3-01** agrega la búsqueda (nombre, marca o EAN, con filtros de cadena, localidad y radio) y la comparación de alternativas por unidad base con sus promociones: el formato completo de las respuestas está en [docs/API.md](docs/API.md). Todavía no hay pantallas de comparación (P3-02), rutinas ni optimizador, y **ningún precio es real**.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -106,15 +106,16 @@ Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, n
 
 ## API de catálogo y precios
 
-Prefijo `/api`. Son endpoints públicos de lectura (no requieren sesión). Contratos en [`packages/shared/src/index.ts`](packages/shared/src/index.ts): decimales como texto, fechas ISO 8601 en UTC y ninguna entidad Prisma expuesta tal cual.
+Prefijo `/api`. Son endpoints públicos de lectura (no requieren sesión). Contratos en [`packages/shared/src/index.ts`](packages/shared/src/index.ts) y formato estable de cada respuesta, con parámetros, límites y ejemplos, en **[docs/API.md](docs/API.md)**: decimales como texto, fechas ISO 8601 en UTC y ninguna entidad Prisma expuesta tal cual.
 
 | Método y ruta | Resultado |
 | --- | --- |
-| `GET /products?search=&categoryId=&canonicalProductId=&limit=&cursor=` | Página de presentaciones concretas |
+| `GET /products?search=&categoryId=&canonicalProductId=&brand=&chainId=&city=&province=&latitude=&longitude=&radiusKm=&limit=&cursor=` | Búsqueda por nombre, marca o EAN, acotada por dónde se consigue |
 | `GET /products/:id` | Producto con su categoría y su canónico |
-| `GET /products/:id/prices?latitude=&longitude=&radiusKm=&city=&province=&includeStale=` | Precio actual por sucursal, del más barato por unidad base al más caro |
+| `GET /products/:id/prices?latitude=&longitude=&radiusKm=&city=&province=&includeStale=&sortBy=` | Precio actual por sucursal, del más barato por unidad base al más caro |
 | `GET /canonical-products?search=&categoryId=&limit=&cursor=` | Página de necesidades equivalentes |
 | `GET /canonical-products/:id` | Canónico con sus alternativas |
+| `GET /canonical-products/:id/prices?productId=&sortBy=&…` | Comparación: todas las presentaciones por sucursal, con su promoción |
 | `GET /stores?search=&chainId=&city=&province=&latitude=&longitude=&radiusKm=&limit=&cursor=` | Sucursales; con coordenadas ordena por distancia |
 | `GET /stores/:id` | Sucursal |
 | `GET /promotions?storeId=&chainId=&productId=&canonicalProductId=&type=&activeAt=&includeInactive=&limit=&cursor=` | Promociones; por defecto solo las vigentes ahora |
@@ -126,6 +127,9 @@ Reglas de estos endpoints:
 - **Filtros estrictos**: un parámetro desconocido o fuera de rango responde `400 VALIDATION_FAILED` con `fields`. Un id mal formado es `400`, no `404`.
 - **Distancias solo con coordenadas.** `radiusKm` (0,1 a 100) exige latitud y longitud; se convierte a metros para PostGIS. Por localidad (`city` + `province`) se listan sucursales con `distanceMeters: null`: sin ubicación precisa no se inventa una distancia. `scope` informa cuál de los tres alcances se aplicó (`COORDINATES`, `LOCALITY`, `ALL`).
 - **Todo precio viaja con procedencia**: `source`, `freshness.observedAt`, `ageDays` y `isStale`. Los precios viejos se muestran marcados, salvo que se pida `includeStale=false`.
+- **Búsqueda normalizada**: sin tildes ni puntuación para nombre y marca; 8 a 14 dígitos se buscan como EAN exacto. Un término que se queda sin letras devuelve cero resultados, no el catálogo entero.
+- **Orden explícito** (`sortBy`): por precio por unidad base (predeterminado), por precio de envase o por distancia. El orden por envase y por kilo puede diferir, y esa diferencia es justamente la que conviene mirar. Ordenar por distancia sin coordenadas es `400`, no un orden inventado.
+- **Comparación honesta**: la ficha del canónico distingue coincidencia exacta de alternativa, conserva el precio sin promoción y, cuando una promoción automática lo cambia, informa cuántas unidades hay que llevar.
 
 Ejemplo real contra el dataset DEMO (`GET /api/products/<id>/prices?latitude=-34.6187&longitude=-58.4407&radiusKm=5`, recortado a una sucursal):
 

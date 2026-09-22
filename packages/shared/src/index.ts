@@ -150,6 +150,7 @@ export interface PriceScopeDto {
 export interface ProductPricesDto {
   product: ProductDto;
   scope: PriceScopeDto;
+  sortBy: PriceSortBy;
   /** Un precio actual por sucursal, del más barato por unidad base al más caro. */
   prices: StorePriceDto[];
 }
@@ -198,4 +199,63 @@ export interface PromotionDto {
   /** Vigencia `[validFrom, validUntil)`, ISO 8601 en UTC. */
   validFrom: string;
   validUntil: string;
+}
+
+/** Búsqueda y comparación (P3-01). */
+export type PriceSortBy = 'UNIT_PRICE' | 'PRICE' | 'DISTANCE';
+
+/** Coincidencia exacta con lo buscado, o alternativa del mismo canónico. */
+export type OfferMatchType = 'EXACT' | 'ALTERNATIVE';
+
+/** Cómo se acotó una búsqueda de productos. */
+export interface SearchProductsScopeDto {
+  origin: PriceScopeOrigin;
+  radiusKm: number | null;
+  /** Sucursales consideradas; null cuando la búsqueda no se acotó por ubicación. */
+  storesConsidered: number | null;
+}
+
+export interface SearchProductsResultDto extends PaginatedDto<ProductDto> {
+  scope: SearchProductsScopeDto;
+}
+
+/**
+ * Promoción que cambia el precio de una oferta. El precio regular se conserva
+ * aparte: el beneficio se muestra junto a la cantidad que hay que llevar.
+ */
+export interface OfferPromotionDto {
+  id: string;
+  name: string;
+  type: PromotionType;
+  minimumQuantity: number;
+  regularTotal: DecimalString;
+  total: DecimalString;
+  discount: DecimalString;
+  /** Precio por unidad base con la promoción, comparable con `unitPrice`. */
+  promotionalUnitPrice: DecimalString;
+  eligibleWeekdays: number[];
+  terms: string | null;
+}
+
+export interface CanonicalOfferDto {
+  product: ProductDto;
+  matchType: OfferMatchType;
+  store: StoreDto;
+  price: DecimalString;
+  currency: string;
+  unitPrice: DecimalString;
+  unitPriceUnit: BaseUnit;
+  unitPricePer100g: DecimalString | null;
+  source: string;
+  freshness: PriceFreshnessDto;
+  /** Null cuando ninguna promoción automática alcanza a esta oferta. */
+  promotion: OfferPromotionDto | null;
+}
+
+export interface CanonicalPricesDto {
+  canonicalProduct: CanonicalProductDto;
+  scope: PriceScopeDto;
+  sortBy: PriceSortBy;
+  /** Una oferta por presentación y sucursal, comparables por unidad base. */
+  offers: CanonicalOfferDto[];
 }

@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { requireUuid } from '../../../common/query';
 import { GetProductPricesUseCase } from '../application/get-product-prices.use-case';
-import type { ProductPricesDto } from './price.contracts';
+import type { PriceSortBy, ProductPricesDto } from './price.contracts';
 import { ProductPricesQueryDto } from './product-prices.query.dto';
 
 /**
@@ -14,6 +14,9 @@ export class ProductPricesController {
 
   @Get(':id/prices')
   getPrices(@Param('id') id: string, @Query() query: ProductPricesQueryDto): Promise<ProductPricesDto> {
-    return this.getProductPrices.execute(requireUuid(id), query);
+    return this.getProductPrices.execute(requireUuid(id), {
+      ...query,
+      sortBy: query.sortBy as PriceSortBy | undefined,
+    });
   }
 }
