@@ -68,7 +68,7 @@ async function main(): Promise<void> {
         `db:seed — dataset DEMO (source=${summary.source}, lote=${summary.importBatchId})`,
         `  fecha ancla: ${summary.anchorDate} | historia: ${summary.historyDays} días`,
         `  categorías: ${summary.categories} | canónicos: ${summary.canonicalProducts} | productos: ${summary.products}`,
-        `  cadenas: ${summary.chains} | sucursales: ${summary.stores}`,
+        `  cadenas: ${summary.chains} | sucursales: ${summary.stores} | promociones: ${summary.promotions}`,
         `  observaciones generadas: ${summary.observationsGenerated} | nuevas: ${summary.observationsInserted}`,
         '  Precios ficticios: no representan ofertas reales de esas cadenas.',
         '',

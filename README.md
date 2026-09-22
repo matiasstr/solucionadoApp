@@ -6,7 +6,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
 
-**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. Todavía no hay promociones (P2-03), comparador, rutinas ni optimizador, y **ningún precio es real**.
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). Todavía no hay comparador web, rutinas ni optimizador, y **ningún precio es real**.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -117,6 +117,8 @@ Prefijo `/api`. Son endpoints públicos de lectura (no requieren sesión). Contr
 | `GET /canonical-products/:id` | Canónico con sus alternativas |
 | `GET /stores?search=&chainId=&city=&province=&latitude=&longitude=&radiusKm=&limit=&cursor=` | Sucursales; con coordenadas ordena por distancia |
 | `GET /stores/:id` | Sucursal |
+| `GET /promotions?storeId=&chainId=&productId=&canonicalProductId=&type=&activeAt=&includeInactive=&limit=&cursor=` | Promociones; por defecto solo las vigentes ahora |
+| `GET /promotions/:id` | Promoción con su alcance, condiciones y vigencia |
 
 Reglas de estos endpoints:
 
@@ -147,6 +149,20 @@ Ejemplo real contra el dataset DEMO (`GET /api/products/<id>/prices?latitude=-34
 ```
 
 Los importes de ese ejemplo son **ficticios** (`source: "demo-seed"`): no son precios reales de esa cadena.
+
+## Promociones
+
+Cuatro tipos calculables: `PERCENTAGE` (porcentaje sobre las unidades elegibles), `SECOND_UNIT` (una unidad con descuento por cada par completo), `TWO_FOR_ONE` (se cobran `cantidad - floor(cantidad / 2)`) y `FIXED_PRICE` (precio final por unidad al alcanzar la cantidad mínima). `BANK_DISCOUNT` está modelado pero **no se aplica** hasta P10-01. Decisiones en [ADR 0009](docs/architecture-decisions/0009-promotion-engine.md).
+
+El calculador vive en el dominio (`priceLine`), no en la API: recibe precio unitario, cantidad y modalidad de venta, y devuelve el total, el ahorro y **la evaluación de cada promoción considerada, aplique o no**. Reglas que sostiene:
+
+- **Una sola promoción por línea**: la que más conviene al comprador; ante igual ahorro gana el id más chico. `isStackable` todavía no habilita acumulación.
+- **Lo que no se puede comprobar no se aplica, pero se informa** con su motivo: banco o medio de pago (`PAYMENT_CONDITIONED`), membresía, mínimo de compra sin subtotal conocido, topes que abarcan varias compras, o un cálculo que no mejora el precio regular.
+- **Las promociones por pares exigen unidades enteras** del mismo producto: no aplican a venta por peso. Un envasado se compra entero y el excedente se muestra (`planPurchase`).
+- **Vigencia `[validFrom, validUntil)`** sobre instantes UTC, pero los días elegibles se leen en `America/Argentina/Buenos_Aires`: un domingo a las 21:00 en Argentina es lunes en UTC y vale el día argentino.
+- **El redondeo monetario ocurre una sola vez**, sobre el total de la línea.
+
+`GET /promotions` informa; no afirma que a quien consulta le corresponda el beneficio. El campo `automatic` distingue las que el sistema calcula solo de las que dependen del usuario o de compras previas. El seed carga 9 promociones demo: activas, una futura, una vencida, una solo los martes, una con mínimo de compra y una bancaria que nunca se aplica sola.
 
 ## Deploy
 

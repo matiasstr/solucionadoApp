@@ -13,6 +13,7 @@ import { ProductRepository } from '../modules/catalog/infrastructure/product.rep
 import { normalizePrice } from '../modules/prices/domain/price-normalizer';
 import { ProductPriceRepository } from '../modules/prices/infrastructure/product-price.repository';
 import type { PriceObservationInput } from '../modules/prices/infrastructure/product-price.repository';
+import { PromotionRepository } from '../modules/promotions/infrastructure/promotion.repository';
 import { StoreRepository } from '../modules/stores/infrastructure/store.repository';
 import {
   DEMO_CANONICAL_PRODUCTS,
@@ -20,6 +21,7 @@ import {
   DEMO_CHAINS,
   DEMO_OBSERVATION_HOUR_UTC,
   DEMO_PRODUCTS,
+  DEMO_PROMOTIONS,
   DEMO_SOURCE,
   DEMO_STORES,
   DEMO_SUFFIX,
@@ -39,6 +41,7 @@ export const demoCanonicalProductId = (key: string): string => demoId('canonical
 export const demoProductId = (key: string): string => demoId('product', key);
 export const demoChainId = (key: string): string => demoId('store-chain', key);
 export const demoStoreId = (key: string): string => demoId('store', key);
+export const demoPromotionId = (key: string): string => demoId('promotion', key);
 
 export interface SeedOptions {
   /** Día del precio más reciente; controlable para que las pruebas no caduquen. */
@@ -54,6 +57,7 @@ export interface SeedSummary {
   readonly products: number;
   readonly chains: number;
   readonly stores: number;
+  readonly promotions: number;
   readonly observationsGenerated: number;
   readonly observationsInserted: number;
   readonly source: string;
@@ -167,6 +171,36 @@ export async function seedDemoCatalog(prisma: PrismaService, options: SeedOption
     });
   }
 
+  // Promociones demo: activas, futuras y vencidas, con vigencia relativa al ancla.
+  const promotions = new PromotionRepository(prisma);
+  for (const promotion of DEMO_PROMOTIONS) {
+    await promotions.upsert({
+      id: demoPromotionId(promotion.key),
+      name: `${promotion.name}${DEMO_SUFFIX}`,
+      type: promotion.type,
+      storeId: promotion.storeKey ? demoStoreId(promotion.storeKey) : null,
+      chainId: promotion.chainKey ? demoChainId(promotion.chainKey) : null,
+      productId: promotion.productKey ? demoProductId(promotion.productKey) : null,
+      canonicalProductId: promotion.canonicalKey ? demoCanonicalProductId(promotion.canonicalKey) : null,
+      discountPercentage: promotion.discountPercentage ?? null,
+      fixedPrice: promotion.fixedPrice ?? null,
+      requiredQuantity: promotion.requiredQuantity ?? null,
+      paymentMethod: promotion.paymentMethod ?? null,
+      bank: promotion.bank ?? null,
+      membershipProgram: promotion.membershipProgram ?? null,
+      minimumSpend: promotion.minimumSpend ?? null,
+      discountCap: promotion.discountCap ?? null,
+      capPeriod: promotion.capPeriod ?? null,
+      eligibleWeekdays: promotion.eligibleWeekdays ?? [],
+      isStackable: false,
+      terms: promotion.terms ?? null,
+      source: DEMO_SOURCE,
+      externalId: promotion.key,
+      validFrom: observationInstant(anchor, -promotion.validFromDays),
+      validUntil: observationInstant(anchor, -promotion.validUntilDays),
+    });
+  }
+
   const observations: PriceObservationInput[] = [];
   for (const store of DEMO_STORES) {
     const chain = chainByKey.get(store.chainKey);
@@ -212,6 +246,7 @@ export async function seedDemoCatalog(prisma: PrismaService, options: SeedOption
     products: DEMO_PRODUCTS.length,
     chains: DEMO_CHAINS.length,
     stores: DEMO_STORES.length,
+    promotions: DEMO_PROMOTIONS.length,
     observationsGenerated: observations.length,
     observationsInserted: inserted,
     source: DEMO_SOURCE,

@@ -51,7 +51,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P1-04 | Auth frontend y navegación protegida | P1-03 | COMPLETO |
 | P2-01 | Catálogo, sucursales, precios históricos, conversión de unidades y seed | P1-02 | COMPLETO |
 | P2-02 | API de productos, canónicos, sucursales y precios actuales | P2-01 | COMPLETO |
-| P2-03 | Motor básico de promociones con tests y datos demo | P2-01 | PENDIENTE |
+| P2-03 | Motor básico de promociones con tests y datos demo | P2-01 | COMPLETO |
 | P3-01 | Búsqueda y comparación API con filtros y paginación | P2-02, P2-03 | PENDIENTE |
 | P3-02 | Landing, buscador y ficha de producto | P3-01, P1-04 | PENDIENTE |
 | P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | PENDIENTE |
@@ -70,15 +70,17 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | PENDIENTE |
 | P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | PENDIENTE |
 
-## Estado de la fase 2 (catálogo y datos)
+## Estado de la fase 2 (catálogo y datos) — COMPLETA
 
 **P2-01 — COMPLETO** (commit `df94c12`). Dominio sin Prisma ni Nest: `DecimalValue` (entero BigInt escalado, HALF_UP), conversión dimensional KG/G, L/ML y UNIT, normalizador de precios que rechaza en vez de redondear en silencio, precio actual determinista con umbral de frescura configurable y clave idempotente por producto/sucursal/día. Repositorios de categorías (sin ciclos), canónicos, productos (valida dimensión contra su canónico), cadenas/sucursales y observaciones append-only. Seed DEMO repetible (`npm.cmd run db:seed`): 7 categorías, 18 canónicos, 28 presentaciones, 5 cadenas, 10 sucursales y ~7.200 observaciones de 31 días, con ids UUID v5 deterministas. Decisiones en [ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md).
 
 **P2-02 — COMPLETO.** Endpoints públicos de lectura con prefijo `/api`: `GET /products`, `/products/:id`, `/products/:id/prices`, `/canonical-products`, `/canonical-products/:id`, `/stores`, `/stores/:id`. Paginación por cursor (keyset `(clave, id)`, `limit` 1–50), filtros estrictos que fallan en vez de ignorarse, consultas por cercanía en kilómetros convertidos a metros (PostGIS) y por localidad sin afirmar distancia, y precios que siempre viajan con `source`, `observedAt`, `ageDays` e `isStale`. Contratos espejados en `packages/shared` para la web; no se expone ninguna entidad Prisma.
 
-Verificado al cerrar P2-02: `npm.cmd run verify` (45/45 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (48/48 contra PostgreSQL/PostGIS real, incluidos 14 tests HTTP de catálogo y precios). Los ejemplos de requests y responses están en el README.
+**P2-03 — COMPLETO.** Calculador puro `priceLine` para `PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE` y `FIXED_PRICE`: una sola promoción por línea (la que más conviene, con desempate por id), redondeo monetario una sola vez y la evaluación de cada regla considerada, aplique o no. Lo que no se puede comprobar se informa con su motivo en vez de aplicarse: banco o medio de pago, membresía, mínimo de compra sin subtotal, topes que abarcan varias compras. Vigencia `[validFrom, validUntil)` en UTC con días elegibles leídos en `America/Argentina/Buenos_Aires`. Envases enteros con excedente visible (`planPurchase`). 9 promociones demo (activas, futura, vencida, por día, con mínimo y bancaria) y `GET /promotions`. Decisiones en [ADR 0009](docs/architecture-decisions/0009-promotion-engine.md); `BANK_DISCOUNT` sigue sin aplicarse hasta P10-01.
 
-**Pendiente de la fase: P2-03** (motor básico de promociones con tests y datos demo). `BANK_DISCOUNT` queda modelado pero sin aplicar hasta P10-01.
+Verificado al cerrar la fase: `npm.cmd run verify` (64/64 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (56/56 contra PostgreSQL/PostGIS real, incluidos 22 tests HTTP). Los ejemplos de requests y responses están en el README.
+
+**Siguiente: P3-01** (búsqueda y comparación API con filtros y paginación).
 
 ## Las diez fases
 

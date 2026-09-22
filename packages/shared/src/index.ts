@@ -153,3 +153,49 @@ export interface ProductPricesDto {
   /** Un precio actual por sucursal, del más barato por unidad base al más caro. */
   prices: StorePriceDto[];
 }
+
+/** Promociones simples (P2-03). Refleja los contratos del módulo `promotions`. */
+export type PromotionType = 'PERCENTAGE' | 'SECOND_UNIT' | 'TWO_FOR_ONE' | 'FIXED_PRICE' | 'BANK_DISCOUNT';
+export type DiscountCapPeriod = 'PURCHASE' | 'WEEK' | 'MONTH' | 'CAMPAIGN';
+
+export interface PromotionScopeDto {
+  /** Exactamente uno de los dos tiene valor. */
+  storeId: string | null;
+  chainId: string | null;
+  /** Como máximo uno; ninguno significa todo el comercio. */
+  productId: string | null;
+  canonicalProductId: string | null;
+}
+
+export interface PromotionConditionsDto {
+  paymentMethod: PaymentMethod | null;
+  bank: string | null;
+  membershipProgram: string | null;
+  minimumSpend: DecimalString | null;
+  discountCap: DecimalString | null;
+  capPeriod: DiscountCapPeriod | null;
+  /** ISO 1 = lunes … 7 = domingo; vacío significa todos los días. */
+  eligibleWeekdays: number[];
+}
+
+export interface PromotionDto {
+  id: string;
+  name: string;
+  type: PromotionType;
+  scope: PromotionScopeDto;
+  discountPercentage: DecimalString | null;
+  /** Precio final por unidad de venta, no el total del lote. */
+  fixedPrice: DecimalString | null;
+  requiredQuantity: number | null;
+  conditions: PromotionConditionsDto;
+  /**
+   * false cuando el beneficio depende del banco, del medio de pago, de una
+   * membresía o de compras anteriores: se informa, pero no se calcula solo.
+   */
+  automatic: boolean;
+  terms: string | null;
+  source: string;
+  /** Vigencia `[validFrom, validUntil)`, ISO 8601 en UTC. */
+  validFrom: string;
+  validUntil: string;
+}

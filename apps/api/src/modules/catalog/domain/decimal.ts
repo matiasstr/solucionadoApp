@@ -125,6 +125,18 @@ export class DecimalValue {
     return new DecimalValue(rescale(this.units, this.scale, scale), scale);
   }
 
+  /** Parte entera hacia abajo: `2.9 -> 2`, `-2.1 -> -3`. */
+  floorToInteger(): DecimalValue {
+    const factor = pow10(this.scale);
+    const quotient = this.units / factor;
+    const negativeRemainder = this.units < 0n && this.units % factor !== 0n;
+    return new DecimalValue(negativeRemainder ? quotient - 1n : quotient, 0);
+  }
+
+  isInteger(): boolean {
+    return this.units % pow10(this.scale) === 0n;
+  }
+
   compare(other: DecimalValue): -1 | 0 | 1 {
     const { left, right } = DecimalValue.align(this, other);
     if (left < right) return -1;
@@ -167,6 +179,12 @@ export class DecimalValue {
 
   toString(): string {
     return this.toFixed(this.scale);
+  }
+
+  /** Texto sin ceros decimales sobrantes: `1.5000` -> `1.5`, `2.0000` -> `2`. */
+  toTrimmedString(scale: number = this.scale): string {
+    const text = this.toFixed(scale);
+    return text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text;
   }
 }
 

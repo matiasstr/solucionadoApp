@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: la fase 1 completa (P0-01, P1-01 a P1-04), **P2-01** y **P2-02**. Empezar por **P2-03**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0008), sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: la fase 1 completa (P0-01, P1-01 a P1-04) y la **fase 2 completa (P2-01, P2-02, P2-03)**. Empezar por **P3-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009), sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 y 2026-09-21, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P2-03 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 y 2026-09-21, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P3-01 que recuperar.
 
-## Estado: 2026-09-21 — Fase 1 completa + P2-01 + P2-02
+## Estado: 2026-09-21 — Fases 1 y 2 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P2-03 — Motor básico de promociones con tests y datos demo** (`docs/steps/phase-02.md`, sección de promociones de `docs/DOMAIN.md`).
-No están implementados promociones, comparador web, rutinas, optimizador, importadores ni jobs.
+**Próximo paso: P3-01 — Consultas de búsqueda y comparación** (`docs/steps/phase-03.md`, ADR 0002, 0008 y 0009).
+No están implementados el comparador web, las rutinas, el inventario, el optimizador, los importadores ni los jobs.
 
 ## Qué ya existe
 
@@ -34,6 +34,24 @@ No están implementados promociones, comparador web, rutinas, optimizador, impor
   - `GetProductUseCase`, `GetCanonicalProductUseCase` (con alternativas), `SearchStoresUseCase` (cercanía ordenada por distancia, sin cursor) y `GetProductPricesUseCase` (alcance `COORDINATES` / `LOCALITY` / `ALL`, radio km convertido a metros, `scope` explícito en la respuesta).
   - DTOs de query con `class-validator`; `whitelist` + `forbidNonWhitelisted` del bootstrap hacen que un filtro desconocido responda 400 con `fields`.
   - Contratos en los `contracts.ts` de cada módulo y espejados en `packages/shared/src/index.ts` para la web.
+- **P2-03 (esta sesión): motor de promociones simples.**
+  - Dominio puro en `promotions/domain/`: `promotion.types.ts`, `promotion-rule.ts` (valida y rechaza reglas incompletas nombrando el campo), `promotion-eligibility.ts` (vigencia `[validFrom, validUntil)`, día ISO leído en `America/Argentina/Buenos_Aires` con `Intl`, alcance) y `promotion-calculator.ts` (`priceLine`).
+  - `priceLine` cobra una línea con **una sola** promoción (la que más conviene; desempate por id) y devuelve la evaluación de todas las consideradas con su `skipReason`. Redondeo monetario una sola vez.
+  - `catalog/domain/packaging.ts` (`planPurchase`): envases enteros con excedente visible; granel sin redondeo. Se reusa en fase 5.
+  - `DecimalValue` sumó `floorToInteger`, `isInteger` y `toTrimmedString`.
+  - `PromotionRepository` (upsert validado, `findActiveFor`, `search` paginado por `(validUntil, id)`) y `GET /promotions` + `GET /promotions/:id` con el campo `automatic`.
+  - Seed: 9 promociones demo con vigencia relativa al ancla (activas, una futura, una vencida, una solo los martes, una con mínimo de compra y una bancaria que no se aplica). ADR 0009.
+
+## Verificaciones ejecutadas (P2-03, 2026-09-21)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **64/64** unitarios, build API + web) |
+| `npm.cmd run test:db` | **56/56** integración real (48 previos + 8 de `test/integration/promotions.test.cjs`) |
+| `npm.cmd run db:seed` | 9 promociones demo cargadas; segunda corrida sin duplicar |
+| Smoke manual | API en el puerto 3010: `GET /api/promotions` devuelve solo lo vigente e `includeInactive=true` las 9, con `automatic=false` únicamente en la bancaria |
+
+Qué cubren los tests nuevos: los cuatro tipos con cantidad par e impar, cantidad mínima, precio fijo que no encarece, tope por compra, mínimo de compra sin subtotal conocido, `BANK_DISCOUNT` informado pero no aplicado, pares sobre venta por peso, envasado con cantidad fraccionaria, elección determinista sin acumular, redondeo único que cierra con el ahorro, una promoción que cambia cuál presentación conviene, envases enteros con excedente, reglas incompletas rechazadas (13 casos), vigencia y días en calendario argentino, seed idempotente, CHECK de doble alcance comercial en la base, filtros y paginación de `GET /promotions`, y el cálculo sobre el precio actual real del seed.
 
 ## Verificaciones ejecutadas (P2-02, 2026-09-21)
 
@@ -58,6 +76,15 @@ Qué cubren los tests HTTP nuevos: paginación por cursor sin repetir ni saltear
 Qué cubren los tests nuevos: seed dos veces sin duplicar y sin reescribir observaciones; historial diario de 31 días con fuente/fecha/moneda; normalización por presentación (1 kg, 500 g, pack 6 × 2,25 L); precio actual por sucursal con `ageDays`/`isStale` (sucursal que dejó de informar hace 12 días) y filtro por sucursal; precio por 100 g; reintento `duplicate`, conflicto de contenido `conflict` y observación nueva `created`; rechazo de `UPDATE`/`DELETE` sobre `ProductPrice` desde Prisma; consulta espacial en metros que excluye la sucursal sin coordenadas; `DIMENSION_MISMATCH` y `CATEGORY_CYCLE`.
 
 No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P2-03)
+
+- **Una promoción por línea.** Se elige la que más conviene al comprador y se desempata por id para que el resultado no dependa del orden de entrada. `isStackable` no habilita acumulación todavía.
+- **Lo que no se puede comprobar se informa, no se aplica**: banco/medio de pago, membresía, mínimo de compra sin subtotal, topes que abarcan varias compras. Cada caso tiene su `skipReason` y viaja en la respuesta del calculador.
+- `FIXED_PRICE` aplica a **todas** las unidades al alcanzar `requiredQuantity` (la forma habitual en Argentina). La alternativa por grupos quedó documentada en ADR 0009 por si aparece evidencia en contra.
+- El calculador no toca la base: recibe reglas ya cargadas. El planificador de fase 5 lo reusa tal cual.
+- `GET /promotions` lista por defecto solo lo vigente **ahora**; `includeInactive=true` y `activeAt` permiten ver el resto sin mostrar una promoción vencida como activa.
+- El ADR del deploy de la API (Supabase) será el **0010**: 0008 es catálogo/precios y 0009 promociones.
 
 ## Decisiones y notas (P2-02)
 
@@ -93,7 +120,7 @@ Decisión del usuario: plan gratuito; Supabase si cumple (cumple: PostGIS, trigg
 - Hecho: proyecto Vercel `tusofertas-api` (id `prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY`; root `apps/api`, framework other, Node 22, install `cd ../.. && npm ci --include=dev`, build `npm run db:generate && npm run build && mkdir -p public`). Variables de producción cargadas: `JWT_ACCESS_SECRET` (aleatoria, sensible), `CORS_ORIGINS=https://tusofertas.vercel.app`. Adaptador serverless `apps/api/api/index.js` + `apps/api/vercel.json` (región gru1, todo reescrito a `/api/index`), **probado en local** con la base de Docker (ready 200, validación 400, ruta inexistente 404) y commiteado.
 - **Bloqueo que requiere al usuario:** `vercel integration add supabase` exige aceptar los términos del Marketplace en https://vercel.com/matiasstrs-projects/~/integrations/accept-terms/supabase?source=cli
 - Próximo comando (con el proyecto API, sin cambiar `.vercel/` de la web): `VERCEL_ORG_ID=<orgId de .vercel/project.json> VERCEL_PROJECT_ID=prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY vercel integration add supabase --name tusofertas-db -m region=gru1 --no-env-pull --non-interactive`.
-- Después: mapear la URL pooled de la integración a `DATABASE_URL`, revisar SSL de `pg` con el pooler, `prisma migrate deploy` contra la URL de sesión (5432), deploy de la API, `API_ORIGIN=https://tusofertas-api.vercel.app` en el proyecto web + redeploy, smoke de registro/login en producción, **ADR 0009** (el 0008 ya está usado por el catálogo).
+- Después: mapear la URL pooled de la integración a `DATABASE_URL`, revisar SSL de `pg` con el pooler, `prisma migrate deploy` contra la URL de sesión (5432), deploy de la API, `API_ORIGIN=https://tusofertas-api.vercel.app` en el proyecto web + redeploy, smoke de registro/login en producción, **ADR 0010** (0008 es catálogo/precios y 0009 promociones).
 
 ## Git y autorización persistente
 
@@ -101,19 +128,21 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 
 - P0-01 `bf6653b`; P1-01 `0f84809`; P1-02 `e16ba35`; P1-03 `6d04203`; P1-04 `0e236d6`; deploy web `277fa36`; adaptador serverless de la API `1cc2fae` (publicados).
 - **P2-01** `df94c12` (publicado).
-- **P2-02**: commit `feat(P2-02): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
+- **P2-02** `1aa5e5c` (publicado).
+- **P2-03**: commit `feat(P2-03): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P2-03
+## Cómo seguir con P3-01
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-02.md` (P2-03) y la sección de promociones de `docs/DOMAIN.md`. Repasar ADR 0002 y 0008 (dinero, redondeo, decimales).
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-03.md` (P3-01), ADR 0002, 0008 y 0009, y las secciones de API del README.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose ps` (si no corre: `docker compose up -d`), `npm.cmd run db:status`, `npm.cmd run db:seed`.
-3. Implementar `promotions/domain` como **calculador puro** (sin Prisma): `PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE` y `FIXED_PRICE`, con vigencia `[validFrom, validUntil)`, alcance producto/canónico/sucursal/cadena, `requiredQuantity`, prioridad y exclusividad. Sin acumular por defecto. Usar `DecimalValue` y redondear el importe final una sola vez.
-4. Grupos completos y remanentes: tres unidades en 2x1 pagan dos; la segunda unidad aplica a pares elegibles. Los envasados se compran enteros y se muestra el excedente; el granel admite fracciones solo si la presentación lo permite. Rechazar reglas incompletas.
-5. Persistencia y promociones demo (activas, futuras y vencidas) en el seed, marcadas DEMO. `BANK_DISCOUNT` se modela pero **no se aplica** hasta P10-01: no asumir banco ni medio de pago del usuario.
-6. Tests: unitarios por tipo, cantidad impar, mínimos, expiración, huso horario `America/Argentina/Buenos_Aires`, redondeo, conflicto entre promociones y límites por sucursal/cadena; integración con el seed. Agregar los archivos nuevos a `apps/api/scripts/test-db.cjs`.
-7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push.
+3. Extender `GET /products` (búsqueda por nombre, marca y EAN, filtros por categoría, cadena, localidad y radio) y `GET /products/:id/prices`; agregar precios del canónico para comparar alternativas. Reusar `common/pagination.ts` y los repositorios existentes.
+4. Ordenar por precio de presentación, por precio por unidad base y por distancia; el orden por envase y por kilo **puede diferir** y hay que poder demostrarlo (500 g contra 1 kg). No mezclar dimensiones ni fechas sin mostrarlo.
+5. Distinguir coincidencia exacta de alternativa. Cuando una promoción cambia el precio, mostrar condiciones y cantidad mínima y **conservar el precio sin promoción** como comparación: usar `priceLine` del dominio, no recalcular reglas.
+6. Mantener fecha, fuente y `isStale` en cada precio, y ausencia de distancia cuando no hay coordenadas. Revisar índices y evitar N+1.
+7. Tests: tildes, cadena vacía, EAN, filtros combinados, paginación sin duplicados, orden decimal y por unidad, exacto contra alternativa, promociones condicionales y datos antiguos. Agregar los archivos nuevos a `apps/api/scripts/test-db.cjs`.
+8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. La fase 1 (P0-01, P1-01 a P1-04), P2-01 (catálogo, precios, unidades y seed demo) y P2-02 (API pública de catálogo y precios) ya están implementados, probados y publicados; no los rehagas. El próximo paso es P2-03 (motor básico de promociones con tests y datos demo), descrito en docs/steps/phase-02.md. El calculador de promociones va en el dominio, sin Prisma, usando DecimalValue; probalo contra la base real con npm.cmd run test:db y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. La fase 1 (P0-01, P1-01 a P1-04) y la fase 2 completa (P2-01 catálogo y seed demo, P2-02 API de catálogo y precios, P2-03 motor de promociones) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P3-01 (consultas de búsqueda y comparación), descrito en docs/steps/phase-03.md. Reusá los repositorios, la paginación por cursor y el calculador priceLine que ya existen; probalo contra la base real con npm.cmd run test:db y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

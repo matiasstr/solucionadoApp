@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { HealthController } from './modules/health/health.controller';
 import { PricesModule } from './modules/prices/prices.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -23,6 +24,7 @@ export class AppModule {
         CatalogModule,
         StoresModule,
         PricesModule,
+        PromotionsModule,
       ],
       controllers: [HealthController],
     };

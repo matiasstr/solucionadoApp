@@ -7,6 +7,7 @@
  * Ningún precio de acá puede presentarse como una consulta real.
  */
 import type { BaseUnit, MeasurementUnit, SaleMode } from '../modules/catalog/domain/units';
+import type { DiscountCapPeriod, PaymentMethod, PromotionType } from '../modules/promotions/domain/promotion.types';
 
 export const DEMO_SOURCE = 'demo-seed';
 export const DEMO_SUFFIX = ' (DEMO)';
@@ -167,3 +168,51 @@ export function eanCheckDigit(body: string): string {
 }
 
 export const demoEan = (body: string): string => `${body}${eanCheckDigit(body)}`;
+
+/**
+ * Promociones DEMO (P2-03): activas, futuras y vencidas. Las condiciones son
+ * ficticias igual que los precios. Las vigencias se expresan en días respecto de
+ * la fecha ancla (negativo = antes), para que el dataset no caduque.
+ */
+export interface DemoPromotion {
+  readonly key: string;
+  readonly name: string;
+  readonly type: PromotionType;
+  /** Alcance comercial: una sucursal o una cadena, nunca las dos. */
+  readonly storeKey?: string;
+  readonly chainKey?: string;
+  /** Alcance de producto: como máximo uno; ninguno alcanza a todo el comercio. */
+  readonly productKey?: string;
+  readonly canonicalKey?: string;
+  readonly discountPercentage?: string;
+  readonly fixedPrice?: string;
+  readonly requiredQuantity?: number;
+  readonly paymentMethod?: PaymentMethod;
+  readonly bank?: string;
+  readonly membershipProgram?: string;
+  readonly minimumSpend?: string;
+  readonly discountCap?: string;
+  readonly capPeriod?: DiscountCapPeriod;
+  readonly eligibleWeekdays?: readonly number[];
+  readonly terms?: string;
+  /** Inicio de la vigencia, en días desde el ancla (negativo = pasado). */
+  readonly validFromDays: number;
+  /** Fin exclusivo de la vigencia, en días desde el ancla. */
+  readonly validUntilDays: number;
+}
+
+export const DEMO_PROMOTIONS: readonly DemoPromotion[] = [
+  { key: 'carrefour-arroz-20', name: 'Arroz Pampa 1 kg con 20% de descuento', type: 'PERCENTAGE', storeKey: 'carrefour-almagro', productKey: 'arroz-pampa-1kg', discountPercentage: '20.00', validFromDays: -3, validUntilDays: 5 },
+  { key: 'coto-fideos-2x1', name: 'Fideos Pampa 500 g 2x1', type: 'TWO_FOR_ONE', chainKey: 'coto', productKey: 'fideos-pampa-500g', validFromDays: -1, validUntilDays: 6 },
+  { key: 'jumbo-leche-segunda-50', name: 'Leche Valle Alto sachet: segunda unidad al 50%', type: 'SECOND_UNIT', chainKey: 'jumbo', productKey: 'leche-vallealto-sachet', discountPercentage: '50.00', validFromDays: 0, validUntilDays: 7 },
+  // Precio final por unidad al llevar 2 o más.
+  { key: 'disco-yerba-fija', name: 'Yerba Nuestra Tierra 500 g a precio fijo llevando 2', type: 'FIXED_PRICE', storeKey: 'disco-villa-urquiza', productKey: 'yerba-nuestra-500g', fixedPrice: '2990.00', requiredQuantity: 2, validFromDays: -2, validUntilDays: 10 },
+  // Solo los martes (ISO 2): sirve para probar el calendario argentino.
+  { key: 'vea-detergente-martes', name: 'Detergente con 15% los martes', type: 'PERCENTAGE', chainKey: 'vea', canonicalKey: 'detergente', discountPercentage: '15.00', eligibleWeekdays: [2], validFromDays: -5, validUntilDays: 20 },
+  // Alcanza a todo el comercio, con mínimo de compra: no se aplica sin conocer el subtotal.
+  { key: 'disco-belgrano-minimo', name: '10% en toda la sucursal comprando más de $20.000', type: 'PERCENTAGE', storeKey: 'disco-belgrano', discountPercentage: '10.00', minimumSpend: '20000.00', validFromDays: -3, validUntilDays: 9 },
+  // Modelada pero nunca aplicada automáticamente: depende del banco del usuario (P10-01).
+  { key: 'carrefour-banco-25', name: '25% con tarjeta de crédito del Banco Demo', type: 'BANK_DISCOUNT', chainKey: 'carrefour', discountPercentage: '25.00', paymentMethod: 'CREDIT_CARD', bank: 'Banco Demo', discountCap: '5000.00', capPeriod: 'PURCHASE', terms: 'Tope de $5.000 por compra. Condiciones ficticias.', validFromDays: -2, validUntilDays: 10 },
+  { key: 'coto-aceite-futura', name: 'Aceite Del Sur 900 ml con 30% (próximamente)', type: 'PERCENTAGE', chainKey: 'coto', productKey: 'aceite-delsur-900ml', discountPercentage: '30.00', validFromDays: 10, validUntilDays: 20 },
+  { key: 'jumbo-gaseosa-vencida', name: 'Gaseosa Del Plata 2,25 L con 25% (vencida)', type: 'PERCENTAGE', chainKey: 'jumbo', productKey: 'gaseosa-cola-225', discountPercentage: '25.00', validFromDays: -40, validUntilDays: -10 },
+];
