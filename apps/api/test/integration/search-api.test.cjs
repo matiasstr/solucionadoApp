@@ -9,6 +9,7 @@ const { JsonLogger } = require('../../dist/common/json-logger');
 const { validateEnvironment } = require('../../dist/config/environment');
 const { PrismaService } = require('../../dist/database/prisma.service');
 const {
+  latestObservationAnchor,
   seedDemoCatalog,
   demoCanonicalProductId,
   demoChainId,
@@ -22,8 +23,8 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
   throw new Error('Los tests de integración requieren DATABASE_URL de una base *_test (usar npm run test:db).');
 }
 
-const now = new Date();
-const ANCHOR = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+// Misma ancla que usa el seed por defecto: el último mediodía UTC ya transcurrido.
+const ANCHOR = latestObservationAnchor();
 const CABA = 'Ciudad Autónoma de Buenos Aires';
 // Caballito: Coto Caballito a 0 m, Lanús fuera de 5 km.
 const ORIGIN = { latitude: -34.6187, longitude: -58.4407 };

@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: las fases 1 y 2 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03) y **P3-01**. Empezar por **P3-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: las fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02). Empezar por **P4-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18, 2026-09-21 y 2026-09-22, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P3-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18, 2026-09-21 y 2026-09-22, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P4-01 que recuperar.
 
-## Estado: 2026-09-22 — Fases 1 y 2 completas + P3-01
+## Estado: 2026-09-22 — Fases 1, 2 y 3 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P3-02 — Pantallas de consumidor** (`docs/steps/phase-03.md`, `apps/web/AGENTS.md`, `docs/API.md`).
-No están implementadas las pantallas de búsqueda y comparación, las rutinas, el inventario, el optimizador, los importadores ni los jobs.
+**Próximo paso: P4-01 — CRUD de rutinas y despensa con ownership** (`docs/steps/phase-04.md`, `docs/DOMAIN.md` sección de rutinas e inventario, ADR 0003).
+No están implementadas las rutinas, la despensa, las preferencias de compra, el optimizador, los importadores ni los jobs.
 
 ## Qué ya existe
 
@@ -48,6 +48,27 @@ No están implementadas las pantallas de búsqueda y comparación, las rutinas, 
   - `sortBy` (`UNIT_PRICE` por defecto, `PRICE`, `DISTANCE`) en las dos rutas de precios; ordenar por distancia sin coordenadas es 400.
   - `StoreScopeResolver` (módulo de comercios) reemplaza la resolución de alcance duplicada; `ProductPriceRepository.findCurrentByProducts` resuelve varias presentaciones en una sola consulta (`DISTINCT ON (productId, storeId)`), sin N+1.
   - **`docs/API.md`**: formato estable de todas las respuestas públicas, con parámetros, límites y ejemplos reales del dataset DEMO.
+- **P3-02 (esta sesión): pantallas de comparación.**
+  - Rutas nuevas en `apps/web`: `/buscar` (`components/search/search-view.tsx`) y `/producto/[id]` (`components/product/product-view.tsx`), más el buscador en la portada. Todas públicas.
+  - Estado en la URL (`lib/catalog/filters.ts`): `q`, `cadena`, `ciudad`/`provincia`, `lat`/`lon`, `orden`. Escribir hace `router.replace` (con 400 ms de espera); cambiar un filtro hace `router.push`, así "atrás" lo deshace.
+  - `lib/catalog/queries.ts`: hooks de TanStack Query con claves que incluyen todos los filtros y `signal` para cancelar lo que quedó viejo (`apiRequest` ahora acepta `AbortSignal` y no confunde un `AbortError` con un servicio caído).
+  - `lib/format.ts`: moneda, fechas y distancias en `es-AR`; los importes solo se convierten a número para mostrarlos.
+  - **Cambio de API para que las tarjetas tengan precio**: `GET /products` devuelve `bestOffer` (la más barata por unidad base del alcance, con promoción y frescura). La búsqueda y la comparación se movieron al módulo `search` (`ProductsSearchController`, `CanonicalPricesController`, `OfferPromotionResolver`), que compone catálogo, precios, comercios y promociones sin ciclos.
+  - **Corrección del seed**: `latestObservationAnchor()` ancla en el último mediodía UTC **ya transcurrido**. Antes, corriendo antes de las 12:00 UTC, el dataset fechaba precios en el futuro (los tests lo detectaron).
+  - E2E nuevo: `apps/web/e2e/search.e2e.cjs` (10 casos) y `npm.cmd run test:e2e` ahora corre las dos suites.
+
+## Verificaciones ejecutadas (P3-02, 2026-09-22)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **68/68** unitarios, build API + web con 8 rutas) |
+| `npm.cmd run test:db` | **67/67** integración real |
+| `npm.cmd run test:e2e` (búsqueda) | **10/10** en Edge headless contra web + API reales |
+| Revisión visual | Capturas en `.cache/verification/p3-02/` (escritorio y móvil, búsqueda y ficha) |
+
+Qué cubren los E2E nuevos: buscar desde la portada sin cuenta y con el término en la URL; tarjetas con precio, precio por unidad, sucursal y fecha; sin resultados y búsqueda vacía; filtros de cadena y localidad en la URL, "atrás" que deshace el último filtro y enlace compartido que reproduce la búsqueda; ficha con producto exacto y alternativas etiquetadas, ordenada por precio por kilo; orden por envase en la comparación y distancia deshabilitada sin ubicación; promoción con su condición sin tapar el precio regular; móvil 390 px sin desborde y sin distancias inventadas; recorrido por teclado hasta abrir un producto; backend caído con mensaje, botón de reintento y filtros conservados.
+
+Revisión visual: se corrigió el selector de orden, que aparecía en la búsqueda sin ordenar nada (la lista es alfabética por la paginación por cursor); ahora solo está en la comparación y el listado dice cómo está ordenado.
 
 ## Verificaciones ejecutadas (P3-01, 2026-09-22)
 
@@ -93,6 +114,15 @@ Qué cubren los tests HTTP nuevos: paginación por cursor sin repetir ni saltear
 Qué cubren los tests nuevos: seed dos veces sin duplicar y sin reescribir observaciones; historial diario de 31 días con fuente/fecha/moneda; normalización por presentación (1 kg, 500 g, pack 6 × 2,25 L); precio actual por sucursal con `ageDays`/`isStale` (sucursal que dejó de informar hace 12 días) y filtro por sucursal; precio por 100 g; reintento `duplicate`, conflicto de contenido `conflict` y observación nueva `created`; rechazo de `UPDATE`/`DELETE` sobre `ProductPrice` desde Prisma; consulta espacial en metros que excluye la sucursal sin coordenadas; `DIMENSION_MISMATCH` y `CATEGORY_CYCLE`.
 
 No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P3-02)
+
+- **El estado vive en la URL**, no en React: enlace compartible, "atrás" útil y nada que sincronizar. Escribir reemplaza la entrada; cambiar un filtro agrega una.
+- **El orden se ofrece donde aplica.** El listado de búsqueda pagina por cursor con orden alfabético: ordenar por precio ahí sería ordenar solo la página actual. Se dice en pantalla y el selector vive en la comparación.
+- **`GET /products` devuelve `bestOffer`**: sin precio en la tarjeta el comparador no sirve. Es una consulta más por página (no una por producto).
+- El módulo `search` compone catálogo, precios, comercios y promociones; nadie lo importa, así que no hay ciclos. `/products/:id` sigue en catálogo y `/products/:id/prices` en precios.
+- La ubicación del navegador es **opcional**: si se deniega el permiso, se avisa y se sigue sin distancias. No hay pantalla que dependa de tenerla.
+- Sin `E2E_BASE_URL`, los E2E apuntan a `http://127.0.0.1:3000`. En esta sesión los puertos 3000 y 3001 estaban ocupados por otro proyecto del usuario: se levantó la API en 3010 y la web en 3100 con `API_ORIGIN`, sin tocar esos procesos.
 
 ## Decisiones y notas (P3-01)
 
@@ -156,20 +186,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P2-01** `df94c12` (publicado).
 - **P2-02** `1aa5e5c` (publicado).
 - **P2-03** `c1ffb10` (publicado).
-- **P3-01**: commit `feat(P3-01): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
+- **P3-01** `f099b9a` (publicado).
+- **P3-02**: commit `feat(P3-02): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P3-02
+## Cómo seguir con P4-01
 
-1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (Next 16; las guías están en `node_modules/next/dist/docs/`), `ROADMAP.md`, `docs/steps/phase-03.md` (P3-02) y **`docs/API.md`**.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`, `npm.cmd run dev` (la web reenvía `/api/*` a la API por el rewrite de `API_ORIGIN`).
-3. Rutas nuevas en `apps/web`: `/` (landing con el buscador conectado), `/buscar` (query y filtros en la URL) y `/producto/[id]` (ficha con comparación por sucursal y alternativas etiquetadas). La comparación pública **no** exige login.
-4. Consumir `GET /products`, `GET /products/:id`, `GET /canonical-products/:id/prices` y `GET /stores` con TanStack Query, con claves que incluyan los filtros, debounce y cancelación. Reusar `lib/api.ts` (mismo origen, errores tipados).
-5. Mostrar siempre precio, unidad base, sucursal, distancia **solo si existe**, fecha/fuente del precio y la etiqueta DEMO. Distinguir `EXACT` de `ALTERNATIVE` y mostrar la cantidad mínima de una promoción junto al precio regular. Formato `es-AR` de moneda y fecha.
-6. Mobile-first, teclado, labels, foco visible, contraste y tamaños táctiles; estados vacío, carga y error con reintento, sin perder los filtros.
-7. Tests: E2E en Edge real (`npm.cmd run test:e2e`) del recorrido buscar → filtrar → ordenar → producto, URL compartible y vuelta atrás, más `npm.cmd run verify`. No dar por probado lo que no se ejecutó.
-8. Actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-04.md` (P4-01), la sección "Rutinas e inventario" de `docs/DOMAIN.md` y ADR 0003 (sesiones y autorización).
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
+3. Módulos nuevos en `apps/api/src/modules/`: rutinas (`ShoppingRoutine`, `ShoppingRoutineItem`) y despensa (`UserInventory`). Todo detrás de `JwtAuthGuard`.
+4. **Ownership en cada consulta y mutación**: filtrar siempre por el usuario del token. Un id enviado por el cliente no determina propiedad (docs/DOMAIN.md). Probar que un usuario no puede leer ni tocar lo de otro.
+5. Reglas del dominio a respetar: un ítem por canónico en cada rutina; `frequencyDays` y `anchorDate` se reemplazan juntos; sin sustitutos hay que elegir un producto preferido; el preferido pertenece al canónico y comparte dimensión; marcas preferidas y excluidas no se solapan; el inventario tiene una fila por usuario y canónico, con la unidad del canónico.
+6. Tests: unitarios del dominio (herencia de frecuencia, necesidad neta, validaciones) y de integración con base real (ownership, unicidad, CHECKs). Agregar los archivos nuevos a `apps/api/scripts/test-db.cjs`.
+7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md y `docs/API.md` si se agregan endpoints; commit y push.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 y 2 (P0-01, P1-01 a P1-04, P2-01 a P2-03) y P3-01 (búsqueda y comparación por API) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P3-02 (pantallas de consumidor: landing, buscador y ficha de producto en apps/web), descrito en docs/steps/phase-03.md. Los endpoints y el formato de las respuestas están en docs/API.md; leé apps/web/AGENTS.md antes de tocar la web y probá con npm.cmd run test:e2e y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1, 2 y 3 (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P4-01 (CRUD de rutinas y despensa con ownership), descrito en docs/steps/phase-04.md. Todo va detrás del guard de sesión y filtrando por el usuario del token: un id del cliente no determina propiedad. Probalo contra la base real con npm.cmd run test:db y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

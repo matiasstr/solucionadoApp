@@ -6,7 +6,7 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` y `/bienvenida` son el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
 
-**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). **P3-01** agrega la búsqueda (nombre, marca o EAN, con filtros de cadena, localidad y radio) y la comparación de alternativas por unidad base con sus promociones: el formato completo de las respuestas está en [docs/API.md](docs/API.md). Todavía no hay pantallas de comparación (P3-02), rutinas ni optimizador, y **ningún precio es real**.
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). **P3-01** agrega la búsqueda (nombre, marca o EAN, con filtros de cadena, localidad y radio) y la comparación de alternativas por unidad base con sus promociones: el formato completo de las respuestas está en [docs/API.md](docs/API.md). **P3-02** cierra la fase 3 con las pantallas: portada con buscador, `/buscar` y `/producto/[id]`, todas públicas y con los filtros en la URL. Todavía no hay rutinas, despensa ni optimizador, y **ningún precio es real**.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
@@ -86,7 +86,7 @@ npm.cmd run build
 npm.cmd audit
 ```
 
-`npm.cmd run test:e2e` corre el E2E de auth en Edge real (`playwright-core`, sin descargar navegadores) contra `npm.cmd run dev` ya iniciado; crea cuentas ficticias `e2e-*@example.com` en la base de desarrollo y guarda capturas en `.cache/verification/p1-04`. `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
+`npm.cmd run test:e2e` corre los E2E de auth y de búsqueda/comparación en Edge real (`playwright-core`, sin descargar navegadores) contra `npm.cmd run dev` ya iniciado; el de búsqueda necesita `npm.cmd run db:seed` y no escribe datos, el de auth crea cuentas ficticias `e2e-*@example.com`. Las capturas quedan en `.cache/verification/p1-04` y `.cache/verification/p3-02`. Con la API o la web en otro puerto, definir `E2E_BASE_URL`. `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS real (ver abajo). Web se comprueba además por build, HTTP y revisión visual; todavía no hay suite E2E del flujo de compras.
 
 Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
 
@@ -103,6 +103,22 @@ Prefijo `/api`. Las rutas `/auth/*` exigen `Origin` permitido y el header `X-Req
 | `GET /users/me` / `PATCH /users/me` (Bearer) | Perfil y preferencias; 400 con `fields` si hay datos inválidos |
 
 Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, nunca valores. Configuración en `apps/api/.env.example` (`JWT_ACCESS_SECRET` obligatorio, ≥ 32 caracteres; generar uno propio).
+
+## Pantallas de comparación
+
+| Ruta | Qué hace |
+| --- | --- |
+| `/` | Portada con el buscador: comparar **no requiere cuenta** |
+| `/buscar` | Resultados con precio, precio por kilo o litro, sucursal y promoción; filtros de cadena y localidad |
+| `/producto/[id]` | Ficha con el producto exacto por sucursal y las alternativas equivalentes, ordenables por envase, unidad base o distancia |
+
+Decisiones de estas pantallas:
+
+- **Los filtros viven en la URL** (`q`, `cadena`, `ciudad`/`provincia`, `lat`/`lon`, `orden`): un enlace compartido reproduce la misma búsqueda y el botón "atrás" deshace el último cambio. Escribir reemplaza la entrada del historial; cambiar un filtro agrega una.
+- **Se distingue producto exacto de alternativa** con una etiqueta, y el precio regular queda visible aunque haya promoción: el beneficio se muestra al lado, con las unidades que hay que llevar.
+- **Sin ubicación no se inventan distancias**: el orden por distancia queda deshabilitado y la pantalla lo explica. La ubicación del navegador es opcional y denegar el permiso no rompe nada.
+- **El orden se ofrece donde aplica**: la comparación de un producto se puede ordenar por envase, por unidad base o por distancia; el listado de búsqueda es alfabético y lo dice, porque su paginación es por cursor.
+- Etiqueta **DEMO** visible en todas las pantallas con precios, formato `es-AR` de moneda y fecha, y estados de carga, vacío y error con reintento que no pierden los filtros.
 
 ## API de catálogo y precios
 

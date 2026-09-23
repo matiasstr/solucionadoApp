@@ -1,10 +1,11 @@
 import { Brand, Surface } from '@tusofertas/ui';
 import Link from 'next/link';
 import { HeaderAuthLinks } from '../components/auth/header-auth-links';
+import { SearchForm } from '../components/search/search-form';
 
 const steps = [
   { number: '01', title: 'Contanos qué comprás', text: 'Tus productos de siempre, las cantidades y lo que ya tenés en casa.' },
-  { number: '02', title: 'Encontrá mejores precios', text: 'Compará el mismo producto y sus alternativas, con el precio por kilo o litro a la vista.' },
+  { number: '02', title: 'Encontrá mejores precios', text: 'Compará el mismo producto y sus alternativas, con el precio por kilo o litro a la vista. Ya podés probarlo con datos de demostración.' },
   { number: '03', title: 'Organizá tu semana', text: 'Un plan que tenga en cuenta el ahorro, la distancia y cuántas tiendas querés visitar.' },
 ];
 
@@ -22,12 +23,13 @@ export default function HomePage() {
           <div>
             <p className="eyebrow"><span className="status-dot" /> MENOS GASTO, MÁS PLAN</p>
             <h1>¿Cuánto podés<br />ahorrar <span>esta semana?</span></h1>
-            <p className="hero-copy">Tus compras de siempre pueden costar menos. Estamos preparando una forma simple de comparar precios y armar un plan que te convenga.</p>
+            <p className="hero-copy">Tus compras de siempre pueden costar menos. Compará el mismo producto entre sucursales, con el precio por kilo o litro a la vista.</p>
+            <SearchForm />
             <div className="hero-actions">
-              <Link className="primary-link" href="/register">Creá tu cuenta <span aria-hidden="true">→</span></Link>
+              <Link className="text-link" href="/buscar">Ver cómo se compara un producto</Link>
               <a className="text-link" href="#como-funciona">Conocé la propuesta</a>
             </div>
-            <p className="launch-note">En preparación. Ya podés crear tu cuenta; todavía no hay precios disponibles para consultar.</p>
+            <p className="launch-note">Comparar no requiere cuenta. Los precios que vas a ver son <strong>de demostración</strong>: sirven para probar la app, no son ofertas reales.</p>
           </div>
           <div className="preview-area">
             <div className="preview-decoration" aria-hidden="true" />

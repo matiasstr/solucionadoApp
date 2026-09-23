@@ -1,13 +1,14 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { requireUuid } from '../../../common/query';
+import { CanonicalPricesQueryDto } from '../../prices/presentation/product-prices.query.dto';
+import type { PriceSortBy } from '../../prices/presentation/price.contracts';
 import { GetCanonicalPricesUseCase } from '../application/get-canonical-prices.use-case';
-import type { CanonicalPricesDto, PriceSortBy } from './price.contracts';
-import { CanonicalPricesQueryDto } from './product-prices.query.dto';
+import type { CanonicalPricesDto } from './search.contracts';
 
 /**
  * `GET /canonical-products/:id/prices`: comparación de todas las presentaciones
- * de una misma necesidad. Vive en el módulo de precios para que las dependencias
- * entre módulos no formen un ciclo; la ruta pública no cambia.
+ * de una misma necesidad. Vive en el módulo de búsqueda, que compone catálogo,
+ * precios, comercios y promociones; la ruta pública no cambia.
  */
 @Controller('canonical-products')
 export class CanonicalPricesController {

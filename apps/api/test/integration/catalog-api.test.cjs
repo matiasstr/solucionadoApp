@@ -9,6 +9,7 @@ const { JsonLogger } = require('../../dist/common/json-logger');
 const { validateEnvironment } = require('../../dist/config/environment');
 const { PrismaService } = require('../../dist/database/prisma.service');
 const {
+  latestObservationAnchor,
   seedDemoCatalog,
   demoCanonicalProductId,
   demoProductId,
@@ -25,12 +26,15 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
  * día de hoy: las sucursales diarias quedan con 0 días de antigüedad y la que dejó
  * de informar, con 12. El seed es idempotente, no duplica lo que ya cargó otro test.
  */
-const ANCHOR = new Date();
+// Misma ancla que usa el seed por defecto: el último mediodía UTC ya transcurrido.
+const ANCHOR = latestObservationAnchor();
 const CABA = 'Ciudad Autónoma de Buenos Aires';
 // Caballito: cerca de Coto Caballito, lejos de Lanús.
 const ORIGIN = { latitude: -34.6187, longitude: -58.4407 };
 
 const PRODUCT_KEYS = ['id', 'ean', 'name', 'brand', 'categoryId', 'canonicalProductId', 'quantity', 'unit', 'saleMode', 'packageCount'];
+// Desde P3-02 cada resultado de búsqueda trae además su mejor oferta.
+const SEARCH_ITEM_KEYS = [...PRODUCT_KEYS, 'bestOffer'];
 const STORE_KEYS = ['id', 'chainId', 'chainName', 'name', 'address', 'city', 'province', 'latitude', 'longitude', 'distanceMeters'];
 const PRICE_KEYS = ['store', 'price', 'currency', 'unitPrice', 'unitPriceUnit', 'unitPricePer100g', 'source', 'freshness'];
 
@@ -73,7 +77,7 @@ describe('GET /api/products', () => {
     assert.equal(first.body.items.length, 3);
     assert.equal(first.body.page.limit, 3);
     assert.ok(first.body.page.nextCursor);
-    assert.deepEqual(keysOf(first.body.items[0]), PRODUCT_KEYS.slice().sort());
+    assert.deepEqual(keysOf(first.body.items[0]), SEARCH_ITEM_KEYS.slice().sort());
 
     const second = await get(`/api/products?limit=3&cursor=${encodeURIComponent(first.body.page.nextCursor)}`).expect(200);
     const firstIds = first.body.items.map((product) => product.id);

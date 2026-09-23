@@ -23,17 +23,23 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH';
   body?: unknown;
   accessToken?: string;
+  /** Para cancelar una consulta que quedó vieja (búsqueda mientras se escribe). */
+  signal?: AbortSignal;
 }
 
 /**
  * Cliente de la API en el mismo origen (/api, vía rewrite de Next). El header
  * X-Requested-With es la protección CSRF que exige /auth (ADR 0003).
  */
-export async function apiRequest<T>(path: string, { method = 'GET', body, accessToken }: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  { method = 'GET', body, accessToken, signal }: RequestOptions = {},
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method,
+      signal,
       credentials: 'same-origin',
       cache: 'no-store',
       headers: {
@@ -43,7 +49,9 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, access
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    // Una consulta cancelada no es una falla del servicio: la propaga tal cual.
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw unavailable(0);
   }
   if (response.status === 204) return undefined as T;

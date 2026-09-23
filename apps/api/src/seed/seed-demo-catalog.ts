@@ -44,7 +44,10 @@ export const demoStoreId = (key: string): string => demoId('store', key);
 export const demoPromotionId = (key: string): string => demoId('promotion', key);
 
 export interface SeedOptions {
-  /** Día del precio más reciente; controlable para que las pruebas no caduquen. */
+  /**
+   * Día del precio más reciente; controlable para que las pruebas no caduquen.
+   * Por defecto, el último mediodía UTC ya transcurrido (`latestObservationAnchor`).
+   */
   readonly anchorDate?: Date;
   readonly historyDays?: number;
 }
@@ -70,6 +73,17 @@ function observationInstant(anchor: Date, dayOffset: number): Date {
   return new Date(
     Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), DEMO_OBSERVATION_HOUR_UTC, 0, 0, 0),
   );
+}
+
+/**
+ * Último instante de observación ya ocurrido: el mediodía UTC de hoy, o el de
+ * ayer si todavía no pasó. Nadie puede observar el precio de mañana, así que el
+ * dataset nunca se ancla en el futuro. Es el ancla por defecto del seed y la que
+ * usan los tests para no depender de la hora a la que corren.
+ */
+export function latestObservationAnchor(now: Date = new Date()): Date {
+  const today = observationInstant(now, 0);
+  return today.getTime() <= now.getTime() ? today : observationInstant(now, 1);
 }
 
 const dateKey = (instant: Date): string => instant.toISOString().slice(0, 10);
@@ -106,7 +120,7 @@ export async function seedDemoCatalog(prisma: PrismaService, options: SeedOption
   if (!Number.isInteger(historyDays) || historyDays < 1 || historyDays > 400) {
     throw new RangeError('historyDays debe ser un entero entre 1 y 400.');
   }
-  const anchor = observationInstant(options.anchorDate ?? new Date(), 0);
+  const anchor = options.anchorDate ? observationInstant(options.anchorDate, 0) : latestObservationAnchor();
   const importBatchId = `${DEMO_SOURCE}:${dateKey(anchor)}`;
 
   const categories = new CategoryRepository(prisma);

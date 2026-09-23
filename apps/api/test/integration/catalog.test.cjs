@@ -12,6 +12,7 @@ const { ProductPriceRepository } = require('../../dist/modules/prices/infrastruc
 const { GetCurrentPricesUseCase } = require('../../dist/modules/prices/application/get-current-prices.use-case');
 const { RecordPriceObservationUseCase } = require('../../dist/modules/prices/application/record-price-observation.use-case');
 const {
+  latestObservationAnchor,
   seedDemoCatalog,
   demoCategoryId,
   demoCanonicalProductId,
@@ -30,8 +31,8 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
  * las aserciones son relativas al ancla y no caducan. Otros archivos de integración
  * cargan el mismo dataset; el seed es idempotente y las fechas coinciden.
  */
-const now = new Date();
-const ANCHOR = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+// Misma ancla que usa el seed por defecto: el último mediodía UTC ya transcurrido.
+const ANCHOR = latestObservationAnchor();
 const HISTORY_DAYS = 31;
 const MS_PER_DAY = 86_400_000;
 /** Instante de la observación de hace `offset` días (negativo = futuro). */

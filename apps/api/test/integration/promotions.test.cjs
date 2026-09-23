@@ -13,6 +13,7 @@ const { PromotionRepository } = require('../../dist/modules/promotions/infrastru
 const { priceLine } = require('../../dist/modules/promotions/domain/promotion-calculator');
 const { ProductPriceRepository } = require('../../dist/modules/prices/infrastructure/product-price.repository');
 const {
+  latestObservationAnchor,
   seedDemoCatalog,
   demoCanonicalProductId,
   demoChainId,
@@ -27,8 +28,8 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
   throw new Error('Los tests de integración requieren DATABASE_URL de una base *_test (usar npm run test:db).');
 }
 
-const now = new Date();
-const ANCHOR = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+// Misma ancla que usa el seed por defecto: el último mediodía UTC ya transcurrido.
+const ANCHOR = latestObservationAnchor();
 const MS_PER_DAY = 86_400_000;
 const daysFromAnchor = (days) => new Date(ANCHOR.getTime() + days * MS_PER_DAY);
 

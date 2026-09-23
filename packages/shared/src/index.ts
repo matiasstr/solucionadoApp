@@ -215,10 +215,6 @@ export interface SearchProductsScopeDto {
   storesConsidered: number | null;
 }
 
-export interface SearchProductsResultDto extends PaginatedDto<ProductDto> {
-  scope: SearchProductsScopeDto;
-}
-
 /**
  * Promoción que cambia el precio de una oferta. El precio regular se conserva
  * aparte: el beneficio se muestra junto a la cantidad que hay que llevar.
@@ -237,9 +233,8 @@ export interface OfferPromotionDto {
   terms: string | null;
 }
 
-export interface CanonicalOfferDto {
-  product: ProductDto;
-  matchType: OfferMatchType;
+/** Precio de un producto en una sucursal, con su procedencia y su promoción. */
+export interface OfferDto {
   store: StoreDto;
   price: DecimalString;
   currency: string;
@@ -250,6 +245,22 @@ export interface CanonicalOfferDto {
   freshness: PriceFreshnessDto;
   /** Null cuando ninguna promoción automática alcanza a esta oferta. */
   promotion: OfferPromotionDto | null;
+}
+
+export interface ProductSearchItemDto extends ProductDto {
+  /** Oferta más barata por unidad base dentro del alcance; null si no hay precio. */
+  bestOffer: OfferDto | null;
+}
+
+export interface SearchProductsResultDto {
+  items: ProductSearchItemDto[];
+  page: { limit: number; nextCursor: string | null };
+  scope: SearchProductsScopeDto;
+}
+
+export interface CanonicalOfferDto extends OfferDto {
+  product: ProductDto;
+  matchType: OfferMatchType;
 }
 
 export interface CanonicalPricesDto {

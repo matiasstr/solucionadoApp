@@ -90,13 +90,26 @@ Todo precio viaja con su procedencia:
       "quantity": "1",
       "unit": "KG",
       "saleMode": "PACKAGED",
-      "packageCount": 1
+      "packageCount": 1,
+      "bestOffer": {
+        "store": { "chainName": "Vea", "name": "Vea Flores (DEMO)", "distanceMeters": null },
+        "price": "1212.78",
+        "currency": "ARS",
+        "unitPrice": "1212.780000",
+        "unitPriceUnit": "KG",
+        "unitPricePer100g": "121.278000",
+        "source": "demo-seed",
+        "freshness": { "observedAt": "2026-09-22T12:00:00.000Z", "ageDays": 0, "maxAgeDays": 7, "isStale": false },
+        "promotion": null
+      }
     }
   ],
   "page": { "limit": 20, "nextCursor": null },
   "scope": { "origin": "ALL", "radiusKm": null, "storesConsidered": null }
 }
 ```
+
+`bestOffer` es la oferta **más barata por unidad base** dentro del alcance consultado, con la misma forma que las ofertas de la comparación (incluida `promotion`). Es `null` cuando el producto no tiene precio observado en esas sucursales: el listado lo dice en vez de mostrar un precio de otra zona. El orden de la página sigue siendo alfabético (la paginación es por cursor); para ordenar por precio se compara un canónico.
 
 `quantity` es el contenido total: un pack de 6 × 2,25 L tiene `quantity: "13.5"`, `unit: "L"` y `packageCount: 6`; no se multiplica de nuevo. Para `saleMode: "VARIABLE_WEIGHT"`, `quantity` es la base de cotización (1 KG).
 
