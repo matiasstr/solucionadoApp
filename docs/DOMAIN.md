@@ -132,17 +132,17 @@ Prisma expresa claves primarias, relaciones, unicidad e índices declarados. Las
 | Cantidades, precio, precio normalizado y tamaño de envase positivos; inventario no negativo | `CHECK` SQL + dominio (`normalizePrice`, P2-01). |
 | Moneda ARS inicial y consistencia de unidad normalizada | `CHECK` SQL para moneda; dominio para conversión. |
 | Árbol de categorías sin ciclos | `CategoryRepository` recorre ancestros antes de escribir (P2-01); `parentId != id` también en SQL. |
-| Dimensión compatible entre producto, canónico, inventario y rutinas | Producto/canónico: `ProductRepository` y `normalizePrice` (P2-01). Inventario y rutinas: pendiente. |
+| Dimensión compatible entre producto, canónico, inventario y rutinas | Producto/canónico: `ProductRepository` y `normalizePrice` (P2-01). Inventario y rutinas: `toCanonicalQuantity` guarda en la unidad del canónico (P4-01, ADR 0011). |
 | Observaciones inmutables y clave de importación estable | Trigger SQL + `buildIdempotencyKey` y `ProductPriceRepository` (P2-01). |
 | Punto geográfico, coordenadas e índice GiST consistentes | Migración SQL. |
 | Exactamente un alcance comercial y como máximo un alcance de producto por promoción | `CHECK` SQL + DTO. |
 | Vigencia positiva, porcentaje en `(0,100]`, mínimos/topes válidos y días ISO sin duplicados | SQL cuando sea posible + validador del dominio. |
 | Campos promocionales coherentes con el tipo, y tope/período presentes juntos | `CHECK` SQL + dominio. |
 | Intervalo de rutina positivo y reemplazo conjunto de frecuencia/ancla | `CHECK` SQL + dominio. |
-| Preferido del canónico correcto y obligatorio cuando no hay sustituciones | Dominio. |
+| Preferido del canónico correcto y obligatorio cuando no hay sustituciones | Dominio (`assertSubstitutionRule`) + `RoutinesService` + `CHECK` SQL (P4-01). |
 | Fechas del plan ordenadas; cantidades recomendadas suficientes; sumas monetarias coherentes | SQL simple + servicio de generación transaccional. |
 | Precio/producto/sucursal y promoción de una línea consistentes | Servicio de generación; FK individuales no lo garantizan. |
-| Aislamiento entre usuarios en rutinas, inventario y planes | Autorización en todos los casos de uso; UUID no es permiso. |
+| Aislamiento entre usuarios en rutinas, inventario y planes | Autorización en todos los casos de uso; UUID no es permiso. Rutinas e inventario: filtro por `userId` en cada consulta (P4-01, `routines-api.test.cjs`). Planes: fase 5. |
 | Rotación de refresh sin carreras y revocación familiar | Transacción + tests de integración de auth. |
 
 Los borrados de catálogo, comercios, precios y promociones referenciados están restringidos para conservar trazabilidad; productos y sucursales pueden desactivarse. Borrar una cuenta elimina sus sesiones, rutinas, inventario y planes por cascada. Esa operación no existe aún y requerirá un caso de uso explícito, sin borrar historia comercial compartida.

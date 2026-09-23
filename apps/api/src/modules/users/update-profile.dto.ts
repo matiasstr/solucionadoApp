@@ -13,6 +13,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { IsOptionalNotNull } from '../../common/rule-errors';
 import { PaymentMethod } from '../../generated/prisma/enums';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -23,6 +24,8 @@ const trimEach = ({ value }: { value: unknown }) =>
  * Preferencias editables. `whitelist` + `forbidNonWhitelisted` rechazan email, passwordHash,
  * id y cualquier otro campo (sin mass assignment). `null` borra un campo opcional.
  * Decimales como string para no pasar por `number` binario (ADR 0002).
+ * `maxStoresPerShoppingPlan: null` es "sin límite" (inequívoco: cero no es válido);
+ * las columnas no nulas usan `@IsOptionalNotNull` para que `null` sea 400 y no 500.
  */
 export class UpdateProfileDto {
   @IsOptional()
@@ -48,7 +51,8 @@ export class UpdateProfileDto {
   @Matches(/^-?\d{1,3}(\.\d{1,6})?$/)
   longitude?: string | null;
 
-  @IsOptional()
+  // Rango 0,1 a 100 km, el mismo que `radiusKm` en la API pública; se valida en el servicio.
+  @IsOptionalNotNull()
   @Matches(/^\d{1,3}(\.\d{1,2})?$/)
   maxTravelDistanceKm?: string;
 
@@ -58,21 +62,21 @@ export class UpdateProfileDto {
   @Max(20)
   maxStoresPerShoppingPlan?: number | null;
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @Matches(/^\d{1,10}(\.\d{1,2})?$/)
   storeVisitPenalty?: string;
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @Matches(/^\d{1,10}(\.\d{1,2})?$/)
   distancePenaltyPerKm?: string;
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @IsArray()
   @ArrayUnique()
   @IsEnum(PaymentMethod, { each: true })
   paymentMethods?: PaymentMethod[];
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @Transform(trimEach)
   @IsArray()
   @ArrayMaxSize(20)
@@ -82,7 +86,7 @@ export class UpdateProfileDto {
   @MaxLength(120, { each: true })
   banks?: string[];
 
-  @IsOptional()
+  @IsOptionalNotNull()
   @Transform(trimEach)
   @IsArray()
   @ArrayMaxSize(20)

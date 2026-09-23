@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: las fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02). Empezar por **P4-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) y **P4-01**. Empezar por **P4-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009 y 0011; el 0010 está reservado para el deploy de la API) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18, 2026-09-21 y 2026-09-22, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P4-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-23, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P4-02 que recuperar.
 
-## Estado: 2026-09-22 — Fases 1, 2 y 3 completas
+## Estado: 2026-09-23 — Fases 1, 2 y 3 completas; P4-01 completo
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P4-01 — CRUD de rutinas y despensa con ownership** (`docs/steps/phase-04.md`, `docs/DOMAIN.md` sección de rutinas e inventario, ADR 0003).
-No están implementadas las rutinas, la despensa, las preferencias de compra, el optimizador, los importadores ni los jobs.
+**Próximo paso: P4-02 — Onboarding y páginas privadas** (`docs/steps/phase-04.md`): `/onboarding`, `/mis-compras`, `/mi-despensa` y panel de preferencias, contra la API de P4-01 (contratos en `docs/API.md#rutinas-y-despensa-privadas` y `packages/shared`).
+No están implementadas las pantallas de rutinas/despensa/onboarding, el optimizador, los importadores ni los jobs.
 
 ## Qué ya existe
 
@@ -20,35 +20,35 @@ No están implementadas las rutinas, la despensa, las preferencias de compra, el
 - P1-02: migración `20260918120000_init` (PostGIS, CHECKs, triggers, GiST), `PrismaService` (`@prisma/adapter-pg`), `/api/health` y `/api/health/ready`, `StoreProximityRepository`, scripts `db:*` y `test:db`, ADR 0006.
 - P1-03: `/api/auth/register|login|refresh|logout`, `GET/PATCH /api/users/me`; Argon2id, JWT HS256, refresh rotativo en cookie HttpOnly con detección de replay, CSRF (Origin + `X-Requested-With: tusofertas-web`), rate limit. ADR 0003.
 - P1-04: auth en la web con rewrite same-origin (`API_ORIGIN`), token solo en memoria, refresh compartido, `(auth)/login|register`, `(private)/inicio|bienvenida`, E2E en Edge real. ADR 0007.
-- **P2-01 (esta sesión): catálogo, comercios, historia de precios, unidades y seed DEMO.**
+- **P2-01: catálogo, comercios, historia de precios, unidades y seed DEMO.**
   - Dominio (sin Prisma ni Nest): `catalog/domain/decimal.ts` (`DecimalValue`, entero BigInt escalado, HALF_UP), `units.ts` (KG/G, L/ML, UNIT; `toBaseQuantity`, `convertQuantity`, `unitPricePer100g`), `naming.ts`; `prices/domain/price-normalizer.ts`, `price-freshness.ts` (precio actual, desempate, umbral), `price-identity.ts` (clave idempotente), `price-records.ts`.
   - Infraestructura: `CategoryRepository` (upsert con detección de ciclos), `CanonicalProductRepository`, `ProductRepository` (valida dimensión contra el canónico, EAN, cantidad), `StoreRepository` (coordenadas completas o ninguna), `ProductPriceRepository` (`record` created/duplicate/conflict, `recordMany` para el seed, `findCurrentByProduct` con `DISTINCT ON`, `findHistory`).
   - Aplicación: `RecordPriceObservationUseCase`, `GetCurrentPricesUseCase` (frescura + precio por 100 g + orden por precio unitario). Módulos `CatalogModule`, `StoresModule`, `PricesModule` registrados en `AppModule` (todavía **sin controladores**: los endpoints son P2-02).
   - Configuración nueva: `PRICE_MAX_AGE_DAYS` (7) y `PRICE_SOURCE_PRECEDENCE` (vacío) en `apps/api/.env.example` y `ApiConfig.prices`.
   - Seed: `apps/api/src/seed/` (`demo-catalog.ts` datos puros, `demo-id.ts` UUID v5 determinista, `seed-demo-catalog.ts`, `main.ts` CLI). `npm.cmd run db:seed [-- --anchor=AAAA-MM-DD --days=N]`. No corre con `NODE_ENV=production` ni contra base remota sin `SEED_ALLOW_REMOTE=true`; nunca borra datos.
   - ADR 0008 (decimal propio, precio actual/frescura, política DEMO). README con tabla de precios por unidad base y sección del dataset.
-- **P2-02 (esta sesión): API pública de catálogo y precios.**
+- **P2-02: API pública de catálogo y precios.**
   - Endpoints (prefijo `/api`, sin sesión): `GET /products`, `/products/:id`, `/products/:id/prices`, `/canonical-products`, `/canonical-products/:id`, `/stores`, `/stores/:id`.
   - `common/pagination.ts` (cursor keyset opaco `(clave, id)`, `limit` 1-50, `toPage`/`toPaginatedDto`) y `common/query.ts` (`requireUuid`, `parseCursorOrFail`: un id mal formado es 400, no 404).
   - Repositorios con `search(...)` paginado: productos y canónicos por `normalizedName`, sucursales por `name`; las lecturas de sucursal ahora incluyen `chainName` (`StoreSummaryRecord`).
   - `GetProductUseCase`, `GetCanonicalProductUseCase` (con alternativas), `SearchStoresUseCase` (cercanía ordenada por distancia, sin cursor) y `GetProductPricesUseCase` (alcance `COORDINATES` / `LOCALITY` / `ALL`, radio km convertido a metros, `scope` explícito en la respuesta).
   - DTOs de query con `class-validator`; `whitelist` + `forbidNonWhitelisted` del bootstrap hacen que un filtro desconocido responda 400 con `fields`.
   - Contratos en los `contracts.ts` de cada módulo y espejados en `packages/shared/src/index.ts` para la web.
-- **P2-03 (esta sesión): motor de promociones simples.**
+- **P2-03: motor de promociones simples.**
   - Dominio puro en `promotions/domain/`: `promotion.types.ts`, `promotion-rule.ts` (valida y rechaza reglas incompletas nombrando el campo), `promotion-eligibility.ts` (vigencia `[validFrom, validUntil)`, día ISO leído en `America/Argentina/Buenos_Aires` con `Intl`, alcance) y `promotion-calculator.ts` (`priceLine`).
   - `priceLine` cobra una línea con **una sola** promoción (la que más conviene; desempate por id) y devuelve la evaluación de todas las consideradas con su `skipReason`. Redondeo monetario una sola vez.
   - `catalog/domain/packaging.ts` (`planPurchase`): envases enteros con excedente visible; granel sin redondeo. Se reusa en fase 5.
   - `DecimalValue` sumó `floorToInteger`, `isInteger` y `toTrimmedString`.
   - `PromotionRepository` (upsert validado, `findActiveFor`, `search` paginado por `(validUntil, id)`) y `GET /promotions` + `GET /promotions/:id` con el campo `automatic`.
   - Seed: 9 promociones demo con vigencia relativa al ancla (activas, una futura, una vencida, una solo los martes, una con mínimo de compra y una bancaria que no se aplica). ADR 0009.
-- **P3-01 (esta sesión): búsqueda y comparación.**
+- **P3-01: búsqueda y comparación.**
   - `catalog/domain/search-term.ts`: un término de 8 a 14 dígitos es EAN exacto; el resto se normaliza sin tildes para nombre y marca. Un texto que se queda sin letras devuelve cero resultados, no el catálogo.
   - `GET /products` suma `brand`, `chainId`, `city`+`province` y `latitude`+`longitude`+`radiusKm` (disponibilidad real: el producto tiene precio observado ahí) y devuelve `scope` con el alcance aplicado. **Cambio de contrato**: la respuesta ahora incluye `scope`.
   - `GET /canonical-products/:id/prices` (`CanonicalPricesController` en el módulo de precios): compara todas las presentaciones por sucursal, con `matchType` EXACT/ALTERNATIVE según `productId`, precio regular, precio por unidad base, distancia, frescura y la promoción automática con su `minimumQuantity` y `promotionalUnitPrice`.
   - `sortBy` (`UNIT_PRICE` por defecto, `PRICE`, `DISTANCE`) en las dos rutas de precios; ordenar por distancia sin coordenadas es 400.
   - `StoreScopeResolver` (módulo de comercios) reemplaza la resolución de alcance duplicada; `ProductPriceRepository.findCurrentByProducts` resuelve varias presentaciones en una sola consulta (`DISTINCT ON (productId, storeId)`), sin N+1.
   - **`docs/API.md`**: formato estable de todas las respuestas públicas, con parámetros, límites y ejemplos reales del dataset DEMO.
-- **P3-02 (esta sesión): pantallas de comparación.**
+- **P3-02: pantallas de comparación.**
   - Rutas nuevas en `apps/web`: `/buscar` (`components/search/search-view.tsx`) y `/producto/[id]` (`components/product/product-view.tsx`), más el buscador en la portada. Todas públicas.
   - Estado en la URL (`lib/catalog/filters.ts`): `q`, `cadena`, `ciudad`/`provincia`, `lat`/`lon`, `orden`. Escribir hace `router.replace` (con 400 ms de espera); cambiar un filtro hace `router.push`, así "atrás" lo deshace.
   - `lib/catalog/queries.ts`: hooks de TanStack Query con claves que incluyen todos los filtros y `signal` para cancelar lo que quedó viejo (`apiRequest` ahora acepta `AbortSignal` y no confunde un `AbortError` con un servicio caído).
@@ -56,6 +56,36 @@ No están implementadas las rutinas, la despensa, las preferencias de compra, el
   - **Cambio de API para que las tarjetas tengan precio**: `GET /products` devuelve `bestOffer` (la más barata por unidad base del alcance, con promoción y frescura). La búsqueda y la comparación se movieron al módulo `search` (`ProductsSearchController`, `CanonicalPricesController`, `OfferPromotionResolver`), que compone catálogo, precios, comercios y promociones sin ciclos.
   - **Corrección del seed**: `latestObservationAnchor()` ancla en el último mediodía UTC **ya transcurrido**. Antes, corriendo antes de las 12:00 UTC, el dataset fechaba precios en el futuro (los tests lo detectaron).
   - E2E nuevo: `apps/web/e2e/search.e2e.cjs` (10 casos) y `npm.cmd run test:e2e` ahora corre las dos suites.
+
+- **P4-01 (sesión 2026-09-23): API privada de rutinas y despensa.**
+  - Módulos `apps/api/src/modules/routines/` (`domain/routine-rules.ts`, `application/routines.service.ts`, `presentation/` con controller, DTOs y contratos) e `inventory/` (servicio, controller, DTOs). Registrados en `AppModule`; todo detrás de `JwtAuthGuard` y con `Cache-Control: no-store`.
+  - Endpoints: `GET/POST /shopping-routines`, `GET/PATCH/DELETE /shopping-routines/:id`, `POST /shopping-routines/:id/items`, `PATCH/DELETE /shopping-routines/:id/items/:itemId`, `GET/POST /inventory`, `PATCH/DELETE /inventory/:id`. Formato en `docs/API.md` (sección "Rutinas y despensa") y espejo en `packages/shared/src/index.ts` (`RoutineDto`, `RoutineItemDto`, `InventoryItemDto`, …).
+  - **Ownership**: cada consulta filtra por el `userId` del token (`findFirst`/`updateMany`/`deleteMany` con `userId`; ítems con `routine: { userId }` + `routineId`). Ajeno e inexistente dan el mismo 404.
+  - `catalog/domain/need-quantity.ts` (`toCanonicalQuantity`): acepta G/ML/KG/L/UNIT de la dimensión del canónico y guarda la unidad base sin redondear; rechaza más de 4 decimales y otra dimensión.
+  - `common/rule-errors.ts`: `rethrowRuleErrors` (errores de dominio → 400 con su código), `rethrowUniqueAs` (P2002 → 409) e `IsOptionalNotNull` (omitible pero no `null`).
+  - Límites (20 rutinas por usuario, 100 ítems por rutina) contados en transacción con `SELECT … FOR UPDATE` sobre la fila del usuario o de la rutina.
+  - Preferencias en `PATCH /users/me`: radio 0,1–100 km, ciudad+provincia juntas, `null` rechazado en columnas no nulas (antes daba 500). `maxStoresPerShoppingPlan: null` = sin límite.
+  - ADR 0011. **Sin migración nueva** (el schema de P1-02 ya tenía tablas, unicidad y CHECKs).
+
+## Verificaciones ejecutadas (P4-01, 2026-09-23)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **77/77** unitarios —9 nuevos en `test/routine-rules.test.cjs`—, build API + web con 8 rutas) |
+| `npm.cmd run test:db` | **79/79** integración real (67 previos + **12** de `test/integration/routines-api.test.cjs`) |
+
+Qué cubren los tests nuevos: 401 sin token en los 12 endpoints; alta con valores por defecto (7 días, ancla hoy en hora argentina) y quincenal; PATCH parcial con herencia de la frecuencia nueva; borrado en cascada de ítems; frecuencias 0/366/7,5/texto, fecha imposible y campos extra rechazados; límite de 20 rutinas con 25 altas simultáneas (exactamente 20 creadas); 5 kg de pollo semanal heredado; 500 g de arroz guardados como `0.5000 KG`; frecuencia propia de 15 días; un ítem por canónico con 3 altas simultáneas (201/409/409); unidad de otra dimensión, cantidad cero/negativa/numérica/con precisión excesiva, canónico inexistente, preferido de otro canónico o inexistente, sin sustitutos sin preferido, marcas solapadas por mayúsculas, frecuencia sin ancla y viceversa (ninguna fila creada); PATCH con reglas sobre el estado resultante; despensa con conversión G→KG, cero válido, duplicado 409, negativo y dimensión incompatible 400, `updatedAt` que avanza; **dos usuarios**: listar/leer/editar/borrar rutina, ítem y despensa ajenos, ítem propio bajo rutina ajena y ajeno bajo propia, todo 404 con el mismo cuerpo que lo inexistente y sin cambios en la base; preferencias válidas e inválidas.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web), smoke manual contra la base de desarrollo y `npm.cmd audit`.
+
+## Decisiones y notas (P4-01)
+
+- **404 igual para ajeno e inexistente**, incluso en ítems anidados: el UUID no es permiso ni se confirma que exista (ADR 0011).
+- **El canónico identifica al ítem**: no se cambia por PATCH. Para la web (P4-02): un 409 `ROUTINE_ITEM_DUPLICATE`/`INVENTORY_DUPLICATE` al reintentar un alta significa "ya existe, editala", no un error a mostrar tal cual.
+- **Reglas sobre el estado resultante** en PATCH: no se puede quitar el preferido si `allowSubstitutes=false`, ni preferir una marca excluida. Frecuencia y ancla del ítem se envían juntas (`null`+`null` = heredar).
+- El preferido se valida (activo, mismo canónico y dimensión) **solo cuando se elige**: si luego se desactiva, editar la cantidad sigue funcionando. P5-01 debe tratar un preferido inactivo.
+- `ARGENTINA_TIME_ZONE` quedó definido también en `routines/domain/routine-rules.ts` (además de promociones) para no acoplar dominios.
+- Los tests de integración nuevos usan `AUTH_RATE_LIMIT_PER_MINUTE=10000` porque registran muchas cuentas; supertest debe crear cada pedido justo antes de esperarlo (construirlos todos antes da `ECONNREFUSED`).
 
 ## Verificaciones ejecutadas (P3-02, 2026-09-22)
 
@@ -187,19 +217,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P2-02** `1aa5e5c` (publicado).
 - **P2-03** `c1ffb10` (publicado).
 - **P3-01** `f099b9a` (publicado).
-- **P3-02**: commit `feat(P3-02): ...` creado y publicado en esta sesión; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
+- **P3-02** `900f2c9` (publicado).
+- **P4-01**: commit `feat(P4-01): ...` creado y publicado en la sesión del 2026-09-23; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P4-01
+## Cómo seguir con P4-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-04.md` (P4-01), la sección "Rutinas e inventario" de `docs/DOMAIN.md` y ADR 0003 (sesiones y autorización).
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Módulos nuevos en `apps/api/src/modules/`: rutinas (`ShoppingRoutine`, `ShoppingRoutineItem`) y despensa (`UserInventory`). Todo detrás de `JwtAuthGuard`.
-4. **Ownership en cada consulta y mutación**: filtrar siempre por el usuario del token. Un id enviado por el cliente no determina propiedad (docs/DOMAIN.md). Probar que un usuario no puede leer ni tocar lo de otro.
-5. Reglas del dominio a respetar: un ítem por canónico en cada rutina; `frequencyDays` y `anchorDate` se reemplazan juntos; sin sustitutos hay que elegir un producto preferido; el preferido pertenece al canónico y comparte dimensión; marcas preferidas y excluidas no se solapan; el inventario tiene una fila por usuario y canónico, con la unidad del canónico.
-6. Tests: unitarios del dominio (herencia de frecuencia, necesidad neta, validaciones) y de integración con base real (ownership, unicidad, CHECKs). Agregar los archivos nuevos a `apps/api/scripts/test-db.cjs`.
-7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md y `docs/API.md` si se agregan endpoints; commit y push.
+1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (y las guías de Next 16 en `node_modules/next/dist/docs/`), `ROADMAP.md`, `docs/steps/phase-04.md` (P4-02), `docs/API.md#rutinas-y-despensa-privadas` y ADR 0007 y 0011.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`, `npm.cmd run dev`.
+3. Rutas privadas nuevas en `apps/web/src/app/(private)/`: `onboarding`, `mis-compras`, `mi-despensa`, más un panel de preferencias ligado a `PATCH /users/me`. Hooks de TanStack Query con claves por usuario; invalidar al mutar y **limpiar la caché al logout**.
+4. Onboarding: localidad, radio 2/5/10/20 km, máximo de sucursales 1/2/3/sin límite (`null`), productos habituales (buscador de canónicos `GET /canonical-products?search=`). Coordenadas opcionales y **solo tras una acción del usuario**. Persistir progreso (por ejemplo, crear la rutina al primer paso y reusar su id; tratar el 409 de duplicado como "ya estaba") y no bloquear el uso público. Marcar `onboardingCompletedAt` requiere un campo nuevo en `PATCH /users/me` o un endpoint: decidir y documentar.
+5. Cantidad + unidad + frecuencia en el flujo principal; preferido, marcas y sustitución en una sección secundaria. Confirmación para borrar; errores con `fields` junto a cada campo.
+6. E2E en `apps/web/e2e/` (Edge real): onboarding completo y reanudado; 5 kg de pollo semanal + 2 kg en despensa; edición y borrado; ubicación omitida; usuario sin rutina; persistencia tras reload; teclado y móvil 390 px; caché limpia al logout. Agregar la suite a `npm.cmd run test:e2e`.
+7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Cierra la fase 4; el siguiente es P5-01.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1, 2 y 3 (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) ya están implementadas, probadas y publicadas; no las rehagas. El próximo paso es P4-01 (CRUD de rutinas y despensa con ownership), descrito en docs/steps/phase-04.md. Todo va detrás del guard de sesión y filtrando por el usuario del token: un id del cliente no determina propiedad. Probalo contra la base real con npm.cmd run test:db y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1, 2 y 3 y el paso P4-01 (API privada de rutinas y despensa) ya están implementados, probados y publicados; no los rehagas. El próximo paso es P4-02 (onboarding, /mis-compras, /mi-despensa y preferencias en la web), descrito en docs/steps/phase-04.md, contra la API documentada en docs/API.md. Antes de tocar apps/web leé apps/web/AGENTS.md. Probalo con E2E en Edge real (npm.cmd run test:e2e) además de npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

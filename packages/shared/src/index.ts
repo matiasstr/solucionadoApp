@@ -270,3 +270,70 @@ export interface CanonicalPricesDto {
   /** Una oferta por presentación y sucursal, comparables por unidad base. */
   offers: CanonicalOfferDto[];
 }
+
+// Rutinas y despensa privadas (P4-01). Espejo de apps/api/src/modules/routines y inventory.
+
+export interface CanonicalSummaryDto {
+  id: string;
+  name: string;
+  defaultUnit: BaseUnit;
+}
+
+export interface PreferredProductDto {
+  id: string;
+  name: string;
+  brand: string | null;
+  quantity: DecimalString;
+  unit: MeasurementUnit;
+}
+
+export interface RoutineScheduleDto {
+  frequencyDays: number;
+  /** Fecha de calendario `AAAA-MM-DD`, sin hora. */
+  anchorDate: string;
+  /** `true` si el ítem usa la frecuencia y el ancla de su rutina. */
+  inherited: boolean;
+}
+
+export interface RoutineItemDto {
+  id: string;
+  routineId: string;
+  canonicalProduct: CanonicalSummaryDto;
+  preferredProduct: PreferredProductDto | null;
+  /** Necesidad por ocurrencia, en la unidad del canónico. */
+  quantity: DecimalString;
+  unit: BaseUnit;
+  schedule: RoutineScheduleDto;
+  allowSubstitutes: boolean;
+  preferredBrands: string[];
+  excludedBrands: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoutineDto {
+  id: string;
+  name: string;
+  frequencyDays: number;
+  anchorDate: string;
+  items: RoutineItemDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoutineListDto {
+  items: RoutineDto[];
+}
+
+export interface InventoryItemDto {
+  id: string;
+  canonicalProduct: CanonicalSummaryDto;
+  /** Saldo aproximado en la unidad del canónico. */
+  quantity: DecimalString;
+  unit: BaseUnit;
+  updatedAt: string;
+}
+
+export interface InventoryListDto {
+  items: InventoryItemDto[];
+}

@@ -1,12 +1,12 @@
 # API de Tus Ofertas
 
-Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios). Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
+Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas y despensa. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
 
 Todos los ejemplos salieron del dataset **DEMO** (`npm.cmd run db:seed`): los precios son ficticios y no representan ofertas reales de esas cadenas.
 
 ## Convenciones
 
-- Prefijo `/api`. Estos endpoints son públicos: no requieren sesión.
+- Prefijo `/api`. Catálogo, precios, comercios y promociones son públicos: no requieren sesión. Rutinas y despensa sí (ver [Rutinas y despensa](#rutinas-y-despensa-privadas)).
 - **Decimales como texto** (`"1314.51"`), nunca `number`: el redondeo binario cambiaría importes (ADR 0002). Los importes van con 2 decimales y los precios por unidad base con 6.
 - **Fechas ISO 8601 en UTC** (`"2026-09-21T12:00:00.000Z"`). El calendario comercial (días de promoción) se interpreta en `America/Argentina/Buenos_Aires`.
 - **Errores**: `{ statusCode, error, message, fields? }`. `fields` nombra propiedades, nunca valores. Un identificador mal formado devuelve `400`, no `404`.
@@ -266,6 +266,72 @@ Filtros: `storeId`, `chainId`, `productId`, `canonicalProductId`, `type`, `activ
 
 Tipos: `PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE` y `BANK_DISCOUNT` (modelado, sin aplicar hasta P10-01). La semántica exacta de cada uno está en [ADR 0009](architecture-decisions/0009-promotion-engine.md).
 
+## Rutinas y despensa (privadas)
+
+Requieren `Authorization: Bearer <accessToken>` (sin token: `401`) y responden con `Cache-Control: no-store`. **Solo ven lo del usuario del token**: una rutina, un ítem o una fila de despensa ajena responde `404` con el mismo cuerpo que una inexistente. Un ítem se identifica por rutina **y** por id: un ítem propio bajo la URL de una rutina ajena también es `404`. Enviar `userId`, `routineId` o cualquier campo no documentado es `400`. Decisiones en [ADR 0011](architecture-decisions/0011-routines-inventory-ownership.md).
+
+**Cantidades**: texto decimal (`"500"`, `"1.5"`) con cualquier unidad de la dimensión del canónico (`KG`/`G`, `L`/`ML`, `UNIT`). Se guardan y se devuelven en la unidad del canónico: `{"quantity": "500", "unit": "G"}` para arroz vuelve como `{"quantity": "0.5", "unit": "KG"}`. Otra dimensión es `400 UNIT_DIMENSION_MISMATCH`; más de 4 decimales en la unidad del canónico es `400 QUANTITY_INVALID`. Cantidad y unidad se envían siempre juntas.
+
+**Frecuencia**: `frequencyDays` de 1 a 365 (semanal = 7, cada 15 días = 15; un mes no se aproxima a 30) y `anchorDate` como fecha de calendario `AAAA-MM-DD`, que debe existir.
+
+| Método y ruta | Cuerpo | Resultado |
+| --- | --- | --- |
+| `GET /shopping-routines` | — | `200 { items: RoutineDto[] }`, por fecha de alta |
+| `POST /shopping-routines` | `{ name, frequencyDays?, anchorDate? }` | `201 RoutineDto`. Por defecto 7 días y ancla hoy en hora argentina. `409 ROUTINE_LIMIT` (20 por usuario) |
+| `GET /shopping-routines/:id` | — | `200 RoutineDto` con sus ítems |
+| `PATCH /shopping-routines/:id` | `{ name?, frequencyDays?, anchorDate? }` | `200 RoutineDto`; los ítems que heredan ven el cambio |
+| `DELETE /shopping-routines/:id` | — | `204`; borra sus ítems. La despensa no cambia |
+| `POST /shopping-routines/:id/items` | ver abajo | `201 RoutineItemDto`; `409 ROUTINE_ITEM_DUPLICATE` si el canónico ya está; `409 ROUTINE_ITEM_LIMIT` (100) |
+| `PATCH /shopping-routines/:id/items/:itemId` | los mismos campos salvo `canonicalProductId` | `200 RoutineItemDto` |
+| `DELETE /shopping-routines/:id/items/:itemId` | — | `204` |
+| `GET /inventory` | — | `200 { items: InventoryItemDto[] }`, por nombre del canónico |
+| `POST /inventory` | `{ canonicalProductId, quantity, unit }` | `201 InventoryItemDto`; `409 INVENTORY_DUPLICATE` si ya hay fila para ese canónico |
+| `PATCH /inventory/:id` | `{ quantity, unit }` | `200 InventoryItemDto`; actualiza `updatedAt` |
+| `DELETE /inventory/:id` | — | `204` |
+
+Campos de un ítem:
+
+| Campo | Regla |
+| --- | --- |
+| `canonicalProductId` | Obligatorio al crear; no se cambia después (borrar y volver a agregar). Inexistente: `400 CANONICAL_NOT_FOUND` |
+| `quantity` + `unit` | Necesidad **por ocurrencia**, mayor que cero |
+| `preferredProductId` | Opcional; `null` lo quita. Debe ser una presentación activa del mismo canónico: si no, `400 PREFERRED_PRODUCT_INVALID` |
+| `allowSubstitutes` | `true` por defecto. En `false` exige preferido: `400 PREFERRED_PRODUCT_REQUIRED` |
+| `frequencyDays` + `anchorDate` | Opcionales y **juntos**. Omitidos o ambos `null`: hereda de la rutina. Solo uno: `400 SCHEDULE_OVERRIDE_INCOMPLETE` |
+| `preferredBrands`, `excludedBrands` | Hasta 20 cada una; se recortan y se deduplican sin distinguir mayúsculas ni tildes. Una marca en ambas: `400 BRANDS_OVERLAP` |
+
+En un PATCH las reglas se evalúan sobre el resultado: no se puede quitar el preferido de un ítem sin sustitutos, ni preferir una marca que ya está excluida.
+
+```json
+{
+  "id": "…",
+  "routineId": "…",
+  "canonicalProduct": { "id": "…", "name": "Arroz largo fino", "defaultUnit": "KG" },
+  "preferredProduct": { "id": "…", "name": "Arroz largo fino Pampa 1 kg", "brand": "Pampa", "quantity": "1", "unit": "KG" },
+  "quantity": "0.5",
+  "unit": "KG",
+  "schedule": { "frequencyDays": 7, "anchorDate": "2026-09-21", "inherited": true },
+  "allowSubstitutes": false,
+  "preferredBrands": ["Pampa"],
+  "excludedBrands": ["Del Sur"],
+  "createdAt": "2026-09-23T15:04:05.000Z",
+  "updatedAt": "2026-09-23T15:04:05.000Z"
+}
+```
+
+`schedule` es la frecuencia **aplicada**; `inherited: true` indica que viene de la rutina. La despensa es un saldo aproximado (`{ id, canonicalProduct, quantity, unit, updatedAt }`), admite cero y no registra lotes, vencimientos ni consumo automático: generar un plan no la modifica.
+
+### Preferencias de compra (`PATCH /users/me`)
+
+| Campo | Regla |
+| --- | --- |
+| `maxTravelDistanceKm` | 0,1 a 100 km (el mismo rango que `radiusKm`) |
+| `maxStoresPerShoppingPlan` | 1 a 20, o `null` = **sin límite**. Cero es inválido |
+| `city` + `province` | Juntas; `null` en las dos las borra |
+| `latitude` + `longitude` | Juntas; opcionales |
+
+Las columnas que no admiten vacío (`maxTravelDistanceKm`, penalizaciones, listas) rechazan `null` con `400`.
+
 ## Qué todavía no expone la API
 
-Historial de precios y gráficos (fase 6), rutinas, inventario y preferencias de compra (fase 4), planes de compra y ahorro estimado (fase 5), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Historial de precios y gráficos (fase 6), planes de compra y ahorro estimado (fase 5), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

@@ -54,7 +54,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P2-03 | Motor básico de promociones con tests y datos demo | P2-01 | COMPLETO |
 | P3-01 | Búsqueda y comparación API con filtros y paginación | P2-02, P2-03 | COMPLETO |
 | P3-02 | Landing, buscador y ficha de producto | P3-01, P1-04 | COMPLETO |
-| P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | PENDIENTE |
+| P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | COMPLETO |
 | P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | PENDIENTE |
 | P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | PENDIENTE |
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | PENDIENTE |
@@ -93,6 +93,14 @@ Verificado al cerrar P3-01: `npm.cmd run verify` (68/68 unitarios, typecheck, li
 Para que las tarjetas pudieran mostrar precio, `GET /products` ahora devuelve `bestOffer` (la oferta más barata por unidad base dentro del alcance), y la búsqueda y la comparación se movieron al módulo `search`, que compone catálogo, precios, comercios y promociones sin ciclos. El seed pasó a anclar las observaciones en el último mediodía UTC **ya transcurrido**: antes podía fechar precios en el futuro.
 
 Verificado al cerrar la fase: `npm.cmd run verify` (68/68 unitarios, typecheck, lint, build API + web), `npm.cmd run test:db` (67/67 contra PostgreSQL/PostGIS real) y `npm.cmd run test:e2e` (10/10 de búsqueda y comparación en Edge real, con capturas de escritorio y móvil en `.cache/verification/p3-02`).
+
+## Estado de la fase 4 (compras habituales) — EN CURSO
+
+**P4-01 — COMPLETO.** API privada `/shopping-routines` (rutinas con nombre, frecuencia en días y ancla; ítems con canónico, preferido opcional, cantidad por ocurrencia, frecuencia heredada o propia, sustitución y marcas preferidas/excluidas) y `/inventory` (una fila por canónico, saldo no negativo con fecha de actualización). Toda consulta filtra por el usuario del token: lo ajeno responde 404 igual que lo inexistente, también para ítems bajo una rutina que no corresponde. Las cantidades se aceptan en cualquier unidad de la dimensión y se guardan en la del canónico sin redondear. En un PATCH las reglas (preferido obligatorio sin sustitutos, marcas disjuntas sin distinguir mayúsculas ni tildes, frecuencia y ancla juntas) se evalúan sobre el resultado. Límites de 20 rutinas y 100 ítems contados bajo bloqueo de fila. Preferencias en `PATCH /users/me`: radio 0,1–100 km, `null` = sin límite de sucursales, localidad completa y `null` rechazado en columnas obligatorias. Sin migración nueva: el schema de P1-02 ya tenía tablas, unicidad y `CHECK`. Decisiones en [ADR 0011](docs/architecture-decisions/0011-routines-inventory-ownership.md); contratos en [docs/API.md](docs/API.md#rutinas-y-despensa-privadas).
+
+Verificado al cerrar P4-01: `npm.cmd run verify` (77/77 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (79/79 contra PostgreSQL/PostGIS real, incluidos los 12 tests HTTP nuevos de `routines-api.test.cjs`).
+
+**P4-02 — PENDIENTE.** Onboarding, `/mis-compras`, `/mi-despensa` y panel de preferencias contra esta API.
 
 ## Las diez fases
 

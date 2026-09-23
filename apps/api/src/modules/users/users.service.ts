@@ -9,6 +9,10 @@ import type { UserProfile } from './user-profile';
 const invalid = (fields: string[]) =>
   new PublicHttpException(400, 'VALIDATION_FAILED', 'Revisá los datos ingresados.', fields);
 
+/** Mismo rango que `radiusKm` en la API pública (docs/API.md). */
+export const MIN_TRAVEL_DISTANCE_KM = 0.1;
+export const MAX_TRAVEL_DISTANCE_KM = 100;
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -27,7 +31,15 @@ export class UsersService {
     }
     if (dto.latitude != null && Math.abs(Number(dto.latitude)) > 90) throw invalid(['latitude']);
     if (dto.longitude != null && Math.abs(Number(dto.longitude)) > 180) throw invalid(['longitude']);
-    if (dto.maxTravelDistanceKm !== undefined && Number(dto.maxTravelDistanceKm) <= 0) {
+    // La localidad se usa como alcance (ciudad + provincia): se envían y se borran juntas.
+    const hasCity = dto.city !== undefined;
+    if (hasCity !== (dto.province !== undefined) || (hasCity && (dto.city === null) !== (dto.province === null))) {
+      throw invalid(['city', 'province']);
+    }
+    if (
+      dto.maxTravelDistanceKm !== undefined &&
+      (Number(dto.maxTravelDistanceKm) < MIN_TRAVEL_DISTANCE_KM || Number(dto.maxTravelDistanceKm) > MAX_TRAVEL_DISTANCE_KM)
+    ) {
       throw invalid(['maxTravelDistanceKm']);
     }
 
