@@ -187,7 +187,7 @@ El calculador vive en el dominio (`priceLine`), no en la API: recibe precio unit
 
 ## Deploy
 
-La web está publicada en **https://tusofertas.vercel.app** y la API en **https://tusofertas-api.vercel.app** (Vercel, región `gru1`), con la base en Supabase (PostgreSQL + PostGIS) por la integración del Marketplace. La web llama a la API por el mismo origen (`API_ORIGIN`). Las migraciones se aplican en el build de la API; producción **no** tiene dataset DEMO, así que el catálogo está vacío. Comandos de deploy y detalles en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--web--api--supabase-adr-0010) y [ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md).
+La web está publicada en **https://tusofertas.vercel.app** y la API en **https://tusofertas-api.vercel.app** (Vercel, región `gru1`), con la base en Supabase (PostgreSQL + PostGIS) por la integración del Marketplace. La web llama a la API por el mismo origen (`API_ORIGIN`). Las migraciones se aplican en el build de la API; producción **no** tiene dataset DEMO, así que el catálogo está vacío. En Vercel la API usa `TRUST_PROXY=vercel` para que el rate limit cuente por cliente. Comandos de deploy y detalles en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--web--api--supabase-adr-0010) y [ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md).
 
 ## Migraciones y seeds
 

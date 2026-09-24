@@ -37,7 +37,9 @@ class Environment {
   HOST = '127.0.0.1';
 
   // Proxies confiables para X-Forwarded-For (IP real en rate limit). Vacío = ninguno.
-  @IsIn(['', 'loopback', 'uniquelocal', 'loopback,uniquelocal'])
+  // `vercel` = confiar en exactamente un salto: Vercel reemplaza X-Forwarded-For con la IP
+  // del cliente y descarta la que manda el cliente (verificado en producción, ADR 0010).
+  @IsIn(['', 'loopback', 'uniquelocal', 'loopback,uniquelocal', 'vercel'])
   TRUST_PROXY = '';
 
   @Transform(({ value }: { value: unknown }) =>
@@ -108,8 +110,8 @@ export interface ApiConfig {
   readonly port: number;
   readonly host: string;
   readonly corsOrigins: readonly string[];
-  /** Valor para Express `trust proxy`; false si no hay proxy delante. */
-  readonly trustProxy: string | false;
+  /** Valor para Express `trust proxy` (nombres de subred o cantidad de saltos); false si no hay proxy. */
+  readonly trustProxy: string | number | false;
   /** Secreto: no registrar ni devolver. */
   readonly databaseUrl: string;
   readonly auth: {
@@ -192,7 +194,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     port: env.PORT,
     host: env.HOST,
     corsOrigins: Object.freeze([...new Set(env.CORS_ORIGINS)]),
-    trustProxy: env.TRUST_PROXY || false,
+    trustProxy: env.TRUST_PROXY === 'vercel' ? 1 : env.TRUST_PROXY || false,
     databaseUrl: env.DATABASE_URL,
     auth: Object.freeze({
       accessSecret: env.JWT_ACCESS_SECRET,

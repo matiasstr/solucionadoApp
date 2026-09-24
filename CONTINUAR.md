@@ -207,7 +207,8 @@ Desplegado y verificado el 2026-09-24. Cuenta `matiasstr`, scope `matiasstrs-pro
 - **Producción no tiene dataset DEMO**: el catálogo está vacío (búsquedas sin resultados) hasta la fase 7. No correr `db:seed` contra Supabase.
 - `@nestjs/jwt` se reemplazó por `jsonwebtoken` 9.0.3 porque es solo ESM y el cargador de Vercel no lo acepta (`ERR_REQUIRE_ESM`). Antes de sumar una dependencia de runtime, verificar que publique CommonJS.
 - Smoke en producción (2026-09-24, vía la web same-origin): health 200, ready 200 con `database: up`, ruta inexistente 404, registro 201 con cookie `Secure`, `/users/me` 200, alta y baja de rutina 201/204, sin token 401, clave incorrecta 401, login 200, refresh 200, refresh reusado 401 (replay), logout 204, registro sin CSRF 403, `/`, `/login` y `/buscar` 200. Quedó la cuenta de prueba `smoke-1790282114436@example.com` (no hay endpoint para borrarla).
-- **Pendiente:** `TRUST_PROXY` no admite el proxy de Vercel: el rate limit de auth ve la IP del proxy y agrupa a los usuarios de cada instancia (ver ADR 0010). También quedaron sin trackear `.agents/`, `.claude/` y `skills-lock.json`, creados por la integración de Supabase: no commitearlos (preguntar al usuario si van al `.gitignore`).
+- `TRUST_PROXY=vercel` (un salto) cargado en `tusofertas-api`: el rate limit de auth cuenta por IP de cliente. Verificado en producción que Vercel entrega una sola entrada en `X-Forwarded-For` y descarta la del cliente (ADR 0010). Pendiente para P8: el contador es memoria por instancia.
+- `.agents/`, `.claude/` y `skills-lock.json` (skills locales que instaló la integración) están en `.gitignore`.
 - Lockfile: el original (generado en Windows) no tenía las variantes Linux de binarios opcionales (lightningcss, @tailwindcss/oxide, @next/swc, sharp, unrs-resolver) ni su `integrity` — bug npm/cli#4828 — y el build de Vercel fallaba. Se regeneraron esas entradas en una copia limpia sin `node_modules`, con **las mismas versiones**; `npm ci` + `verify` locales siguen en verde. Si vuelve a pasar tras actualizar dependencias: quitar del lock esos paquetes **y sus padres** y correr `npm install --package-lock-only` en un directorio sin `node_modules`.
 
 ## Git y autorización persistente
@@ -221,7 +222,7 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P3-01** `f099b9a` (publicado).
 - **P3-02** `900f2c9` (publicado).
 - **P4-01** `b965226` (publicado).
-- **Deploy de la API (ADR 0010)**: commit `chore(deploy): ...` del 2026-09-24; su hash se informa al cerrar la sesión.
+- **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: commit `fix(deploy): ...` del 2026-09-24.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
 ## Cómo seguir con P4-02

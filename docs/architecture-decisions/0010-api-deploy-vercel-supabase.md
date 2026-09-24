@@ -18,4 +18,9 @@ Estado: aceptado. Fecha: 2026-09-24. Contexto: publicar la API Nest y la base pa
 
 - La web usa `API_ORIGIN=https://tusofertas-api.vercel.app` (rewrite same-origin, ADR 0007): el navegador solo habla con `tusofertas.vercel.app`.
 - Si la CA de Supabase se rota, hay que reemplazar `certs/supabase-ca.crt` (panel → Project Settings → Database → SSL Configuration).
-- **Pendiente:** `TRUST_PROXY` no admite el proxy de Vercel, así que el rate limit de auth ve la IP del proxy y cuenta a todos los usuarios de una instancia juntos. Además es memoria por instancia (ADR 0003). Se resuelve con una opción explícita para Vercel o con Redis (P8).
+
+## IP del cliente y rate limit (2026-09-24)
+
+Verificado en producción con un diagnóstico temporal que registró solo hashes de las IP (ya retirado): tanto por la web (rewrite same-origin) como directo, la función recibe `X-Forwarded-For` con **una sola entrada, la IP real del cliente**, y un `X-Forwarded-For` falso enviado por el cliente **se descarta**; el socket es la dirección del proxy de Vercel. Por eso `TRUST_PROXY=vercel` configura Express con `trust proxy = 1` (exactamente un salto) y el rate limit de auth cuenta por cliente. Cargado en `tusofertas-api`. Tests en `test/bootstrap.test.cjs`: con `vercel` cada IP tiene su cupo; sin proxy configurado, un `X-Forwarded-For` del cliente no esquiva el límite.
+
+Sigue pendiente que el contador vive en memoria de cada instancia (ADR 0003): con varias instancias el límite efectivo es mayor. Se mueve a Redis en P8.

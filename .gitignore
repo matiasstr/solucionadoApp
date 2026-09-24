@@ -14,3 +14,8 @@ apps/api/src/generated/
 .DS_Store
 Thumbs.db
 .vercel
+
+# Skills de agentes que instala `vercel integration add` (locales, no del proyecto).
+.agents/
+.claude/
+skills-lock.json

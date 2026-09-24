@@ -64,7 +64,7 @@ test('invalid ports, unknown modes, empty hosts and unsafe origins prevent start
     { DATABASE_URL: 'private-fixture' },
     { JWT_ACCESS_SECRET: undefined }, { JWT_ACCESS_SECRET: 'private-fixture-short' },
     { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'solo-desarrollo-cambiar-por-un-valor-aleatorio-largo' },
-    { ACCESS_TOKEN_TTL_SECONDS: '30' }, { REFRESH_TOKEN_TTL_DAYS: '0' }, { JWT_AUDIENCE: 'Bad Audience' }, { TRUST_PROXY: 'true' },
+    { ACCESS_TOKEN_TTL_SECONDS: '30' }, { REFRESH_TOKEN_TTL_DAYS: '0' }, { JWT_AUDIENCE: 'Bad Audience' }, { TRUST_PROXY: 'true' }, { TRUST_PROXY: '2' },
   ];
   for (const input of invalid) {
     assert.throws(() => validateEnvironment({ ...validDb, ...input }), (error) => {
@@ -73,4 +73,10 @@ test('invalid ports, unknown modes, empty hosts and unsafe origins prevent start
       return true;
     });
   }
+});
+
+test('TRUST_PROXY=vercel confía en exactamente un salto', () => {
+  const config = validateEnvironment({ ...validDb, TRUST_PROXY: 'vercel' });
+  assert.equal(config.trustProxy, 1);
+  assert.equal(validateEnvironment({ ...validDb }).trustProxy, false);
 });
