@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { API_CONFIG } from '../../config/environment';
 import type { ApiConfig } from '../../config/environment';
@@ -11,8 +10,6 @@ import { OriginGuard } from './origin.guard';
 
 @Module({
   imports: [
-    // Secreto y opciones se pasan por llamada desde AccessTokenService.
-    JwtModule.register({}),
     // Almacenamiento en memoria: válido para una instancia. Con varias réplicas, mover a Redis (P8).
     ThrottlerModule.forRootAsync({
       inject: [API_CONFIG],

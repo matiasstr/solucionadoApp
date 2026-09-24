@@ -1,6 +1,6 @@
 # ADR 0011 — Rutinas, despensa y ownership
 
-Estado: aceptado. Fecha: 2026-09-23. Contexto: P4-01 (API privada de rutinas y despensa). El número 0010 queda reservado para el despliegue de la API con Supabase (ver CONTINUAR.md).
+Estado: aceptado. Fecha: 2026-09-23. Contexto: P4-01 (API privada de rutinas y despensa). El 0010 es el despliegue de la API con Supabase.
 
 ## Decisión
 

@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { after, before, test } = require('node:test');
 const request = require('supertest');
-const { JwtService } = require('@nestjs/jwt');
+const jwt = require('jsonwebtoken');
 const { createApp } = require('../dist/bootstrap');
 const { JsonLogger } = require('../dist/common/json-logger');
 const { validateEnvironment } = require('../dist/config/environment');
@@ -62,10 +62,9 @@ test('registro valida email y política de contraseña sin reflejar valores', as
 });
 
 test('perfil exige un access JWT válido: firma, algoritmo, issuer, audience, expiración y tipo', async () => {
-  const jwt = new JwtService();
   const now = Math.floor(Date.now() / 1000);
   const base = { typ: 'access', sub: USER_ID, iss: 'tusofertas-api', aud: 'tusofertas-web', iat: now, exp: now + 600 };
-  const sign = (payload, secret = SECRET, options = {}) => jwt.sign(payload, { secret, algorithm: 'HS256', ...options });
+  const sign = (payload, secret = SECRET, options = {}) => jwt.sign(payload, secret, { algorithm: 'HS256', ...options });
   const invalid = [
     undefined,
     'Bearer',

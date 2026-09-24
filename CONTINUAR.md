@@ -2,7 +2,7 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) y **P4-01**. Empezar por **P4-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0009 y 0011; el 0010 está reservado para el deploy de la API) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) y **P4-01**. Empezar por **P4-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0011) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
 Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-23, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P4-02 que recuperar.
 
@@ -191,22 +191,24 @@ No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web)
 - `demo-seed` deja una sucursal sin coordenadas (`Vea Morón`), una que informa día por medio (`Vea Flores`) y una que dejó de informar hace 12 días (`Disco Belgrano`). Son casos de prueba, no errores.
 - El E2E de auth crea cuentas `e2e-*@example.com` en la base de desarrollo. `npm test` no requiere DB; `test:db` y `db:seed` requieren Docker. PowerShell: `npm.cmd`/`npx.cmd`. Node 22.18.0; npm 10.9.3.
 
-## Deploy (Vercel) — solo la web
+## Deploy (Vercel) — web + API + Supabase (ADR 0010)
 
-- **URL de producción: https://tusofertas.vercel.app** (proyecto Vercel `tusofertas`, cuenta `matiasstr`, scope `matiasstrs-projects`). Desplegado el 2026-09-18 desde la CLI (`vercel deploy --prod --yes` en la raíz del repo; `.vercel/` ignorado por Git).
-- Configuración del proyecto: root directory `apps/web`, framework Next.js, Node 22.x, install command `cd ../.. && npm ci --include=dev` (instala el monorepo desde el lockfile raíz). `.vercelignore` impide subir `.env`, `.cache`, `node_modules`, `dist`, `.next`.
-- **La API y la base no están desplegadas.** Sin `API_ORIGIN` no hay rewrite: `/api/*` responde 404 y los formularios muestran "No pudimos conectar con el servicio" (verificado en producción). Portada, /login y /register cargan (200); /inicio redirige a login.
-- Para auth en producción: desplegar la API Nest con PostgreSQL + PostGIS, configurar `DATABASE_URL`, `JWT_ACCESS_SECRET` propio, `CORS_ORIGINS=https://tusofertas.vercel.app`, `TRUST_PROXY` según el proveedor, correr `npm run db:deploy`, y definir `API_ORIGIN` en Vercel (`vercel env add API_ORIGIN production`) + redeploy. **No cargar el dataset demo en producción.**
+Desplegado y verificado el 2026-09-24. Cuenta `matiasstr`, scope `matiasstrs-projects`, org `team_HaHit5F3SLJ9EspBBNJOkRgR`. `.vercel/` (ignorado por Git) apunta al proyecto **web**.
+
+| Proyecto | URL | Root | Deploy (desde la raíz del repo) |
+| --- | --- | --- | --- |
+| `tusofertas` (web) | https://tusofertas.vercel.app | `apps/web` | `vercel deploy --prod --yes` |
+| `tusofertas-api` (`prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY`) | https://tusofertas-api.vercel.app | `apps/api` | `VERCEL_ORG_ID=team_HaHit5F3SLJ9EspBBNJOkRgR VERCEL_PROJECT_ID=prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY vercel deploy --prod --yes` |
+
+- Base: **Supabase `tusofertas-db`** (integración del Marketplace, conectada a `tusofertas-api`). Inyecta `POSTGRES_URL` (pooler transacción), `POSTGRES_URL_NON_POOLING` (sesión) y otras; no copiarlas a la máquina.
+- Build de la API: `apps/api/vercel.json` → `node scripts/vercel-build.cjs` (generate + `migrate deploy` solo si `VERCEL_ENV=production` + build + `public/robots.txt`). Migración `20260918120000_init` aplicada en Supabase (PostGIS incluido); los deploys siguientes informan "No pending migrations".
+- Runtime: `api/index.js` resuelve la URL con `api/_database-url.js` (`POSTGRES_URL` → `sslmode=verify-full` + `sslrootcert=certs/supabase-ca.crt`, incluido con `includeFiles`). TLS verificado, sin desactivar la validación.
+- Variables de la API: `JWT_ACCESS_SECRET` (aleatoria), `CORS_ORIGINS=https://tusofertas.vercel.app` + las de la integración. Web: `API_ORIGIN=https://tusofertas-api.vercel.app`.
+- **Producción no tiene dataset DEMO**: el catálogo está vacío (búsquedas sin resultados) hasta la fase 7. No correr `db:seed` contra Supabase.
+- `@nestjs/jwt` se reemplazó por `jsonwebtoken` 9.0.3 porque es solo ESM y el cargador de Vercel no lo acepta (`ERR_REQUIRE_ESM`). Antes de sumar una dependencia de runtime, verificar que publique CommonJS.
+- Smoke en producción (2026-09-24, vía la web same-origin): health 200, ready 200 con `database: up`, ruta inexistente 404, registro 201 con cookie `Secure`, `/users/me` 200, alta y baja de rutina 201/204, sin token 401, clave incorrecta 401, login 200, refresh 200, refresh reusado 401 (replay), logout 204, registro sin CSRF 403, `/`, `/login` y `/buscar` 200. Quedó la cuenta de prueba `smoke-1790282114436@example.com` (no hay endpoint para borrarla).
+- **Pendiente:** `TRUST_PROXY` no admite el proxy de Vercel: el rate limit de auth ve la IP del proxy y agrupa a los usuarios de cada instancia (ver ADR 0010). También quedaron sin trackear `.agents/`, `.claude/` y `skills-lock.json`, creados por la integración de Supabase: no commitearlos (preguntar al usuario si van al `.gitignore`).
 - Lockfile: el original (generado en Windows) no tenía las variantes Linux de binarios opcionales (lightningcss, @tailwindcss/oxide, @next/swc, sharp, unrs-resolver) ni su `integrity` — bug npm/cli#4828 — y el build de Vercel fallaba. Se regeneraron esas entradas en una copia limpia sin `node_modules`, con **las mismas versiones**; `npm ci` + `verify` locales siguen en verde. Si vuelve a pasar tras actualizar dependencias: quitar del lock esos paquetes **y sus padres** y correr `npm install --package-lock-only` en un directorio sin `node_modules`.
-
-### BLOQUEADO (desde 2026-09-18): API + Supabase gratis
-
-Decisión del usuario: plan gratuito; Supabase si cumple (cumple: PostGIS, triggers/CHECKs, pooler IPv4 en modo sesión 5432 para migraciones y transacción 6543 para runtime), si no Neon.
-
-- Hecho: proyecto Vercel `tusofertas-api` (id `prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY`; root `apps/api`, framework other, Node 22, install `cd ../.. && npm ci --include=dev`, build `npm run db:generate && npm run build && mkdir -p public`). Variables de producción cargadas: `JWT_ACCESS_SECRET` (aleatoria, sensible), `CORS_ORIGINS=https://tusofertas.vercel.app`. Adaptador serverless `apps/api/api/index.js` + `apps/api/vercel.json` (región gru1, todo reescrito a `/api/index`), **probado en local** con la base de Docker (ready 200, validación 400, ruta inexistente 404) y commiteado.
-- **Bloqueo que requiere al usuario:** `vercel integration add supabase` exige aceptar los términos del Marketplace en https://vercel.com/matiasstrs-projects/~/integrations/accept-terms/supabase?source=cli
-- Próximo comando (con el proyecto API, sin cambiar `.vercel/` de la web): `VERCEL_ORG_ID=<orgId de .vercel/project.json> VERCEL_PROJECT_ID=prj_nXuVeI3OOFdz5YLQgm5aAofCP6CY vercel integration add supabase --name tusofertas-db -m region=gru1 --no-env-pull --non-interactive`.
-- Después: mapear la URL pooled de la integración a `DATABASE_URL`, revisar SSL de `pg` con el pooler, `prisma migrate deploy` contra la URL de sesión (5432), deploy de la API, `API_ORIGIN=https://tusofertas-api.vercel.app` en el proyecto web + redeploy, smoke de registro/login en producción, **ADR 0010** (0008 es catálogo/precios y 0009 promociones).
 
 ## Git y autorización persistente
 
@@ -218,7 +220,8 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P2-03** `c1ffb10` (publicado).
 - **P3-01** `f099b9a` (publicado).
 - **P3-02** `900f2c9` (publicado).
-- **P4-01**: commit `feat(P4-01): ...` creado y publicado en la sesión del 2026-09-23; su hash se informa al cerrar la sesión e integra el próximo checkpoint.
+- **P4-01** `b965226` (publicado).
+- **Deploy de la API (ADR 0010)**: commit `chore(deploy): ...` del 2026-09-24; su hash se informa al cerrar la sesión.
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
 ## Cómo seguir con P4-02

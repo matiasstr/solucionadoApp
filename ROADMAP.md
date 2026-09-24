@@ -100,6 +100,8 @@ Verificado al cerrar la fase: `npm.cmd run verify` (68/68 unitarios, typecheck, 
 
 Verificado al cerrar P4-01: `npm.cmd run verify` (77/77 unitarios, typecheck, lint, build API + web) y `npm.cmd run test:db` (79/79 contra PostgreSQL/PostGIS real, incluidos los 12 tests HTTP nuevos de `routines-api.test.cjs`).
 
+**Deploy (2026-09-24).** Web, API y base Supabase en producción, con migraciones en el build y TLS verificado ([ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md)). Sin dataset DEMO en producción.
+
 **P4-02 — PENDIENTE.** Onboarding, `/mis-compras`, `/mi-despensa` y panel de preferencias contra esta API.
 
 ## Las diez fases

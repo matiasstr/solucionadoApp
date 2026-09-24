@@ -4,13 +4,14 @@
 const { createApp } = require('../dist/bootstrap');
 const { JsonLogger } = require('../dist/common/json-logger');
 const { validateEnvironment } = require('../dist/config/environment');
+const { resolveDatabaseUrl } = require('./_database-url');
 
 const logger = new JsonLogger();
 let server;
 
 function getServer() {
   server ??= (async () => {
-    const app = await createApp(validateEnvironment(process.env), logger);
+    const app = await createApp(validateEnvironment({ ...process.env, DATABASE_URL: resolveDatabaseUrl(process.env) }), logger);
     await app.init();
     return app.getHttpAdapter().getInstance();
   })().catch((error) => {

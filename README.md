@@ -187,7 +187,7 @@ El calculador vive en el dominio (`priceLine`), no en la API: recibe precio unit
 
 ## Deploy
 
-La web está publicada en **https://tusofertas.vercel.app** (Vercel, root `apps/web`, install `cd ../.. && npm ci --include=dev`). La API y la base todavía no están desplegadas: sin `API_ORIGIN` la web informa que el servicio no está disponible. Redeploy manual: `vercel deploy --prod` desde la raíz del repo. Detalles y pasos pendientes en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--solo-la-web).
+La web está publicada en **https://tusofertas.vercel.app** y la API en **https://tusofertas-api.vercel.app** (Vercel, región `gru1`), con la base en Supabase (PostgreSQL + PostGIS) por la integración del Marketplace. La web llama a la API por el mismo origen (`API_ORIGIN`). Las migraciones se aplican en el build de la API; producción **no** tiene dataset DEMO, así que el catálogo está vacío. Comandos de deploy y detalles en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--web--api--supabase-adr-0010) y [ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md).
 
 ## Migraciones y seeds
 
