@@ -99,7 +99,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       const credentials = { email: email.trim(), password };
       if (mode === 'register') {
         await register(credentials);
-        router.replace('/bienvenida');
+        router.replace('/onboarding');
       } else {
         await login(credentials);
         router.replace(next);

@@ -6,6 +6,14 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from '../../lib/auth/auth-provider';
 
+const NAV = [
+  { href: '/inicio', label: 'Inicio' },
+  { href: '/mis-compras', label: 'Mis compras' },
+  { href: '/mi-despensa', label: 'Mi despensa' },
+  { href: '/preferencias', label: 'Preferencias' },
+  { href: '/buscar', label: 'Comparar precios' },
+] as const;
+
 /**
  * Límite de navegación privada. Solo evita mostrar pantallas sin sesión: la autorización
  * real la hace la API en cada pedido.
@@ -51,6 +59,13 @@ export function PrivateShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </div>
+        <nav className="private-nav mx-auto max-w-6xl px-6" aria-label="Tu cuenta">
+          {NAV.map((link) => (
+            <Link key={link.href} href={link.href} className="private-nav-link" aria-current={pathname === link.href ? 'page' : undefined}>
+              {link.label}
+            </Link>
+          ))}
+        </nav>
       </header>
       <main id="contenido" className="private-main mx-auto max-w-6xl px-6">{children}</main>
     </div>

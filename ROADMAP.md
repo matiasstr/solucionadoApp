@@ -55,7 +55,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P3-01 | Búsqueda y comparación API con filtros y paginación | P2-02, P2-03 | COMPLETO |
 | P3-02 | Landing, buscador y ficha de producto | P3-01, P1-04 | COMPLETO |
 | P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | COMPLETO |
-| P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | PENDIENTE |
+| P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | COMPLETO |
 | P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | PENDIENTE |
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | PENDIENTE |
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | PENDIENTE |
@@ -94,7 +94,7 @@ Para que las tarjetas pudieran mostrar precio, `GET /products` ahora devuelve `b
 
 Verificado al cerrar la fase: `npm.cmd run verify` (68/68 unitarios, typecheck, lint, build API + web), `npm.cmd run test:db` (67/67 contra PostgreSQL/PostGIS real) y `npm.cmd run test:e2e` (10/10 de búsqueda y comparación en Edge real, con capturas de escritorio y móvil en `.cache/verification/p3-02`).
 
-## Estado de la fase 4 (compras habituales) — EN CURSO
+## Estado de la fase 4 (compras habituales) — COMPLETA
 
 **P4-01 — COMPLETO.** API privada `/shopping-routines` (rutinas con nombre, frecuencia en días y ancla; ítems con canónico, preferido opcional, cantidad por ocurrencia, frecuencia heredada o propia, sustitución y marcas preferidas/excluidas) y `/inventory` (una fila por canónico, saldo no negativo con fecha de actualización). Toda consulta filtra por el usuario del token: lo ajeno responde 404 igual que lo inexistente, también para ítems bajo una rutina que no corresponde. Las cantidades se aceptan en cualquier unidad de la dimensión y se guardan en la del canónico sin redondear. En un PATCH las reglas (preferido obligatorio sin sustitutos, marcas disjuntas sin distinguir mayúsculas ni tildes, frecuencia y ancla juntas) se evalúan sobre el resultado. Límites de 20 rutinas y 100 ítems contados bajo bloqueo de fila. Preferencias en `PATCH /users/me`: radio 0,1–100 km, `null` = sin límite de sucursales, localidad completa y `null` rechazado en columnas obligatorias. Sin migración nueva: el schema de P1-02 ya tenía tablas, unicidad y `CHECK`. Decisiones en [ADR 0011](docs/architecture-decisions/0011-routines-inventory-ownership.md); contratos en [docs/API.md](docs/API.md#rutinas-y-despensa-privadas).
 
@@ -102,7 +102,11 @@ Verificado al cerrar P4-01: `npm.cmd run verify` (77/77 unitarios, typecheck, li
 
 **Deploy (2026-09-24).** Web, API y base Supabase en producción, con migraciones en el build y TLS verificado ([ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md)). Sin dataset DEMO en producción.
 
-**P4-02 — PENDIENTE.** Onboarding, `/mis-compras`, `/mi-despensa` y panel de preferencias contra esta API.
+**P4-02 — COMPLETO.** Web privada contra la API de P4-01: `/onboarding` en cuatro pasos (zona con ubicación exacta opcional y pedida solo al tocar un botón; radio 2/5/10/20 km y máximo 1/2/3/sin límite de sucursales; productos habituales con buscador de canónicos, cantidad, unidad y frecuencia; resumen), `/mis-compras` (listas, necesidades con frecuencia propia o heredada, presentación preferida, marcas y reemplazos en una sección plegada, stock de la despensa junto a cada necesidad), `/mi-despensa` y `/preferencias`. Cada paso guarda antes de avanzar y el onboarding se retoma donde quedó; un reintento no duplica rutinas ni ítems (el 409 se toma como "ya estaba"). Registrarse lleva al onboarding pero nada lo exige: `/inicio` muestra un aviso para continuarlo. Borrar pide confirmación; los errores de la API se muestran junto al campo. Caché por usuario, invalidada al mutar y vaciada al cerrar sesión. Único cambio de API: `onboardingCompleted: true` en `PATCH /users/me` (idempotente, fecha del servidor). Decisiones en [ADR 0012](docs/architecture-decisions/0012-onboarding-private-pages.md).
+
+Verificado al cerrar la fase: `npm.cmd run verify` (80/80 unitarios, typecheck, lint, build API + web con 12 rutas), `npm.cmd run test:db` (80/80 contra PostgreSQL/PostGIS real, con el test nuevo de `onboardingCompleted`) y `npm.cmd run test:e2e` (31/31 en Edge real: 13 nuevos de cuenta, 8 de auth y 10 de búsqueda; capturas en `.cache/verification/p4-02`).
+
+**Siguiente: P5-01** (necesidad semanal y candidatos de compra).
 
 ## Las diez fases
 

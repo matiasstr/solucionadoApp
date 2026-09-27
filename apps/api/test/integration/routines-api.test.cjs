@@ -409,4 +409,25 @@ describe('preferencias de compra en PATCH /users/me', () => {
     assert.equal(cleared.body.city, null);
     assert.equal(cleared.body.maxTravelDistanceKm, '10', 'los rechazos no cambiaron nada');
   });
+
+  test('onboardingCompleted marca la fecha una sola vez y no admite otra cosa que true', async () => {
+    const user = await register();
+    assert.equal((await user.get('/api/users/me').expect(200)).body.onboardingCompletedAt, null);
+
+    const first = await user.patch('/api/users/me').send({ onboardingCompleted: true, maxStoresPerShoppingPlan: 2 }).expect(200);
+    const completedAt = first.body.onboardingCompletedAt;
+    assert.ok(completedAt && !Number.isNaN(Date.parse(completedAt)), 'la fecha la pone el servidor');
+    assert.equal(first.body.maxStoresPerShoppingPlan, 2, 'se combina con otras preferencias');
+
+    // Un reintento no mueve la fecha original.
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    const again = await user.patch('/api/users/me').send({ onboardingCompleted: true }).expect(200);
+    assert.equal(again.body.onboardingCompletedAt, completedAt);
+
+    for (const value of [false, null, 'true', 1]) {
+      await expectError(user.patch('/api/users/me').send({ onboardingCompleted: value }), 400, 'VALIDATION_FAILED', ['onboardingCompleted']);
+    }
+    await expectError(user.patch('/api/users/me').send({ onboardingCompletedAt: new Date().toISOString() }), 400, 'VALIDATION_FAILED', ['onboardingCompletedAt']);
+    assert.equal((await user.get('/api/users/me').expect(200)).body.onboardingCompletedAt, completedAt);
+  });
 });

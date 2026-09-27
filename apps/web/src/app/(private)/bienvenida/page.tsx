@@ -1,9 +1,6 @@
-import type { Metadata } from 'next';
-import { AccountHome } from '../../../components/account/account-home';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Bienvenida · Tus Ofertas' };
-
-// Onboarding pendiente (P4-02): pantalla honesta, sin rutinas ni ahorro inventados.
+// La bienvenida de P1-04 pasó a ser el onboarding (P4-02); se conserva la ruta por enlaces viejos.
 export default function BienvenidaPage() {
-  return <AccountHome welcome />;
+  redirect('/onboarding');
 }

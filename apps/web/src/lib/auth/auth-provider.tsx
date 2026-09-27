@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { SessionResponse, UserProfile } from '@tusofertas/shared';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, apiRequest } from '../api';
+import type { HttpMethod } from '../api';
 import { hadSession, refreshSession, rememberSession } from './session';
 
 type AuthState =
@@ -21,8 +22,9 @@ interface AuthContextValue {
   login(credentials: Credentials): Promise<UserProfile>;
   register(credentials: Credentials): Promise<UserProfile>;
   logout(): Promise<void>;
+  updateUser(user: UserProfile): void;
   /** Petición autenticada: ante 401 renueva una vez (promesa compartida) y reintenta una sola vez. */
-  authRequest<T>(path: string, options?: { method?: 'GET' | 'PATCH' | 'POST'; body?: unknown }): Promise<T>;
+  authRequest<T>(path: string, options?: { method?: HttpMethod; body?: unknown }): Promise<T>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -44,6 +46,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { status: 'authenticated', user: session.user };
     });
   }, [queryClient]);
+
+  /** Mantiene el usuario de la sesión al día después de editar el perfil. */
+  const updateUser = useCallback((user: UserProfile) => {
+    setState((previous) => (previous.status === 'authenticated' && previous.user.id === user.id
+      ? { status: 'authenticated', user }
+      : previous));
+  }, []);
 
   const clear = useCallback((unavailable = false) => {
     accessToken.current = null;
@@ -94,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clear]);
 
-  const authRequest = useCallback(async <T,>(path: string, options: { method?: 'GET' | 'PATCH' | 'POST'; body?: unknown } = {}) => {
+  const authRequest = useCallback(async <T,>(path: string, options: { method?: HttpMethod; body?: unknown } = {}) => {
     const token = accessToken.current;
     if (!token) throw sessionEnded();
     try {
@@ -112,8 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [apply, clear]);
 
   const value = useMemo(
-    () => ({ state, login, register, logout, authRequest }),
-    [state, login, register, logout, authRequest],
+    () => ({ state, login, register, logout, updateUser, authRequest }),
+    [state, login, register, logout, updateUser, authRequest],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

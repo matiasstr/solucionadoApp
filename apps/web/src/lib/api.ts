@@ -19,8 +19,10 @@ function isErrorBody(value: unknown): value is ApiErrorBody {
     && typeof (value as ApiErrorBody).error === 'string' && typeof (value as ApiErrorBody).message === 'string';
 }
 
+export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: HttpMethod;
   body?: unknown;
   accessToken?: string;
   /** Para cancelar una consulta que quedó vieja (búsqueda mientras se escribe). */

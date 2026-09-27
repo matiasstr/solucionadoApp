@@ -1,33 +1,51 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import type { UserProfile } from '@tusofertas/shared';
 import { Surface } from '@tusofertas/ui';
-import { useAuth } from '../../lib/auth/auth-provider';
+import Link from 'next/link';
+import { useInventory, useProfile, useRoutines } from '../../lib/account/queries';
 
 const numberFormat = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 2 });
 const dateFormat = new Intl.DateTimeFormat('es-AR', { dateStyle: 'long', timeZone: 'America/Argentina/Buenos_Aires' });
 
-export function AccountHome({ welcome = false }: { welcome?: boolean }) {
-  const { state, authRequest } = useAuth();
-  const userId = state.status === 'authenticated' ? state.user.id : null;
-  // La clave incluye el usuario: los datos privados nunca se comparten entre sesiones.
-  const profile = useQuery({
-    queryKey: ['me', userId],
-    queryFn: () => authRequest<UserProfile>('/users/me'),
-    enabled: Boolean(userId),
-  });
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+export function AccountHome() {
+  const profile = useProfile();
+  const routines = useRoutines();
+  const inventory = useInventory();
+  const needs = routines.data?.items.reduce((total, routine) => total + routine.items.length, 0);
+  const stock = inventory.data?.items.length;
 
   return (
     <div className="account-home">
-      <p className="eyebrow"><span className="status-dot" /> {welcome ? 'CUENTA CREADA' : 'TU CUENTA'}</p>
-      <h1 className="account-title">{welcome ? '¡Listo! Ya tenés tu cuenta.' : 'Hola de nuevo.'}</h1>
-      <p className="hero-copy">
-        Todavía estamos armando la parte principal: cargar lo que comprás, comparar precios y planificar tu semana.
-        Te avisamos acá en cuanto esté disponible. Por ahora no hay precios ni planes para mostrar.
-      </p>
+      <p className="eyebrow"><span className="status-dot" /> TU CUENTA</p>
+      <h1 className="account-title">Hola de nuevo.</h1>
+
+      {profile.data && !profile.data.onboardingCompletedAt && (
+        <div className="onboarding-banner" role="note">
+          <div>
+            <p className="onboarding-banner-title">Terminá de configurar tu cuenta</p>
+            <p className="muted">Tu zona, hasta dónde vas y qué comprás seguido. Lleva un par de minutos.</p>
+          </div>
+          <Link className="primary-link" href="/onboarding">Continuar configuración</Link>
+        </div>
+      )}
 
       <div className="grid gap-5 md:grid-cols-2">
+        <Surface className="account-card">
+          <h2>Mis compras</h2>
+          <p className="account-figure">
+            {needs === undefined ? '…' : needs === 0 ? 'Todavía no cargaste productos' : plural(needs, 'producto habitual', 'productos habituales')}
+          </p>
+          <Link className="text-link" href="/mis-compras">{needs ? 'Ver y editar' : 'Cargar lo que comprás'}</Link>
+        </Surface>
+        <Surface className="account-card">
+          <h2>Mi despensa</h2>
+          <p className="account-figure">
+            {stock === undefined ? '…' : stock === 0 ? 'Vacía' : plural(stock, 'producto en casa', 'productos en casa')}
+          </p>
+          <Link className="text-link" href="/mi-despensa">{stock ? 'Actualizar cantidades' : 'Cargar lo que tenés'}</Link>
+        </Surface>
         <Surface className="account-card">
           <h2>Tus datos</h2>
           {profile.isPending && <p className="muted" role="status">Cargando…</p>}
@@ -38,21 +56,21 @@ export function AccountHome({ welcome = false }: { welcome?: boolean }) {
               <div><dt>Cuenta creada</dt><dd>{dateFormat.format(new Date(profile.data.createdAt))}</dd></div>
               <div><dt>Distancia máxima</dt><dd>{numberFormat.format(Number(profile.data.maxTravelDistanceKm))} km</dd></div>
               <div>
-                <dt>Tiendas por compra</dt>
+                <dt>Sucursales por compra</dt>
                 <dd>{profile.data.maxStoresPerShoppingPlan ?? 'Sin límite'}</dd>
               </div>
-              <div><dt>Ubicación</dt><dd>{profile.data.city ?? 'Sin cargar'}</dd></div>
+              <div><dt>Zona</dt><dd>{profile.data.city ?? 'Sin cargar'}</dd></div>
             </dl>
           )}
+          <p className="account-card-foot"><Link className="text-link" href="/preferencias">Cambiar preferencias</Link></p>
         </Surface>
         <Surface className="account-card account-next">
           <h2>Lo que viene</h2>
-          <ol>
-            <li>Contanos qué comprás habitualmente y cuánto tenés en casa.</li>
-            <li>Buscá productos y compará precios entre sucursales.</li>
-            <li>Recibí un plan semanal con el ahorro estimado.</li>
-          </ol>
-          <p className="muted">Estas funciones todavía no están disponibles.</p>
+          <p className="muted">
+            Con tus compras habituales y tu despensa vamos a armar un plan con el ahorro estimado.
+            Todavía no está disponible: no mostramos planes ni ahorros inventados.
+          </p>
+          <p className="account-card-foot"><Link className="text-link" href="/buscar">Mientras tanto, compará precios</Link></p>
         </Surface>
       </div>
     </div>

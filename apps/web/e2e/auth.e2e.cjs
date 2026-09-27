@@ -63,8 +63,9 @@ test('registro: validación accesible y alta real contra la API', async () => {
   assert.equal(await page.getByLabel('Contraseña', { exact: true }).getAttribute('type'), 'text');
   await page.screenshot({ path: `${SHOTS}/register-desktop.png`, fullPage: true });
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
-  await page.waitForURL(`${BASE}/bienvenida`);
-  await page.getByRole('heading', { name: '¡Listo! Ya tenés tu cuenta.' }).waitFor();
+  // Una cuenta nueva empieza por el onboarding (P4-02).
+  await page.waitForURL(`${BASE}/onboarding`);
+  await page.getByRole('heading', { name: 'Armemos tu compra habitual' }).waitFor();
   await page.getByText(email).first().waitFor();
   await noTokensInBrowserStorage();
 
@@ -73,7 +74,7 @@ test('registro: validación accesible y alta real contra la API', async () => {
   assert.equal(cookie.httpOnly, true);
   assert.equal(cookie.path, '/api/auth');
   assert.equal(cookie.sameSite, 'Lax');
-  await page.screenshot({ path: `${SHOTS}/bienvenida-desktop.png`, fullPage: true });
+  await page.screenshot({ path: `${SHOTS}/onboarding-desktop.png`, fullPage: true });
 
   const duplicate = await browser.newPage();
   await duplicate.goto(`${BASE}/register`);

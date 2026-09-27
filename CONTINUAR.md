@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1, 2 y 3 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01 y P3-02) y **P4-01**. Empezar por **P4-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0011) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01 y **P4-02**). Empezar por **P5-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0012) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-23, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P4-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-27, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-01 que recuperar.
 
-## Estado: 2026-09-23 — Fases 1, 2 y 3 completas; P4-01 completo
+## Estado: 2026-09-27 — Fases 1, 2, 3 y 4 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P4-02 — Onboarding y páginas privadas** (`docs/steps/phase-04.md`): `/onboarding`, `/mis-compras`, `/mi-despensa` y panel de preferencias, contra la API de P4-01 (contratos en `docs/API.md#rutinas-y-despensa-privadas` y `packages/shared`).
-No están implementadas las pantallas de rutinas/despensa/onboarding, el optimizador, los importadores ni los jobs.
+**Próximo paso: P5-01 — Necesidades y candidatos** (`docs/steps/phase-05.md`): generador puro y determinista de necesidades (ocurrencias por ventana, consolidación por canónico, inventario restado una vez) y de candidatos de compra (precios observados, promociones vigentes, radio/localidad, preferencias y marcas), con razones de exclusión.
+No están implementados el optimizador, los planes, los importadores ni los jobs. **El despliegue de producción no incluye P4-02** (último deploy: 2026-09-24); ver "Deploy".
 
 ## Qué ya existe
 
@@ -66,6 +66,40 @@ No están implementadas las pantallas de rutinas/despensa/onboarding, el optimiz
   - Límites (20 rutinas por usuario, 100 ítems por rutina) contados en transacción con `SELECT … FOR UPDATE` sobre la fila del usuario o de la rutina.
   - Preferencias en `PATCH /users/me`: radio 0,1–100 km, ciudad+provincia juntas, `null` rechazado en columnas no nulas (antes daba 500). `maxStoresPerShoppingPlan: null` = sin límite.
   - ADR 0011. **Sin migración nueva** (el schema de P1-02 ya tenía tablas, unicidad y CHECKs).
+
+- **P4-02 (sesión 2026-09-27): onboarding y páginas privadas.** Cierra la fase 4.
+  - Rutas nuevas en `apps/web/src/app/(private)/`: `onboarding` (con `Suspense` por `useSearchParams`), `mis-compras`, `mi-despensa`, `preferencias`. `/bienvenida` redirige a `/onboarding` y el registro lleva ahí. La barra privada (`components/auth/private-shell.tsx`) tiene navegación con `aria-current`.
+  - Datos: `lib/account/queries.ts` (hooks con claves `['me'|'routines'|'inventory', userId]`, mutaciones que invalidan en `onSettled`, `useEnsureRoutine` que reconsulta antes de crear, buscador público de canónicos y detalle para el preferido) y `lib/account/quantities.ts` (unidades por dimensión, `parseQuantityInput` con coma o punto decimal y sin separador de miles, presets de frecuencia 7/14/15/30, fecha argentina, `apiFieldErrors` que reparte `fields` de la API entre los campos visibles).
+  - Componentes: `account/canonical-picker.tsx` (resultados como botones; deshabilita lo ya cargado), `account/form-parts.tsx` (`QuantityFields`, `FieldError`, `FormAlert` con foco, `ConfirmDelete` en dos pasos con manejo de foco), `routines/routine-item-editor.tsx` (cantidad/unidad/frecuencia a la vista; preferido, reemplazos y marcas en `<details>`), `routines/routines-view.tsx`, `inventory/inventory-view.tsx`, `preferences/preference-fields.tsx` (localidad con sugerencias de sucursales, provincia de lista cerrada, geolocalización solo por botón, radio y sucursales como radios), `preferences/preferences-view.tsx` y `onboarding/onboarding-view.tsx`. `account-home.tsx` pasó a resumen con aviso de onboarding pendiente.
+  - `lib/api.ts` y `authRequest` aceptan `DELETE`; `AuthProvider.updateUser` mantiene el usuario de sesión al día tras editar el perfil. Contratos de pedido nuevos en `packages/shared` (`UpdateProfileRequest`, `CreateRoutineItemRequest`, …).
+  - **API**: `PATCH /users/me` acepta `onboardingCompleted: true` (fecha del servidor, idempotente con `updateMany … onboardingCompletedAt: null`; `false`/`null` son 400). Documentado en `docs/API.md`. ADR 0012.
+  - E2E nuevo `apps/web/e2e/account.e2e.cjs` (13 casos) sumado a `npm.cmd run test:e2e`; `auth.e2e.cjs` ahora espera `/onboarding` tras registrarse.
+
+## Verificaciones ejecutadas (P4-02, 2026-09-27)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **80/80** unitarios, build API + web con **12 rutas**) |
+| `npm.cmd run test:db` | **80/80** integración real (79 previos + 1 de `onboardingCompleted` en `routines-api.test.cjs`) |
+| `npm.cmd run test:e2e` | **31/31** en Edge headless contra web + API reales (13 de cuenta, 8 de auth, 10 de búsqueda) |
+| Revisión visual | Capturas en `.cache/verification/p4-02/` (onboarding y mis compras en escritorio; móvil 390 px de todas las páginas privadas y del editor abierto) |
+
+Cómo se corrió: el puerto 3000 estaba ocupado por otro proceso del usuario (no se tocó). `npm.cmd run db:seed`; API con `PORT=3010 CORS_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 npm.cmd run start` (desde `apps/api`, tras `build`); web con `API_ORIGIN=http://127.0.0.1:3010 npx.cmd next dev --hostname 127.0.0.1 --port 3100` (desde `apps/web`); luego `E2E_BASE_URL=http://127.0.0.1:3100 npm.cmd run test:e2e`. Los servidores se detuvieron antes de `verify` (el build y `next dev` comparten `.next`).
+
+Qué cubren los E2E nuevos: registro → onboarding sin pedir ubicación; zona, radio 10 km y "sin límite" guardados; retomar tras recargar (paso guardado y datos precargados); cantidad inválida con error en el campo y foco; **5 kg de pollo semanal**; alta cuya respuesta se pierde (la API la guardó) y el reintento se informa como "ya estaba" sin duplicar ítems ni rutinas; 500 g de arroz mostrados como 0,5 kg; persistencia tras reload; terminar marca el onboarding y el aviso desaparece; **2 kg de pollo en despensa** visibles junto a la necesidad; producto ya cargado deshabilitado en el buscador; edición con frecuencia propia de 15 días y marcas, con el error `BRANDS_OVERLAP` junto al campo; borrado con confirmación, cancelar que devuelve el foco y borrado persistente; editar y borrar en la despensa; alta completa solo con teclado; **cuenta sin rutina y sin ubicación** que omite todo, con `/buscar` usable antes de terminar; geolocalización solo tras el botón (permiso concedido, guardado, quitado) y aviso al denegarla; localidad sin provincia marcada en el campo; móvil 390 px sin desborde en las seis pantallas y con el editor abierto; logout y login de otra cuenta en la misma pestaña sin datos de la anterior.
+
+No ejecutado en esta sesión: `npm.cmd audit` y el deploy de P4-02 a producción.
+
+## Decisiones y notas (P4-02)
+
+- **Terminar el onboarding** es `onboardingCompleted: true` en `PATCH /users/me`, no un endpoint nuevo; solo `true`, fecha del servidor, idempotente (ADR 0012).
+- **Progreso**: los datos se guardan en la API en cada "Continuar"; el paso va en `?paso=` y, para retomar sin él, en `localStorage` como número por cuenta (`tusofertas:onboarding-step:<userId>`). No es un secreto; si el storage falla se vuelve al paso 1 con los datos ya cargados.
+- **La vista de onboarding lee `localStorage` en un inicializador de `useState`**: es seguro porque `PrivateShell` solo monta hijos con sesión, ya en el navegador (nunca en SSR).
+- **Rutina del onboarding** = la primera de la cuenta, creada con el primer producto ("Compras habituales"). `useEnsureRoutine` vuelve a listar antes de crear.
+- **Cantidades**: se acepta coma o punto decimal; "1.500" se lee como 1,5 (no hay separador de miles) y la pantalla devuelve el valor formateado para que se note.
+- **Frecuencia propia de un ítem**: al elegirla se envía con el ancla de la rutina (o la propia que ya tuviera); "igual que la lista" envía `null`+`null` solo si antes tenía una propia.
+- Los editores de ítem y de despensa ponen el foco en la cantidad al abrirse, porque el botón elegido desaparece.
+- **Producción sin actualizar**: P4-02 no se desplegó en esta sesión. Para publicarlo: deploy de la API (por el cambio de `PATCH /users/me`) y después de la web, con los comandos de "Deploy". En producción el buscador de canónicos no devuelve nada hasta la fase 7 (no hay catálogo), así que el paso de productos queda vacío.
 
 ## Verificaciones ejecutadas (P4-01, 2026-09-23)
 
@@ -222,19 +256,19 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P3-01** `f099b9a` (publicado).
 - **P3-02** `900f2c9` (publicado).
 - **P4-01** `b965226` (publicado).
-- **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: commit `fix(deploy): ...` del 2026-09-24.
+- **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: `3c6c3c7` (publicado).
+- **P4-02**: commit `feat(P4-02): ...` del 2026-09-27 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P4-02
+## Cómo seguir con P5-01
 
-1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (y las guías de Next 16 en `node_modules/next/dist/docs/`), `ROADMAP.md`, `docs/steps/phase-04.md` (P4-02), `docs/API.md#rutinas-y-despensa-privadas` y ADR 0007 y 0011.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`, `npm.cmd run dev`.
-3. Rutas privadas nuevas en `apps/web/src/app/(private)/`: `onboarding`, `mis-compras`, `mi-despensa`, más un panel de preferencias ligado a `PATCH /users/me`. Hooks de TanStack Query con claves por usuario; invalidar al mutar y **limpiar la caché al logout**.
-4. Onboarding: localidad, radio 2/5/10/20 km, máximo de sucursales 1/2/3/sin límite (`null`), productos habituales (buscador de canónicos `GET /canonical-products?search=`). Coordenadas opcionales y **solo tras una acción del usuario**. Persistir progreso (por ejemplo, crear la rutina al primer paso y reusar su id; tratar el 409 de duplicado como "ya estaba") y no bloquear el uso público. Marcar `onboardingCompletedAt` requiere un campo nuevo en `PATCH /users/me` o un endpoint: decidir y documentar.
-5. Cantidad + unidad + frecuencia en el flujo principal; preferido, marcas y sustitución en una sección secundaria. Confirmación para borrar; errores con `fields` junto a cada campo.
-6. E2E en `apps/web/e2e/` (Edge real): onboarding completo y reanudado; 5 kg de pollo semanal + 2 kg en despensa; edición y borrado; ubicación omitida; usuario sin rutina; persistencia tras reload; teclado y móvil 390 px; caché limpia al logout. Agregar la suite a `npm.cmd run test:e2e`.
-7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Cierra la fase 4; el siguiente es P5-01.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-01), `docs/DOMAIN.md` y ADR 0002, 0004, 0008, 0009, 0011 y 0012.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
+3. Módulo `apps/api/src/modules/shopping-plans/` con `domain/` puro: ocurrencias de cada ítem entre las fechas inclusivas del plan (desde `anchorDate` cada `frequencyDays`, en calendario argentino), cantidad × ocurrencias en la unidad del canónico (ya normalizada por P4-01), consolidación por canónico entre rutinas e inventario restado **una sola vez** (mínimo cero) con su antigüedad (`updatedAt`).
+4. Candidatos: precios actuales (`ProductPriceRepository.findCurrentByProducts`, frescura de ADR 0008), promociones vigentes (`PromotionRepository.findActiveFor` + `priceLine`), envases enteros (`planPurchase`), sucursales por radio con coordenadas (PostGIS, `StoreScopeResolver`) o por localidad con advertencia. Respetar preferido sin sustitutos (exacto), marcas excluidas/preferidas y un preferido que se desactivó (P4-01 lo permite). Recorte determinista con límites configurables y razones de exclusión; las necesidades sin precio quedan listadas, no se inventan.
+5. Tests del paso (unitarios del dominio + integración): 5 kg − 2 kg = 3 kg; inventario mayor que la necesidad; quincenal y ventanas parciales; dos rutinas con el mismo canónico; excedente de envases; unidades incompatibles; preferido sin sustituto; precio viejo; sin ubicación.
+6. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P5-02.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1, 2 y 3 y el paso P4-01 (API privada de rutinas y despensa) ya están implementados, probados y publicados; no los rehagas. El próximo paso es P4-02 (onboarding, /mis-compras, /mi-despensa y preferencias en la web), descrito en docs/steps/phase-04.md, contra la API documentada en docs/API.md. Antes de tocar apps/web leé apps/web/AGENTS.md. Probalo con E2E en Edge real (npm.cmd run test:e2e) además de npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4 (hasta P4-02: onboarding, /mis-compras, /mi-despensa y preferencias) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-01 (necesidades y candidatos del planificador), descrito en docs/steps/phase-05.md, con dominio puro y determinista en apps/api/src/modules/shopping-plans. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

@@ -43,6 +43,14 @@ export class UsersService {
       throw invalid(['maxTravelDistanceKm']);
     }
 
+    // Idempotente: conserva la primera fecha aunque se envíe de nuevo (reintento, otra pestaña).
+    if (dto.onboardingCompleted) {
+      await this.prisma.user.updateMany({
+        where: { id: userId, onboardingCompletedAt: null },
+        data: { onboardingCompletedAt: new Date() },
+      });
+    }
+
     // Solo campos explícitos del DTO; el userId sale del token, nunca del cuerpo.
     const user = await this.prisma.user.update({
       where: { id: userId },

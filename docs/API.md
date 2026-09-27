@@ -329,6 +329,7 @@ En un PATCH las reglas se evalúan sobre el resultado: no se puede quitar el pre
 | `maxStoresPerShoppingPlan` | 1 a 20, o `null` = **sin límite**. Cero es inválido |
 | `city` + `province` | Juntas; `null` en las dos las borra |
 | `latitude` + `longitude` | Juntas; opcionales |
+| `onboardingCompleted` | Solo `true`: fija `onboardingCompletedAt` con la hora del servidor y conserva la primera fecha si se repite. `false`/`null` son `400` ([ADR 0012](architecture-decisions/0012-onboarding-private-pages.md)) |
 
 Las columnas que no admiten vacío (`maxTravelDistanceKm`, penalizaciones, listas) rechazan `null` con `400`.
 

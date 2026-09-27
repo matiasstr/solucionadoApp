@@ -337,3 +337,51 @@ export interface InventoryItemDto {
 export interface InventoryListDto {
   items: InventoryItemDto[];
 }
+
+/** Cuerpos de pedido de rutinas, despensa y perfil. Cantidades como texto decimal. */
+export interface UpdateProfileRequest {
+  city?: string | null;
+  province?: string | null;
+  latitude?: DecimalString | null;
+  longitude?: DecimalString | null;
+  maxTravelDistanceKm?: DecimalString;
+  /** `null` = sin límite. */
+  maxStoresPerShoppingPlan?: number | null;
+  /** Solo `true`: la fecha la pone el servidor y conserva la primera (ADR 0012). */
+  onboardingCompleted?: true;
+}
+
+export interface CreateRoutineRequest {
+  name: string;
+  frequencyDays?: number;
+  anchorDate?: string;
+}
+
+export type UpdateRoutineRequest = Partial<CreateRoutineRequest>;
+
+export interface RoutineItemFieldsRequest {
+  quantity?: DecimalString;
+  unit?: MeasurementUnit;
+  preferredProductId?: string | null;
+  /** Junto con `anchorDate`; los dos en `null` = heredar de la rutina. */
+  frequencyDays?: number | null;
+  anchorDate?: string | null;
+  allowSubstitutes?: boolean;
+  preferredBrands?: string[];
+  excludedBrands?: string[];
+}
+
+export interface CreateRoutineItemRequest extends RoutineItemFieldsRequest {
+  canonicalProductId: string;
+  quantity: DecimalString;
+  unit: MeasurementUnit;
+}
+
+export interface InventoryQuantityRequest {
+  quantity: DecimalString;
+  unit: MeasurementUnit;
+}
+
+export interface CreateInventoryItemRequest extends InventoryQuantityRequest {
+  canonicalProductId: string;
+}

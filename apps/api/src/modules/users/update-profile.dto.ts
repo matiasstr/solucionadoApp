@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
+  Equals,
   IsArray,
   IsEnum,
   IsInt,
@@ -26,6 +27,8 @@ const trimEach = ({ value }: { value: unknown }) =>
  * Decimales como string para no pasar por `number` binario (ADR 0002).
  * `maxStoresPerShoppingPlan: null` es "sin límite" (inequívoco: cero no es válido);
  * las columnas no nulas usan `@IsOptionalNotNull` para que `null` sea 400 y no 500.
+ * `onboardingCompleted: true` marca el onboarding como terminado; la fecha la pone el
+ * servidor y no se puede enviar ni deshacer (ADR 0012).
  */
 export class UpdateProfileDto {
   @IsOptional()
@@ -95,4 +98,8 @@ export class UpdateProfileDto {
   @MinLength(1, { each: true })
   @MaxLength(120, { each: true })
   membershipPrograms?: string[];
+
+  @IsOptionalNotNull()
+  @Equals(true)
+  onboardingCompleted?: true;
 }
