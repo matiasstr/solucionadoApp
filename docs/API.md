@@ -1,12 +1,12 @@
 # API de Tus Ofertas
 
-Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas y despensa. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
+Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas, despensa y planes de compra. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
 
 Todos los ejemplos salieron del dataset **DEMO** (`npm.cmd run db:seed`): los precios son ficticios y no representan ofertas reales de esas cadenas.
 
 ## Convenciones
 
-- Prefijo `/api`. Catálogo, precios, comercios y promociones son públicos: no requieren sesión. Rutinas y despensa sí (ver [Rutinas y despensa](#rutinas-y-despensa-privadas)).
+- Prefijo `/api`. Catálogo, precios, comercios y promociones son públicos: no requieren sesión. Rutinas, despensa y planes sí (ver [Rutinas y despensa](#rutinas-y-despensa-privadas) y [Planes de compra](#planes-de-compra-privados)).
 - **Decimales como texto** (`"1314.51"`), nunca `number`: el redondeo binario cambiaría importes (ADR 0002). Los importes van con 2 decimales y los precios por unidad base con 6.
 - **Fechas ISO 8601 en UTC** (`"2026-09-21T12:00:00.000Z"`). El calendario comercial (días de promoción) se interpreta en `America/Argentina/Buenos_Aires`.
 - **Errores**: `{ statusCode, error, message, fields? }`. `fields` nombra propiedades, nunca valores. Un identificador mal formado devuelve `400`, no `404`.
@@ -333,6 +333,92 @@ En un PATCH las reglas se evalúan sobre el resultado: no se puede quitar el pre
 
 Las columnas que no admiten vacío (`maxTravelDistanceKm`, penalizaciones, listas) rechazan `null` con `400`.
 
+## Planes de compra (privados)
+
+Mismas reglas que rutinas y despensa: `Authorization: Bearer`, `Cache-Control: no-store`, y un plan ajeno responde `404` igual que uno inexistente. Un plan guardado es un **snapshot**: nombres, presentación, precio observado, fuente, fecha y promoción viajan con cada línea, así un precio nuevo o una rutina editada no cambian un plan ya emitido. Los importes son **estimaciones** con los últimos precios observados. Decisiones en [ADR 0013](architecture-decisions/0013-planner-needs-candidates.md) (necesidades y candidatos), [ADR 0014](architecture-decisions/0014-planner-optimizer.md) (optimizador y ahorro) y [ADR 0015](architecture-decisions/0015-saved-plans.md) (persistencia y estados).
+
+| Método y ruta | Cuerpo | Resultado |
+| --- | --- | --- |
+| `POST /shopping-plans/generate` | `{ startDate?, endDate? }` (`AAAA-MM-DD`; por defecto siete días desde hoy en Argentina) y cabecera **`Idempotency-Key`** obligatoria | `201 ShoppingPlanDto` si creó el plan; `200` con el **mismo** plan si la clave ya se había usado |
+| `GET /shopping-plans?limit=` | — | `200 { items: ShoppingPlanSummaryDto[] }`, del más nuevo al más viejo (`limit` 1 a 50, 20 por defecto) |
+| `GET /shopping-plans/:id` | — | `200 ShoppingPlanDto` |
+| `PATCH /shopping-plans/:id` | `{ status: "ACTIVE" \| "COMPLETED" }` | `200 ShoppingPlanDto` |
+
+**Idempotencia.** `Idempotency-Key` es un token opaco del cliente (8 a 80 letras, números, `-` o `_`; la web usa un UUID por intento). Sin ella o con otro formato: `400 IDEMPOTENCY_KEY_REQUIRED`. Un reintento con la misma clave devuelve el plan ya guardado (también si llegan varios pedidos a la vez); la misma clave con **otras** fechas explícitas es `409 IDEMPOTENCY_KEY_REUSED`. Ventana inválida: `400 PLAN_WINDOW_INVALID` (día inexistente o fin anterior) o `400 PLAN_WINDOW_TOO_LONG` (más de `PLANNER_MAX_HORIZON_DAYS`, 28). Generar no descuenta la despensa ni registra una compra.
+
+**Estados.** Un plan nace `DRAFT`. `DRAFT → ACTIVE`, `DRAFT → COMPLETED` y `ACTIVE → COMPLETED`; pedir el estado que ya tiene es un no-op (`200`, sin cambiar `completedAt`). Al activar un plan, otro `ACTIVE` del mismo usuario cuya ventana se superpone vuelve a `DRAFT`: un solo plan activo por período. Un borrador o activo cuya `endDate` ya pasó se informa `EXPIRED` y no admite cambios (`400 PLAN_EXPIRED`); cualquier otra transición es `400 PLAN_STATUS_TRANSITION_INVALID`. `EXPIRED` y `DRAFT` no se pueden pedir (`400 VALIDATION_FAILED`). Completar un plan no prueba una compra ni un ahorro real.
+
+`ShoppingPlanSummaryDto`:
+
+```json
+{
+  "id": "…",
+  "status": "DRAFT",
+  "startDate": "2026-09-29",
+  "endDate": "2026-10-05",
+  "generatedAt": "2026-09-29T08:29:12.000Z",
+  "completedAt": null,
+  "coverage": "COMPLETE",
+  "lineCount": 2,
+  "visitCount": 1,
+  "unfulfilledCount": 0,
+  "optimizedCost": "8485.82",
+  "effectiveCost": "8485.82",
+  "estimatedSavings": "214.50"
+}
+```
+
+`coverage` es `COMPLETE`, `PARTIAL` (hay faltantes) o `EMPTY` (nada que comprar). `estimatedSavings` es `null` cuando no hubo base comparable (ninguna sucursal tenía todo): sin comparación no hay ahorro que mostrar.
+
+`ShoppingPlanDto` agrega:
+
+| Campo | Contenido |
+| --- | --- |
+| `method` | `EXACT_BOUNDED` (óptimo entre los candidatos evaluados), `HEURISTIC` (se superó el presupuesto de búsqueda) o `NO_CANDIDATES` |
+| `optimizerVersion`, `baselineMethod` | Versión del algoritmo y base usada (`SINGLE_STORE_REGULAR_PRICES` o `NONE`) |
+| `location` | `{ origin: COORDINATES \| LOCALITY \| NONE, radiusKm, city, province }` usada al generar |
+| `settings` | Penalidad por visita, por km y máximo de sucursales usados |
+| `totals` | `productCost`, `regularProductCost`, `promotionDiscount`, `visitCount`, `storeCount`, `storeVisitPenaltyCost`, `distancePenaltyCost`, `effectiveCost` y `totalDistanceKm` (`null` si alguna distancia se desconoce) |
+| `savings` | `{ estimatedSavings, effectiveCostDifference, baselineStoreName, baselineProductCost }` o `null`. `estimatedSavings` es solo dinero de productos frente a comprar todo en una sucursal a precio regular, y puede ser negativo; `effectiveCostDifference` incluye penalidades y no es dinero |
+| `schedule` | `[{ date, visits: [{ storeId, storeName, chainName, distanceMeters, roundTripKm, subtotal, lines }] }]`, por fecha y sucursal |
+| `needs` | Cómo se calculó cada necesidad: `grossQuantity`, `netQuantity`, `inventorySubtracted` y `sources` (rutina, ocurrencias, cantidad) |
+| `unfulfilled` | Necesidades sin cubrir con `reason` (`NO_LOCATION`, `NO_PRICE_IN_SCOPE`, `ONLY_STALE_PRICES`, `PREFERRED_PRODUCT_UNAVAILABLE`, `MAX_STORES_LIMIT`, …) |
+| `coveredByInventory` | Lo que la despensa ya cubre |
+| `limitations`, `warnings` | `[{ code, message }]` para mostrar tal cual: precios estimados, distancia en línea recta, recorte de candidatos, promociones no aplicadas, ubicación aproximada o faltante |
+| `prices` | `{ oldestObservedAt, newestObservedAt }` de los precios usados, o `null` |
+
+Cada línea (`PlanLineDto`):
+
+```json
+{
+  "id": "…",
+  "canonicalProductId": "…",
+  "canonicalName": "Arroz largo fino",
+  "productId": "…",
+  "productName": "Arroz largo fino Pampa 1 kg (DEMO)",
+  "brand": "Pampa",
+  "matchType": "EXACT",
+  "neededQuantity": "2",
+  "quantity": "2",
+  "unit": "KG",
+  "packageCount": 2,
+  "saleMode": "PACKAGED",
+  "surplus": "0",
+  "quantityIsEstimate": false,
+  "price": "2103.22",
+  "regularPrice": "2629.02",
+  "discount": "525.80",
+  "promotion": { "id": "…", "name": "Arroz Pampa 1 kg con 20% de descuento (DEMO)" },
+  "priceObservedAt": "2026-09-28T12:00:00.000Z",
+  "priceSource": "demo-seed",
+  "reasonCodes": ["CHEAPEST_EVALUATED", "PROMOTION_APPLIED"],
+  "reason": "Es la opción más barata entre las sucursales y fechas evaluadas. Aplica \"Arroz Pampa 1 kg con 20% de descuento (DEMO)\" comprando el 29/09.",
+  "alternatives": [{ "offerId": "…", "productName": "…", "storeName": "…", "date": "2026-09-29", "total": "2380.00", "difference": "276.78" }]
+}
+```
+
+`price`, `regularPrice` y `discount` son **totales de la línea**. `quantity` es lo que se compra (envases enteros: puede superar la necesidad y `surplus` lo muestra; venta por peso: `packageCount` `null` y `quantityIsEstimate` `true`). `reasonCodes`: `CHEAPEST_EVALUATED`, `CHEAPER_OPTION_NOT_WORTH_IT` (había algo más barato en otra visita que no convenía sumar), `EXACT_PRODUCT_REQUIRED`, `PREFERRED_PRODUCT`, `PROMOTION_APPLIED`. `alternatives.difference` es alternativa − elegida.
+
 ## Qué todavía no expone la API
 
-Historial de precios y gráficos (fase 6), planes de compra y ahorro estimado (fase 5), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Historial de precios y gráficos (fase 6), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

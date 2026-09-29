@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02), **P5-01** y **P5-02**. Empezar por **P5-03**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0014) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) y **fase 5 completa** (P5-01 a P5-03). Empezar por **P6-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0015) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-03 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P6-01 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 4 completas, P5-01 y P5-02 completos
+## Estado: 2026-09-29 — Fases 1 a 5 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P5-03 — Plan persistido y cronograma** (`docs/steps/phase-05.md`): guardar el resultado de `PlanShoppingUseCase` como snapshot, `POST /shopping-plans/generate` idempotente, `GET /shopping-plans`, `GET /shopping-plans/:id`, transiciones de estado explícitas y la pantalla `/plan-semanal`. Instrucciones al final de este archivo.
-No están implementados los planes persistidos, sus endpoints, las pantallas del plan, los importadores ni los jobs. **El despliegue de producción no incluye P4-02, P5-01 ni P5-02** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P6-01 — Historial y PriceAnalysisService** (`docs/steps/phase-06.md`): `GET /products/:id/price-history` por sucursal y fuente, promedio/mínimo/máximo de 30 días con una observación diaria, clasificación NORMAL/EXPENSIVE/GOOD_DEAL/HISTORIC_LOW con evidencia mínima y "datos insuficientes". Instrucciones al final de este archivo.
+No están implementados el historial y análisis de precios, el dashboard, los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -86,6 +86,37 @@ No están implementados los planes persistidos, sus endpoints, las pantallas del
   - Aplicación: `PlanShoppingUseCase.execute(userId, query)` → `{ candidates, plan }` con `storeVisitPenalty`, `distancePenaltyPerKm` y `maxStoresPerShoppingPlan` del usuario.
   - Configuración: `PLANNER_MAX_COMBINATIONS` (100000) en `ApiConfig.planner` y `.env.example`.
   - Tests: `test/shopping-plan-optimizer.test.cjs` (16, con contraste contra enumeración exhaustiva independiente en 200 canastas con semilla fija), `environment.test.cjs` ampliado y 3 de integración en `shopping-plans.test.cjs`. ADR 0014.
+
+- **P5-03 (sesión 2026-09-29): planes guardados y `/plan-semanal`.** Cierra la fase 5.
+  - Migración `20260929120000_shopping_plan_generation`: `ShoppingPlan.idempotencyKey` (único por usuario, `CHECK` de formato) y `ShoppingPlan.resultSnapshot`. Aplicada en la base de desarrollo; producción la aplica el build de la API al desplegar.
+  - Dominio: `plan-status.ts` (transiciones, `effectiveStatus` con vencimiento por fecha argentina) y `plan-snapshot.ts` (`toPlanRecord`: columnas y snapshots `schemaVersion: 1`).
+  - API: `ShoppingPlansService` + `ShoppingPlansController` (`POST /shopping-plans/generate` con `Idempotency-Key`, `GET /shopping-plans`, `GET /shopping-plans/:id`, `PATCH /shopping-plans/:id`), contratos en `presentation/shopping-plan.contracts.ts`, `packages/shared` y `docs/API.md` (sección "Planes de compra"). CORS permite `Idempotency-Key`.
+  - Web: `app/(private)/plan-semanal/page.tsx` (con `Suspense`), `components/plans/plan-view.tsx`, `lib/plans/queries.ts`, enlace "Plan semanal" en la barra, tarjeta en `/inicio` (reemplaza "Lo que viene") y estilos `.plan-*`. `apiRequest`/`authRequest` aceptan cabeceras propias.
+  - Tests: `test/shopping-plan-persistence.test.cjs` (3), `test/integration/shopping-plans-api.test.cjs` (9) y `apps/web/e2e/plan.e2e.cjs` (7, sumado a `test:e2e`). ADR 0015.
+
+## Verificaciones ejecutadas (P5-03, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **131/131** unitarios, build API + web con **13 rutas**) |
+| `npm.cmd run test:db` | **100/100** integración real (91 previos + 9 de `shopping-plans-api.test.cjs`); la migración nueva se aplica dos veces sin drift |
+| `npm.cmd run test:e2e` | **38/38** en Edge headless contra web + API reales (7 nuevos del plan, 13 de cuenta, 8 de auth, 10 de búsqueda) |
+| Revisión visual | Capturas en `.cache/verification/p5-03/` (plan en escritorio y móvil 390 px) |
+
+Cómo se corrió: puertos 3000/3001 ocupados por otro proyecto del usuario (ContextForge, no se tocó). `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API con `PORT=3010 CORS_ORIGINS=http://127.0.0.1:3100,http://localhost:3100 npm.cmd run start` (desde `apps/api`, tras `build`); web con `API_ORIGIN=http://127.0.0.1:3010 npx.cmd next dev --hostname 127.0.0.1 --port 3100` (desde `apps/web`); `E2E_BASE_URL=http://127.0.0.1:3100 npm.cmd run test:e2e`. Servidores detenidos antes de `verify`.
+
+Qué cubren los tests nuevos: transiciones y no-op, vencimiento por fecha, registro con `CHECK` que cierran, envases y peso, snapshot autosuficiente, sin base → ahorro 0/`NONE`; en HTTP: 401 en los cuatro endpoints, generación con cronograma, totales y ahorro no negativo, despensa intacta, reintento con la misma clave (200, mismo cuerpo), clave faltante/inválida, clave reusada con otras fechas (409), **tres pedidos simultáneos con la misma clave → un solo plan**, validación de ventana, plan parcial sin ubicación, promociones vigentes en la fecha recomendada, listado/lectura propios y ajeno = inexistente, activar/completar/reintentar, un solo activo por período, transiciones inválidas y vencido, **snapshot estable tras un precio nuevo**; en Edge: qué falta antes del primer plan, rutina → despensa → generar → cronograma (2 kg de pollo por peso tras 1 kg en despensa, arroz en envases, motivos, precio fechado, km, avisos, "cómo calculamos"), foco en el plan nuevo, **recarga con el mismo resultado** con y sin id, usar y completar, **respuesta perdida al generar que se reintenta sin duplicar**, "atrás" al plan anterior, móvil 390 px sin desborde, sin ubicación parcial sin ahorro.
+
+No ejecutado en esta sesión: `npm.cmd audit` y el deploy a producción (no pedido).
+
+## Decisiones y notas (P5-03)
+
+- **Idempotencia por cabecera obligatoria** (ADR 0015). La web genera un UUID por intento y lo reutiliza solo si el error fue de conexión (`SERVICE_UNAVAILABLE`).
+- `EXPIRED` **no se persiste**: se informa al leer si `endDate` < hoy (Argentina). Persistirlo y la retención/limpieza de planes van con los jobs (fase 8). No hay borrado de planes ni límite por usuario; el listado devuelve los últimos N (≤ 50) sin cursor.
+- `inputSnapshot` guarda un **resumen** de candidatos (conteos por motivo), no todas las ofertas con sus fechas.
+- Sin base comparable se guarda ahorro 0 con `baselineMethod = 'NONE'` y la API devuelve `estimatedSavings: null` (los `CHECK` exigen la resta).
+- `/inicio` ya no dice "Lo que viene": la tarjeta lleva al plan semanal.
+- Deuda de diseño (logo y tipografía) sigue pendiente en ROADMAP; no se tocó en este paso.
 
 ## Verificaciones ejecutadas (P5-02, 2026-09-29)
 
@@ -313,19 +344,19 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: `3c6c3c7` (publicado).
 - **P4-02** `7092b2b` (publicado).
 - **P5-01** `8288c45` (publicado).
-- **P5-02**: commit `feat(P5-02): ...` del 2026-09-29 (ver `git log`).
+- **P5-02** `a750151` (publicado).
+- **P5-03**: commit `feat(P5-03): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P5-03
+## Cómo seguir con P6-01
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-03), ADR 0004, 0013 y 0014, `apps/web/AGENTS.md` y las guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-06.md` (P6-01), ADR 0002 y 0008 (precio actual, frescura, append-only) y `docs/API.md` (formato estable).
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. API: `POST /shopping-plans/generate` (cuerpo opcional `startDate`/`endDate`; idempotente para reintentos, por ejemplo con cabecera `Idempotency-Key` o reutilizando el plan del mismo usuario y ventana generado hace instantes), `GET /shopping-plans` y `GET /shopping-plans/:id`, todos con `JwtAuthGuard`, `Cache-Control: no-store` y ownership (ajeno = 404). Persistir en una transacción `ShoppingPlan` + `ShoppingPlanItem` desde `PlanShoppingUseCase`: snapshot (`inputSnapshot` con `schemaVersion`, candidatos y plan; `snapshot` por línea con nombres, precio, fuente, fecha y promoción), `optimizerVersion`, `baselineMethod` y los importes según las notas de P5-02. Un plan emitido no cambia si después cambian precios o rutinas. Estado inicial `DRAFT`; si se agrega cambio de estado, contrato y transiciones explícitos.
-4. Contratos en `packages/shared` y `docs/API.md`.
-5. Web: `/plan-semanal` (privada, en la barra): botón para generar, cronograma por día y sucursal, totales separados (productos, penalidades, efectivo), ahorro etiquetado **estimado** y oculto sin base, faltantes con motivo, excedentes, alternativas, limitaciones y fecha de los precios. Estados de carga, vacío (sin rutinas o sin ubicación, con enlace a Preferencias) y error.
-6. Tests: integración de generación/lectura, aislamiento, snapshot estable tras cambiar precios, plan parcial, reintento sin duplicar; E2E rutina → despensa → generar → cronograma → recarga con el mismo resultado.
-7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P5-03 se cierra la fase 5 (siguiente: P6-01). Deploy a producción solo si el usuario lo pide.
+3. Dominio puro en `apps/api/src/modules/prices/domain/` (por ejemplo `price-analysis.ts`): serie **por sucursal y fuente** (nunca mezclar sucursales), cierre diario en calendario argentino (una observación por día: la última del día, así diez importaciones no pesan diez veces), promedio/mínimo/máximo de 30 días sobre días con datos, cantidad de observaciones y días cubiertos, período real. Clasificación con umbrales documentados y precedencia estable: `HISTORIC_LOW`, `GOOD_DEAL` (< 85 % del promedio), `EXPENSIVE`, `NORMAL` e `INSUFFICIENT_DATA` con evidencia mínima; precio actual viejo (`PRICE_MAX_AGE_DAYS`) no da etiquetas concluyentes. Documentar si el precio actual entra en la base del mínimo.
+4. API: `GET /products/:id/price-history?storeId=&from=&to=` (validar rango, tamaño máximo y fechas; 400 claros) y el análisis en la misma respuesta o en un campo `analysis`. Contratos en `packages/shared` y `docs/API.md`. El historial del seed DEMO tiene 31 días diarios, una sucursal día por medio (Vea Flores) y una que dejó de informar hace 12 días (Disco Belgrano): sirven para "datos insuficientes" y "desactualizado".
+5. Tests (docs/steps/phase-06.md): umbrales exactos, empate de mínimo, observación actual, días faltantes, varios precios por día, otra sucursal/fuente, pocas muestras, precio viejo, límites horarios de Argentina con reloj fijo; integración contra la base sembrada.
+6. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P6-02 (gráfico y dashboard de ahorro estimado, que debe tomar un solo plan activo/completado por período).
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4, P5-01 (necesidades y candidatos, ADR 0013) y P5-02 (optimizador, ADR 0014) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-03 (plan persistido, endpoints /shopping-plans y pantalla /plan-semanal), descrito en docs/steps/phase-05.md, usando PlanShoppingUseCase. Probalo con npm.cmd run verify, npm.cmd run test:db y npm.cmd run test:e2e, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 5 (incluidos el planificador, los planes guardados y /plan-semanal, ADR 0013 a 0015) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P6-01 (historial y análisis de precios), descrito en docs/steps/phase-06.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

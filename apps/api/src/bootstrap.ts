@@ -23,8 +23,9 @@ export async function createApp(
     origin: [...config.corsOrigins],
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    // X-Requested-With es el header anti-CSRF exigido en /auth (ver ADR 0003).
-    allowedHeaders: ['Content-Type', 'Authorization', CSRF_HEADER],
+    // X-Requested-With es el header anti-CSRF exigido en /auth (ver ADR 0003);
+    // Idempotency-Key evita planes duplicados al reintentar la generación (ADR 0015).
+    allowedHeaders: ['Content-Type', 'Authorization', CSRF_HEADER, 'Idempotency-Key'],
   });
   app.useGlobalPipes(new ValidationPipe({
     transform: true,

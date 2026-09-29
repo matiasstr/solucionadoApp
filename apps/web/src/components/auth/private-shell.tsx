@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth/auth-provider';
 
 const NAV = [
   { href: '/inicio', label: 'Inicio' },
+  { href: '/plan-semanal', label: 'Plan semanal' },
   { href: '/mis-compras', label: 'Mis compras' },
   { href: '/mi-despensa', label: 'Mi despensa' },
   { href: '/preferencias', label: 'Preferencias' },

@@ -58,7 +58,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | COMPLETO |
 | P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | COMPLETO |
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | COMPLETO |
-| P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | PENDIENTE |
+| P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | COMPLETO |
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | PENDIENTE |
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | PENDIENTE |
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | PENDIENTE |
@@ -108,7 +108,7 @@ Verificado al cerrar la fase: `npm.cmd run verify` (80/80 unitarios, typecheck, 
 
 **Siguiente: P5-01** (necesidad semanal y candidatos de compra).
 
-## Estado de la fase 5 (planificador) — EN CURSO
+## Estado de la fase 5 (planificador) — COMPLETA
 
 **P5-01 — COMPLETO.** Dominio puro y determinista en `apps/api/src/modules/shopping-plans/domain/`: `buildNeeds` cuenta ocurrencias de cada ítem en la ventana del plan (fechas inclusivas en calendario argentino, `anchorDate + k × frequencyDays` con `k ≥ 0`), suma los ítems del mismo canónico entre rutinas, resta la despensa una sola vez (mínimo cero, con antigüedad del saldo) y combina restricciones (sin reemplazos, marcas excluidas sobre preferidas; dos exactas distintas son `CONFLICT`). `buildCandidates` filtra presentaciones (dimensión, activa, sustitución, marca), usa la última observación de precio como estimación con fecha y fuente, descarta los precios viejos con su antigüedad, calcula envases enteros con excedente y el costo de cada fecha con `priceLine` (mediodía argentino), y recorta de forma determinista sucursales, ofertas y fechas con límites configurables (`PLANNER_*`), registrando cada descarte y cada necesidad sin ofertas con su motivo. `BuildPlanCandidatesUseCase` carga rutinas, despensa y preferencias del usuario, resuelve la ubicación (radio PostGIS, localidad con aviso o ninguna) y compone ambas funciones. Sin endpoints todavía (P5-03). Decisiones en [ADR 0013](docs/architecture-decisions/0013-planner-needs-candidates.md).
 
@@ -118,7 +118,11 @@ Verificado al cerrar P5-01: `npm.cmd run verify` (112/112 unitarios —31 nuevos
 
 Verificado al cerrar P5-02: `npm.cmd run verify` (128/128 unitarios —16 nuevos del optimizador, entre ellos el contraste con enumeración exhaustiva independiente en 200 canastas aleatorias—, typecheck, lint, build API + web) y `npm.cmd run test:db` (91/91 contra PostgreSQL/PostGIS real, con 3 nuevos del optimizador sobre la base sembrada).
 
-**Siguiente: P5-03** (plan persistido, endpoints `/shopping-plans` y pantalla `/plan-semanal`).
+**P5-03 — COMPLETO.** Planes guardados: `POST /shopping-plans/generate` (cabecera `Idempotency-Key` obligatoria; un reintento devuelve el mismo plan), `GET /shopping-plans`, `GET /shopping-plans/:id` y `PATCH /shopping-plans/:id` con transiciones explícitas (`DRAFT → ACTIVE | COMPLETED`, `ACTIVE → COMPLETED`, un solo plan activo por período, `EXPIRED` informado por fecha). Snapshot versionado de entradas, resultado y cada línea: un precio nuevo no reescribe un plan emitido. Migración `20260929120000_shopping_plan_generation` (`idempotencyKey` único por usuario, `resultSnapshot`). Pantalla privada `/plan-semanal`: cronograma por día y sucursal con cantidades (envases o peso estimado), precio estimado con su fecha, promoción, motivo y alternativas; totales separados y ahorro **estimado** frente a una sola sucursal (oculto sin base); faltantes con motivo, lo cubierto por la despensa, avisos, "cómo calculamos" y planes anteriores; el plan elegido vive en la URL. Decisiones en [ADR 0015](docs/architecture-decisions/0015-saved-plans.md).
+
+Verificado al cerrar la fase: `npm.cmd run verify` (131/131 unitarios, typecheck, lint, build API + web con 13 rutas), `npm.cmd run test:db` (100/100 contra PostgreSQL/PostGIS real, con 9 nuevos de `shopping-plans-api.test.cjs`) y `npm.cmd run test:e2e` (38/38 en Edge real, con 7 nuevos del plan semanal; capturas en `.cache/verification/p5-03`).
+
+**Siguiente: P6-01** (historial y análisis de ofertas con calidad de datos).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

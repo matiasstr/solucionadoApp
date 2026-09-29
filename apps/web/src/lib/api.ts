@@ -27,6 +27,8 @@ interface RequestOptions {
   accessToken?: string;
   /** Para cancelar una consulta que quedó vieja (búsqueda mientras se escribe). */
   signal?: AbortSignal;
+  /** Cabeceras propias del pedido, por ejemplo `Idempotency-Key` al generar un plan. */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -35,7 +37,7 @@ interface RequestOptions {
  */
 export async function apiRequest<T>(
   path: string,
-  { method = 'GET', body, accessToken, signal }: RequestOptions = {},
+  { method = 'GET', body, accessToken, signal, headers }: RequestOptions = {},
 ): Promise<T> {
   let response: Response;
   try {
@@ -45,6 +47,7 @@ export async function apiRequest<T>(
       credentials: 'same-origin',
       cache: 'no-store',
       headers: {
+        ...headers,
         'X-Requested-With': 'tusofertas-web',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

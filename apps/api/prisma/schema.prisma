@@ -60,24 +60,24 @@ enum ShoppingPlanStatus {
 }
 
 model User {
-  id                       String             @id @default(uuid()) @db.Uuid
-  email                    String             @unique @db.VarChar(254)
-  passwordHash             String             @db.VarChar(255)
-  city                     String?            @db.VarChar(120)
-  province                 String?            @db.VarChar(120)
-  latitude                 Decimal?           @db.Decimal(9, 6)
-  longitude                Decimal?           @db.Decimal(9, 6)
-  maxTravelDistanceKm      Decimal            @default(5) @db.Decimal(7, 2)
+  id                       String            @id @default(uuid()) @db.Uuid
+  email                    String            @unique @db.VarChar(254)
+  passwordHash             String            @db.VarChar(255)
+  city                     String?           @db.VarChar(120)
+  province                 String?           @db.VarChar(120)
+  latitude                 Decimal?          @db.Decimal(9, 6)
+  longitude                Decimal?          @db.Decimal(9, 6)
+  maxTravelDistanceKm      Decimal           @default(5) @db.Decimal(7, 2)
   // null significa sin límite; cero no es una preferencia válida.
-  maxStoresPerShoppingPlan Int?               @default(2)
-  storeVisitPenalty        Decimal            @default(0) @db.Decimal(14, 2)
-  distancePenaltyPerKm     Decimal            @default(0) @db.Decimal(14, 2)
-  paymentMethods           PaymentMethod[]    @default([])
-  banks                    String[]           @default([])
-  membershipPrograms       String[]           @default([])
-  onboardingCompletedAt    DateTime?          @db.Timestamptz(3)
-  createdAt                DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime           @updatedAt @db.Timestamptz(3)
+  maxStoresPerShoppingPlan Int?              @default(2)
+  storeVisitPenalty        Decimal           @default(0) @db.Decimal(14, 2)
+  distancePenaltyPerKm     Decimal           @default(0) @db.Decimal(14, 2)
+  paymentMethods           PaymentMethod[]   @default([])
+  banks                    String[]          @default([])
+  membershipPrograms       String[]          @default([])
+  onboardingCompletedAt    DateTime?         @db.Timestamptz(3)
+  createdAt                DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime          @updatedAt @db.Timestamptz(3)
   refreshSessions          RefreshSession[]
   shoppingRoutines         ShoppingRoutine[]
   inventory                UserInventory[]
@@ -173,20 +173,20 @@ model StoreChain {
 }
 
 model Store {
-  id         String                                  @id @default(uuid()) @db.Uuid
-  chainId    String                                  @db.Uuid
-  name       String                                  @db.VarChar(180)
-  address    String                                  @db.VarChar(240)
-  city       String                                  @db.VarChar(120)
-  province   String                                  @db.VarChar(120)
-  latitude   Decimal?                                @db.Decimal(9, 6)
-  longitude  Decimal?                                @db.Decimal(9, 6)
+  id         String                                @id @default(uuid()) @db.Uuid
+  chainId    String                                @db.Uuid
+  name       String                                @db.VarChar(180)
+  address    String                                @db.VarChar(240)
+  city       String                                @db.VarChar(120)
+  province   String                                @db.VarChar(120)
+  latitude   Decimal?                              @db.Decimal(9, 6)
+  longitude  Decimal?                              @db.Decimal(9, 6)
   // Derivado por trigger desde longitud/latitud; consultas con SQL parametrizado (StoreProximityRepository).
   location   Unsupported("geography(Point,4326)")?
-  isActive   Boolean                                 @default(true)
-  createdAt  DateTime                                @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime                                @updatedAt @db.Timestamptz(3)
-  chain      StoreChain                              @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  isActive   Boolean                               @default(true)
+  createdAt  DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime                              @updatedAt @db.Timestamptz(3)
+  chain      StoreChain                            @relation(fields: [chainId], references: [id], onDelete: Restrict)
   prices     ProductPrice[]
   promotions Promotion[]
   planItems  ShoppingPlanItem[]
@@ -314,30 +314,35 @@ model UserInventory {
 }
 
 model ShoppingPlan {
-  id                     String             @id @default(uuid()) @db.Uuid
-  userId                 String             @db.Uuid
-  startDate              DateTime           @db.Date
-  endDate                DateTime           @db.Date
-  estimatedRegularCost   Decimal            @db.Decimal(14, 2)
-  optimizedCost          Decimal            @db.Decimal(14, 2)
-  estimatedSavings       Decimal            @db.Decimal(14, 2)
-  storeVisitPenaltyCost  Decimal            @db.Decimal(14, 2)
-  distancePenaltyCost    Decimal            @db.Decimal(14, 2)
-  effectiveCost          Decimal            @db.Decimal(14, 2)
-  totalDistanceKm        Decimal?           @db.Decimal(10, 3)
-  currency               String             @default("ARS") @db.Char(3)
-  status                 ShoppingPlanStatus @default(DRAFT)
-  optimizerVersion       String             @db.VarChar(80)
-  baselineMethod         String             @db.VarChar(80)
+  id                    String             @id @default(uuid()) @db.Uuid
+  userId                String             @db.Uuid
+  startDate             DateTime           @db.Date
+  endDate               DateTime           @db.Date
+  estimatedRegularCost  Decimal            @db.Decimal(14, 2)
+  optimizedCost         Decimal            @db.Decimal(14, 2)
+  estimatedSavings      Decimal            @db.Decimal(14, 2)
+  storeVisitPenaltyCost Decimal            @db.Decimal(14, 2)
+  distancePenaltyCost   Decimal            @db.Decimal(14, 2)
+  effectiveCost         Decimal            @db.Decimal(14, 2)
+  totalDistanceKm       Decimal?           @db.Decimal(10, 3)
+  currency              String             @default("ARS") @db.Char(3)
+  status                ShoppingPlanStatus @default(DRAFT)
+  optimizerVersion      String             @db.VarChar(80)
+  baselineMethod        String             @db.VarChar(80)
   // Preferencias, rutinas, inventario y políticas utilizados al generar.
-  inputSnapshot          Json
-  unfulfilledNeeds       Json               @default("[]")
-  generatedAt            DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime           @updatedAt @db.Timestamptz(3)
-  completedAt            DateTime?          @db.Timestamptz(3)
-  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items                  ShoppingPlanItem[]
+  inputSnapshot         Json
+  // Salida del optimizador que no vive en las líneas: base, visitas, limitaciones y búsqueda.
+  resultSnapshot        Json               @default("{}")
+  unfulfilledNeeds      Json               @default("[]")
+  // Cabecera Idempotency-Key del pedido de generación: un reintento devuelve el mismo plan.
+  idempotencyKey        String?            @db.VarChar(80)
+  generatedAt           DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @db.Timestamptz(3)
+  completedAt           DateTime?          @db.Timestamptz(3)
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items                 ShoppingPlanItem[]
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, startDate(sort: Desc)])
   @@index([status, endDate])
 }

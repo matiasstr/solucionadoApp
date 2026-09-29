@@ -24,7 +24,14 @@ interface AuthContextValue {
   logout(): Promise<void>;
   updateUser(user: UserProfile): void;
   /** Petición autenticada: ante 401 renueva una vez (promesa compartida) y reintenta una sola vez. */
-  authRequest<T>(path: string, options?: { method?: HttpMethod; body?: unknown }): Promise<T>;
+  authRequest<T>(path: string, options?: AuthRequestOptions): Promise<T>;
+}
+
+/** Cabeceras propias (por ejemplo `Idempotency-Key`) viajan también en el reintento tras renovar la sesión. */
+export interface AuthRequestOptions {
+  method?: HttpMethod;
+  body?: unknown;
+  headers?: Record<string, string>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -103,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clear]);
 
-  const authRequest = useCallback(async <T,>(path: string, options: { method?: HttpMethod; body?: unknown } = {}) => {
+  const authRequest = useCallback(async <T,>(path: string, options: AuthRequestOptions = {}) => {
     const token = accessToken.current;
     if (!token) throw sessionEnded();
     try {

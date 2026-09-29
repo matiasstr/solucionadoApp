@@ -385,3 +385,168 @@ export interface InventoryQuantityRequest {
 export interface CreateInventoryItemRequest extends InventoryQuantityRequest {
   canonicalProductId: string;
 }
+
+// Planes de compra guardados (P5-03). Espejo de apps/api/src/modules/shopping-plans/presentation.
+
+/** `EXPIRED` no se pide: un borrador o activo cuya última fecha ya pasó se informa vencido. */
+export type ShoppingPlanStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
+/** `EMPTY`: nada que comprar. `PARTIAL`: hay faltantes. */
+export type PlanCoverage = 'COMPLETE' | 'PARTIAL' | 'EMPTY';
+/** `EXACT_BOUNDED`: óptimo entre los candidatos evaluados, no entre todas las sucursales. */
+export type OptimizationMethod = 'EXACT_BOUNDED' | 'HEURISTIC' | 'NO_CANDIDATES';
+export type PlanLocationOrigin = 'COORDINATES' | 'LOCALITY' | 'NONE';
+
+export type PlanLineReasonCode =
+  | 'CHEAPEST_EVALUATED'
+  | 'CHEAPER_OPTION_NOT_WORTH_IT'
+  | 'EXACT_PRODUCT_REQUIRED'
+  | 'PREFERRED_PRODUCT'
+  | 'PROMOTION_APPLIED';
+
+export interface PlanLineAlternativeDto {
+  offerId: string;
+  productName: string;
+  storeName: string;
+  date: string;
+  total: DecimalString;
+  /** Alternativa − elegida: negativo si la alternativa era más barata en productos. */
+  difference: DecimalString;
+}
+
+export interface PlanLineDto {
+  id: string;
+  canonicalProductId: string;
+  canonicalName: string;
+  productId: string;
+  productName: string;
+  brand: string | null;
+  matchType: OfferMatchType;
+  neededQuantity: DecimalString;
+  quantity: DecimalString;
+  unit: BaseUnit;
+  packageCount: number | null;
+  saleMode: SaleMode;
+  surplus: DecimalString;
+  quantityIsEstimate: boolean;
+  price: DecimalString;
+  regularPrice: DecimalString;
+  discount: DecimalString;
+  promotion: { id: string; name: string } | null;
+  priceObservedAt: string;
+  priceSource: string;
+  reasonCodes: PlanLineReasonCode[];
+  reason: string;
+  alternatives: PlanLineAlternativeDto[];
+}
+
+export interface PlanScheduleVisitDto {
+  storeId: string;
+  storeName: string;
+  chainName: string;
+  distanceMeters: number | null;
+  /** Ida y vuelta estimada en línea recta; null si no hay coordenadas. */
+  roundTripKm: DecimalString | null;
+  subtotal: DecimalString;
+  lines: PlanLineDto[];
+}
+
+export interface PlanScheduleDayDto {
+  date: string;
+  visits: PlanScheduleVisitDto[];
+}
+
+export interface PlanTotalsDto {
+  productCost: DecimalString;
+  regularProductCost: DecimalString;
+  promotionDiscount: DecimalString;
+  visitCount: number;
+  storeCount: number;
+  storeVisitPenaltyCost: DecimalString;
+  distancePenaltyCost: DecimalString;
+  effectiveCost: DecimalString;
+  totalDistanceKm: DecimalString | null;
+}
+
+export interface PlanNoticeDto {
+  code: string;
+  message: string;
+}
+
+export interface PlanUnfulfilledNeedDto {
+  canonicalProductId: string;
+  canonicalName: string;
+  netQuantity: DecimalString;
+  unit: BaseUnit;
+  reason: string;
+}
+
+export interface PlanCoveredByInventoryDto {
+  canonicalProductId: string;
+  canonicalName: string;
+  grossQuantity: DecimalString;
+  unit: BaseUnit;
+  inventory: { quantity: DecimalString; unit: BaseUnit; updatedAt: string; ageDays: number; applied: boolean; subtracted: DecimalString } | null;
+}
+
+export interface PlanNeedSummaryDto {
+  canonicalProductId: string;
+  canonicalName: string;
+  unit: BaseUnit;
+  grossQuantity: DecimalString;
+  netQuantity: DecimalString;
+  inventorySubtracted: DecimalString | null;
+  sources: { routineName: string; occurrences: string[]; quantity: DecimalString }[];
+}
+
+export interface ShoppingPlanSummaryDto {
+  id: string;
+  status: ShoppingPlanStatus;
+  startDate: string;
+  endDate: string;
+  generatedAt: string;
+  completedAt: string | null;
+  coverage: PlanCoverage;
+  lineCount: number;
+  visitCount: number;
+  unfulfilledCount: number;
+  optimizedCost: DecimalString;
+  effectiveCost: DecimalString;
+  /** Null sin base comparable: no hay ahorro que mostrar. */
+  estimatedSavings: DecimalString | null;
+}
+
+export interface ShoppingPlanListDto {
+  items: ShoppingPlanSummaryDto[];
+}
+
+export interface ShoppingPlanDto extends ShoppingPlanSummaryDto {
+  optimizerVersion: string;
+  method: OptimizationMethod;
+  baselineMethod: 'SINGLE_STORE_REGULAR_PRICES' | 'NONE';
+  location: { origin: PlanLocationOrigin; radiusKm: number | null; city: string | null; province: string | null };
+  settings: { storeVisitPenalty: DecimalString; distancePenaltyPerKm: DecimalString; maxStores: number | null };
+  totals: PlanTotalsDto;
+  savings: {
+    estimatedSavings: DecimalString;
+    effectiveCostDifference: DecimalString;
+    baselineStoreName: string;
+    baselineProductCost: DecimalString;
+  } | null;
+  schedule: PlanScheduleDayDto[];
+  needs: PlanNeedSummaryDto[];
+  unfulfilled: PlanUnfulfilledNeedDto[];
+  coveredByInventory: PlanCoveredByInventoryDto[];
+  limitations: PlanNoticeDto[];
+  warnings: PlanNoticeDto[];
+  prices: { oldestObservedAt: string; newestObservedAt: string } | null;
+}
+
+/** POST /shopping-plans/generate (con cabecera Idempotency-Key). Fechas AAAA-MM-DD opcionales. */
+export interface GeneratePlanRequest {
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UpdatePlanStatusRequest {
+  status: 'ACTIVE' | 'COMPLETED';
+}

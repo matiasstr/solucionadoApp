@@ -65,12 +65,12 @@ export function AccountHome() {
           <p className="account-card-foot"><Link className="text-link" href="/preferencias">Cambiar preferencias</Link></p>
         </Surface>
         <Surface className="account-card account-next">
-          <h2>Lo que viene</h2>
+          <h2>Plan semanal</h2>
           <p className="muted">
-            Con tus compras habituales y tu despensa vamos a armar un plan con el ahorro estimado.
-            Todavía no está disponible: no mostramos planes ni ahorros inventados.
+            Con tus compras habituales, tu despensa y los últimos precios observados cerca tuyo armamos qué comprar,
+            dónde y qué día, con el ahorro estimado.
           </p>
-          <p className="account-card-foot"><Link className="text-link" href="/buscar">Mientras tanto, compará precios</Link></p>
+          <p className="account-card-foot"><Link className="text-link" href="/plan-semanal">Ver o generar tu plan</Link></p>
         </Surface>
       </div>
     </div>
