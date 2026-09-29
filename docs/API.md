@@ -471,6 +471,45 @@ Cada línea (`PlanLineDto`):
 
 `price`, `regularPrice` y `discount` son **totales de la línea**. `quantity` es lo que se compra (envases enteros: puede superar la necesidad y `surplus` lo muestra; venta por peso: `packageCount` `null` y `quantityIsEstimate` `true`). `reasonCodes`: `CHEAPEST_EVALUATED`, `CHEAPER_OPTION_NOT_WORTH_IT` (había algo más barato en otra visita que no convenía sumar), `EXACT_PRODUCT_REQUIRED`, `PREFERRED_PRODUCT`, `PROMOTION_APPLIED`. `alternatives.difference` es alternativa − elegida.
 
+## Resumen (privado)
+
+### `GET /dashboard`
+
+Requiere sesión; `Cache-Control: no-store`. Todo sale de los datos del usuario del token. Decisiones en [ADR 0017](architecture-decisions/0017-dashboard-estimated-savings.md).
+
+```json
+{
+  "today": "2026-09-29",
+  "nextPurchase": {
+    "planId": "…",
+    "status": "ACTIVE",
+    "startDate": "2026-09-29",
+    "endDate": "2026-10-05",
+    "date": "2026-09-29",
+    "dateHasPassed": false,
+    "visits": [{ "storeId": "…", "storeName": "Carrefour Almagro (DEMO)", "chainName": "Carrefour", "lineCount": 1, "subtotal": "9573.90" }],
+    "remainingLines": 1
+  },
+  "routines": { "routineCount": 1, "itemCount": 1 },
+  "savings": {
+    "estimated": {
+      "week": { "amount": "0.00", "plans": 1 },
+      "month": { "amount": "0.00", "plans": 1 },
+      "total": { "amount": "0.00", "plans": 1 },
+      "plansWithoutBaseline": 0,
+      "selection": "ONE_PLAN_PER_PERIOD_ACTIVE_OR_COMPLETED"
+    },
+    "registered": { "available": false, "message": "Todavía no registramos compras: el ahorro de esta pantalla es estimado." }
+  },
+  "opportunities": { "items": [], "unavailableReason": null, "storesConsidered": 3, "seriesAnalyzed": 3 }
+}
+```
+
+- `nextPurchase`: del plan `ACTIVE` vigente o, si no hay, del `DRAFT` vigente más nuevo; el primer día con compras desde hoy (si todos pasaron, el último con `dateHasPassed: true`). `null` sin plan vigente.
+- `savings.estimated`: solo planes `COMPLETED` o `ACTIVE` vigentes, **uno por período** (ante superposición gana el completado y después el más nuevo). Semana ISO, mes calendario y acumulado por fecha de inicio del plan. `plans` cuenta los que suman; los que no tuvieron base comparable no suman y se informan en `plansWithoutBaseline`.
+- `savings.registered`: siempre `available: false` hasta que exista registro de compras. Nunca se completa con estimaciones.
+- `opportunities.items`: productos habituales (respetando "sin reemplazos" y marcas excluidas) cuyo precio actual en una sucursal de la zona es `HISTORIC_LOW` o `GOOD_DEAL` según el análisis del historial; hasta 10. Cada ítem trae producto, sucursal (con distancia si hay coordenadas), `price`, `unitPrice`, `average`, `lowest` y `ratioToAverage`. `unavailableReason`: `NO_ROUTINES`, `NO_LOCATION` o `NO_STORES_IN_SCOPE`.
+
 ## Qué todavía no expone la API
 
-Gráficos y dashboard de ahorro (P6-02), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Importadores de fuentes reales (fase 7), jobs (fase 8), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

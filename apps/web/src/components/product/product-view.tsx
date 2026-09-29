@@ -20,11 +20,16 @@ import {
 import { HeaderAuthLinks } from '../auth/header-auth-links';
 import { DemoNotice, EmptyState, ErrorState, LoadingState, StaleBadge } from '../common/states';
 import { SearchFiltersBar } from '../search/search-filters';
+import { HISTORY_PERIODS, PriceHistorySection } from './price-history';
+import type { HistoryPeriod } from './price-history';
+
+/** Parámetros propios de la ficha que los filtros de búsqueda no conocen. */
+const HISTORY_PARAMS = ['periodo', 'sucursal'] as const;
 
 /**
- * Ficha del producto con la comparación por sucursal y las alternativas de la
- * misma necesidad. El historial de precios llega en P6-02: acá no se dibuja
- * ninguna curva, porque todavía no hay serie que mostrar.
+ * Ficha del producto con la comparación por sucursal, las alternativas de la
+ * misma necesidad y el historial de precios (P6-02). Filtros, período y sucursal
+ * del historial viven en la URL.
  */
 export function ProductView({ productId }: { productId: string }) {
   const router = useRouter();
@@ -36,9 +41,25 @@ export function ProductView({ productId }: { productId: string }) {
   const canonicalId = product.data?.canonicalProduct?.id ?? null;
   const comparison = useCanonicalPrices(canonicalId, productId, filters);
 
+  const periodParam = Number(params.get('periodo'));
+  const period: HistoryPeriod = (HISTORY_PERIODS as readonly number[]).includes(periodParam) ? (periodParam as HistoryPeriod) : 30;
+  const historyStoreId = params.get('sucursal');
+
   // Cambiar un filtro entra en el historial: "atrás" deshace el cambio.
-  const applyFilters = (next: SearchFilters) =>
-    router.push(`/producto/${productId}?${toSearchParams(next).toString()}`, { scroll: false });
+  const applyFilters = (next: SearchFilters) => {
+    const nextParams = toSearchParams(next);
+    for (const key of HISTORY_PARAMS) {
+      const value = params.get(key);
+      if (value) nextParams.set(key, value);
+    }
+    router.push(`/producto/${productId}?${nextParams.toString()}`, { scroll: false });
+  };
+  const applyHistory = ({ period: nextPeriod, storeId }: { period: HistoryPeriod; storeId: string | null }) => {
+    const nextParams = toSearchParams(filters);
+    if (nextPeriod !== 30) nextParams.set('periodo', String(nextPeriod));
+    if (storeId) nextParams.set('sucursal', storeId);
+    router.push(`/producto/${productId}?${nextParams.toString()}`, { scroll: false });
+  };
 
   const offers = comparison.data?.offers ?? [];
   const exact = offers.filter((offer) => offer.matchType === 'EXACT');
@@ -130,6 +151,14 @@ export function ProductView({ productId }: { productId: string }) {
                 </>
               )}
             </section>
+
+            <PriceHistorySection
+              productId={productId}
+              filters={filters}
+              period={period}
+              storeId={historyStoreId}
+              onChange={applyHistory}
+            />
           </>
         )}
       </main>

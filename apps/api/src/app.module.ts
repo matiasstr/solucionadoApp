@@ -5,6 +5,7 @@ import type { ApiConfig } from './config/environment';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { HealthController } from './modules/health/health.controller';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PricesModule } from './modules/prices/prices.module';
@@ -33,6 +34,7 @@ export class AppModule {
         RoutinesModule,
         InventoryModule,
         ShoppingPlansModule,
+        DashboardModule,
       ],
       controllers: [HealthController],
     };

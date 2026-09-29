@@ -70,7 +70,11 @@ export function AccountHome() {
             Con tus compras habituales, tu despensa y los últimos precios observados cerca tuyo armamos qué comprar,
             dónde y qué día, con el ahorro estimado.
           </p>
-          <p className="account-card-foot"><Link className="text-link" href="/plan-semanal">Ver o generar tu plan</Link></p>
+          <p className="account-card-foot">
+            <Link className="text-link" href="/plan-semanal">Ver o generar tu plan</Link>
+            {' · '}
+            <Link className="text-link" href="/dashboard">Ver tu resumen</Link>
+          </p>
         </Surface>
       </div>
     </div>

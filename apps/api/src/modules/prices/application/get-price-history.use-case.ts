@@ -115,7 +115,7 @@ export class GetPriceHistoryUseCase {
     if (storeIds?.length === 0) return { ...base, series: [], truncated: false };
 
     // Las series más recientes primero; el resto se informa como recortado.
-    const latest = (await this.prices.findLatestPerSeries(product.id, storeIds)).sort(
+    const latest = (await this.prices.findLatestPerSeries([product.id], storeIds)).sort(
       (a, b) => b.observedAt.getTime() - a.observedAt.getTime() || (seriesKey(a) < seriesKey(b) ? -1 : 1),
     );
     const kept = latest.slice(0, MAX_HISTORY_SERIES);
@@ -132,7 +132,7 @@ export class GetPriceHistoryUseCase {
     const lastObserved = Math.max(...kept.map((observation) => observation.observedAt.getTime()));
     const until = new Date(Math.max(argentineDayStart(shiftDate(to, 1)).getTime(), lastObserved + 1));
     const keptStoreIds = [...new Set(kept.map((observation) => observation.storeId))];
-    const observations = await this.prices.findBetween(product.id, {
+    const observations = await this.prices.findBetween([product.id], {
       storeIds: keptStoreIds,
       from: argentineDayStart(earliestBase),
       until,

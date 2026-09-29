@@ -60,7 +60,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | COMPLETO |
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | COMPLETO |
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | COMPLETO |
-| P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | PENDIENTE |
+| P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | COMPLETO |
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | PENDIENTE |
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | PENDIENTE |
 | P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | PENDIENTE |
@@ -124,13 +124,17 @@ Verificado al cerrar la fase: `npm.cmd run verify` (131/131 unitarios, typecheck
 
 **Siguiente: P6-01** (historial y análisis de ofertas con calidad de datos).
 
-## Estado de la fase 6 (historial y oportunidades) — EN CURSO
+## Estado de la fase 6 (historial y oportunidades) — COMPLETA
 
 **P6-01 — COMPLETO.** `GET /products/:id/price-history` (público): una serie por sucursal y fuente, un punto por día argentino (última observación del día, huecos sin rellenar), rango inclusivo de 1 a 366 días (por defecto los últimos 30), una sucursal **o** una ubicación, hasta 20 series. Dominio puro `prices/domain/price-analysis.ts`: cierre diario, base de los 30 días anteriores al precio actual (el día actual no entra), promedio por día, mínimo con fecha, máximo y razón contra el promedio; clasificación con precedencia estable (`STALE`, `INSUFFICIENT_DATA` con menos de 7 días, `HISTORIC_LOW`, `GOOD_DEAL` < 85 %, `EXPENSIVE` > 115 %, `NORMAL`) y comparaciones decimales exactas. Repositorio: `findBetween` y `findLatestPerSeries` (una consulta cada uno). Decisiones en [ADR 0016](docs/architecture-decisions/0016-price-history-analysis.md).
 
 Verificado al cerrar P6-01: `npm.cmd run verify` (140/140 unitarios, 9 nuevos del análisis) y `npm.cmd run test:db` (107/107, 7 nuevos del endpoint contra la base sembrada).
 
-**Siguiente: P6-02** (gráfico del historial en `/producto/[id]` y dashboard de ahorro estimado).
+**P6-02 — COMPLETO.** `/producto/[id]` suma el historial: gráfico SVG propio de una sucursal a la vez (solo une días consecutivos, un hueco corta la línea), línea de promedio, título y descripción accesibles, tabla equivalente, etiqueta del análisis explicada con sus números, y sucursal/período (30, 90, 180 días) en la URL. `GET /dashboard` (privado) y `/dashboard` ("Resumen"): próxima compra del plan en uso o del último borrador vigente, ahorro **estimado** semanal/mensual/acumulado contando solo planes en uso o completados, **uno por período** (ante superposición gana el completado y después el más nuevo), sin base comparable no suma; oportunidades `HISTORIC_LOW`/`GOOD_DEAL` en los productos habituales (con sus reglas de reemplazos y marcas) en las sucursales de la zona; **ahorro registrado** explícitamente inexistente. Consultas de historial generalizadas a varios productos. Decisiones en [ADR 0017](docs/architecture-decisions/0017-dashboard-estimated-savings.md).
+
+Verificado al cerrar la fase: `npm.cmd run verify` (146/146 unitarios, 6 nuevos de ahorro y oportunidades; build web con 14 rutas), `npm.cmd run test:db` (111/111, 4 nuevos de `/dashboard`) y `npm.cmd run test:e2e` (45/45 en Edge real, 7 nuevos de historial y resumen; capturas en `.cache/verification/p6-02`).
+
+**Siguiente: P7-01** (puertos de proveedores, normalización e importador mock por lotes).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

@@ -214,34 +214,40 @@ export class ProductPriceRepository {
   }
 
   /**
-   * Observaciones de un producto en `[from, until)` para el historial (P6-01), en orden
-   * de serie (sucursal, fuente) y fecha. `storeIds: null` = todas las sucursales.
+   * Observaciones de uno o varios productos en `[from, until)` para el historial (P6-01),
+   * en orden de serie (producto, sucursal, fuente) y fecha. `storeIds: null` = todas.
    * Devuelve hasta `limit + 1` filas: si vienen más de `limit`, quien llama decide.
    */
   async findBetween(
-    productId: string,
+    productIds: readonly string[],
     query: { storeIds: readonly string[] | null; from: Date; until: Date; limit: number },
   ): Promise<PriceObservationRecord[]> {
+    if (!productIds.length) return [];
     const rows = await this.prisma.productPrice.findMany({
       where: {
-        productId,
+        productId: { in: [...productIds] },
         ...(query.storeIds ? { storeId: { in: [...query.storeIds] } } : {}),
         observedAt: { gte: query.from, lt: query.until },
       },
-      orderBy: [{ storeId: 'asc' }, { source: 'asc' }, { observedAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ productId: 'asc' }, { storeId: 'asc' }, { source: 'asc' }, { observedAt: 'asc' }, { id: 'asc' }],
       take: query.limit + 1,
     });
     return rows.map(toRecord);
   }
 
   /**
-   * Última observación de cada serie (sucursal + fuente) de un producto, en una consulta.
+   * Última observación de cada serie (producto + sucursal + fuente), en una consulta.
    * Mismo desempate que el precio actual: fecha observada, ingesta más reciente e id.
    */
-  async findLatestPerSeries(productId: string, storeIds: readonly string[] | null): Promise<PriceObservationRecord[]> {
+  async findLatestPerSeries(
+    productIds: readonly string[],
+    storeIds: readonly string[] | null,
+  ): Promise<PriceObservationRecord[]> {
+    if (!productIds.length) return [];
+    const products = [...productIds];
     const stores = storeIds ? [...storeIds] : null;
     const rows = await this.prisma.$queryRaw<(Omit<ObservationRow, 'price' | 'unitPrice'> & { price: string; unitPrice: string })[]>`
-      SELECT DISTINCT ON (p."storeId", p."source")
+      SELECT DISTINCT ON (p."productId", p."storeId", p."source")
         p."id"::text AS "id",
         p."productId"::text AS "productId",
         p."storeId"::text AS "storeId",
@@ -255,9 +261,9 @@ export class ProductPriceRepository {
         p."observedAt" AS "observedAt",
         p."ingestedAt" AS "ingestedAt"
       FROM "ProductPrice" p
-      WHERE p."productId" = ${productId}::uuid
+      WHERE p."productId" = ANY (${products}::uuid[])
         AND (${stores}::uuid[] IS NULL OR p."storeId" = ANY (${stores}::uuid[]))
-      ORDER BY p."storeId", p."source", p."observedAt" DESC, p."ingestedAt" DESC, p."id" ASC`;
+      ORDER BY p."productId", p."storeId", p."source", p."observedAt" DESC, p."ingestedAt" DESC, p."id" ASC`;
     return rows.map((row) => ({ ...row, unitPriceUnit: row.unitPriceUnit as BaseUnit }));
   }
 

@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03) y **P6-01**. Empezar por **P6-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0016) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03) y **fase 6 completa** (P6-01, P6-02). Empezar por **P7-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0017) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P6-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P7-01 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 5 completas y P6-01 completo
+## Estado: 2026-09-29 — Fases 1 a 6 completas
 
 Raíz: `C:SERSPCDESKTOPTUSOFERTASAPPSOLUCIONADOAPP`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P6-02 — Historial visual y dashboard** (`docs/steps/phase-06.md`): gráfico accesible del historial en `/producto/[id]` sobre `GET /products/:id/price-history`, y `/dashboard` con próxima compra, rutinas, oportunidades y ahorro **estimado** que no cuente dos veces planes superpuestos. Instrucciones al final de este archivo.
-No están implementados el gráfico, el dashboard, los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P7-01 — Puertos y pipeline por lotes** (`docs/steps/phase-07.md`): interfaces de proveedores e importadores independientes de SEPA y Prisma, proveedores mock reproducibles, pipeline en streaming con lotes y backpressure, identidad por fuente/EAN y reingreso idempotente, y un comando manual. Instrucciones al final de este archivo.
+No están implementados los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -98,6 +98,33 @@ No están implementados el gráfico, el dashboard, los importadores, los jobs, l
   - Dominio puro `apps/api/src/modules/prices/domain/price-analysis.ts`: `argentineDate`/`argentineDayStart` (UTC−3 fijo), `dailyCloses` (última observación del día argentino, desempate ingesta e id), `analyzeSeries` (base de los 30 días anteriores al día del precio actual, promedio por día, mínimo con fecha, máximo, `ratioToAverage`, clasificación con precedencia `STALE` → `INSUFFICIENT_DATA` (< 7 días) → `HISTORIC_LOW` → `GOOD_DEAL` (< 0,85) → `EXPENSIVE` (> 1,15) → `NORMAL`).
   - `ProductPriceRepository.findBetween` y `findLatestPerSeries` (`DISTINCT ON (storeId, source)`); `GetPriceHistoryUseCase` (rango 1–366 días, `storeId` **o** ubicación con `StoreScopeResolver`, hasta 20 series, hasta 50.000 observaciones); ruta `GET /products/:id/price-history` en `ProductPricesController` con `PriceHistoryQueryDto`; contratos en `prices/presentation/price-history.contracts.ts`, `packages/shared` y `docs/API.md`.
   - Tests: `test/price-analysis.test.cjs` (9) e integración `test/integration/price-history.test.cjs` (7, último del runner porque inserta observaciones de otra fuente). ADR 0016.
+
+- **P6-02 (sesión 2026-09-29): historial visual y resumen.** Cierra la fase 6.
+  - API: módulo `apps/api/src/modules/dashboard/` (`domain/savings-summary.ts` con `selectPlansForSavings`/`summarizeSavings`/`weekStart`, `domain/opportunities.ts` con `rankOpportunities`, `application/get-dashboard.use-case.ts`, `presentation/dashboard.controller.ts` y contratos) registrado en `AppModule`: `GET /dashboard` privado. `ProductPriceRepository.findBetween` y `findLatestPerSeries` ahora reciben **varios productos** (`DISTINCT ON (productId, storeId, source)`).
+  - Web: `components/product/price-history.tsx` (gráfico SVG, análisis explicado, tabla) integrado en la ficha con `periodo`/`sucursal` en la URL (los filtros de la comparación los conservan); `components/dashboard/dashboard-view.tsx`, `app/(private)/dashboard/page.tsx`, `lib/dashboard/queries.ts`, `usePriceHistory` en `lib/catalog/queries.ts`, enlace "Resumen" en la barra y en `/inicio`; los cambios de plan invalidan el resumen. Estilos `.history-*` y `.dashboard-*`.
+  - Contratos en `packages/shared` y `docs/API.md` (secciones del historial y "Resumen"). ADR 0017.
+  - Tests: `test/dashboard-savings.test.cjs` (6), `test/integration/dashboard.test.cjs` (4, último del runner: inserta un precio bajo) y `apps/web/e2e/history.e2e.cjs` (7, sumado a `test:e2e`).
+
+## Verificaciones ejecutadas (P6-02, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **146/146** unitarios, build API + web con **14 rutas**) |
+| `npm.cmd run test:db` | **111/111** integración real (107 previos + 4 de `dashboard.test.cjs`) |
+| `npm.cmd run test:e2e` | **45/45** en Edge headless (7 nuevos de historial y resumen); tras el último ajuste de redacción se repitió `history.e2e.cjs`: 7/7 |
+| Revisión visual | Capturas en `.cache/verification/p6-02/` (ficha con historial y resumen, escritorio y móvil 390 px); se ajustó la proporción del gráfico para móvil y la redacción de la explicación |
+
+Qué cubren los tests nuevos: semana ISO; solo planes en uso o completados (borradores y vencidos afuera); superposición con completado antes que activo y el más nuevo entre iguales; semana/mes/acumulado por fecha de inicio con ahorro negativo y sin base informado aparte; todo en cero sin planes; oportunidades solo mínimo/buena oferta, ordenadas y acotadas. En integración: 401; cuenta nueva sin plan ni ahorro y sin ahorro registrado; rutina sin zona (`NO_LOCATION`); borrador que no suma, plan en uso que suma, dos completados del mismo período que cuentan una vez, completar no registra ahorro; **precio actual a la mitad → `HISTORIC_LOW` en las oportunidades**. En Edge: gráfico accesible con título y descripción, etiqueta explicada, tabla; sucursal desactualizada (Disco Belgrano) sin etiqueta de oferta; sucursal y período en la URL con "atrás"; período con teclado; móvil sin desborde; resumen vacío, con plan en uso (próxima compra y ahorro de un plan) y tras completarlo sin duplicar.
+
+No ejecutado en esta sesión: `npm.cmd audit` y el deploy a producción (no pedido).
+
+## Decisiones y notas (P6-02)
+
+- **Ahorro estimado = un plan por período** (ADR 0017): `COMPLETED` o `ACTIVE` vigente; gana el completado y después el más nuevo; por fecha de inicio (semana ISO, mes calendario). Un activo vencido sin completar no suma.
+- **Ahorro registrado no existe** y así se muestra; completar no lo crea.
+- Oportunidades: hasta 20 sucursales de la zona y 10 resultados; solo etiquetas concluyentes a favor.
+- El gráfico es SVG propio (sin dependencias nuevas, por el lockfile) y muestra una sucursal a la vez; con otra fuente (`source`) la etiqueta lo dice.
+- `/inicio` y `/dashboard` conviven: `/inicio` sigue siendo el destino del login y del onboarding (los E2E lo usan); `/dashboard` es "Resumen" en la barra.
 
 ## Verificaciones ejecutadas (P6-01, 2026-09-29)
 
@@ -369,19 +396,21 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P5-01** `8288c45` (publicado).
 - **P5-02** `a750151` (publicado).
 - **P5-03** `22cdc58` (publicado).
-- **P6-01**: commit `feat(P6-01): ...` del 2026-09-29 (ver `git log`).
+- **P6-01** `15474cb` (publicado).
+- **P6-02**: commit `feat(P6-02): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P6-02
+## Cómo seguir con P7-01
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-06.md` (P6-02), ADR 0004, 0015 y 0016, `apps/web/AGENTS.md` y las guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-07.md` (P7-01), `docs/ARCHITECTURE.md` (importadores), ADR 0001, 0002 y 0008 (normalizador, identidad idempotente, append-only). Conectar SEPA **no** es parte de P7-01: requiere verificar su fuente/contrato actual en un paso explícito.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. `/producto/[id]`: gráfico accesible del historial (SVG propio o sin dependencias nuevas que compliquen el lockfile; ver notas de Deploy) con filtro de sucursal y período (`from`/`to` en la URL), tabla o resumen equivalente, huecos visibles (sin unir días faltantes como si hubiera dato), fecha y fuente, y la etiqueta del análisis con su explicación (promedio, mínimo con fecha, ventana, "datos insuficientes" o "desactualizado").
-4. `/dashboard` (privado): próxima compra (plan `ACTIVE` o el último `DRAFT` vigente), rutinas, oportunidades (por ejemplo productos habituales con `GOOD_DEAL` o `HISTORIC_LOW` cerca) y ahorro **estimado** semanal/mensual/acumulado que tome **un solo plan por período** (el `ACTIVE`/`COMPLETED`; nunca borradores ni planes reemplazados o superpuestos). Si reduce composición en el frontend, un endpoint privado de resumen. **Ahorro registrado**: no existe registro de compras, así que se muestra "sin compras registradas" y nunca se suman estimaciones como ahorro real.
-5. Estados sin rutina, sin plan o sin datos con acciones útiles. Las alertas (fase 9) no se muestran como enviadas.
-6. Tests: resumen contra datos persistidos, períodos y duplicación, generar/completar no cambia ahorro registrado; E2E de historial con filtros y dashboard vacío/parcial/completo, móvil y teclado.
-7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P6-02 se cierra la fase 6 (siguiente: P7-01).
+3. Módulo `apps/api/src/modules/imports/` (`domain`, `application`, `infrastructure/providers`): interfaces `PriceProvider`, `PromotionProvider`, `PriceImporter`, `PromotionImporter`, `ProductNormalizer` con DTOs propios (sin SEPA ni Prisma), ingesta con `AsyncIterable` o streams con backpressure.
+4. `MockPriceProvider`/`MockPromotionProvider` reproducibles (semilla), reutilizando `normalizePrice`, `buildIdempotencyKey`, `ProductPriceRepository.record`/`recordMany` y la validación de promociones (sin duplicar reglas de unidades ni dinero). Pipeline por etapas (descarga → descompresión → parseo → normalización → lote → base) con tamaño de lote y concurrencia configurables y sin leer archivos completos en memoria.
+5. Identidad por identificador externo + fuente y EAN validado (dígito de control); nada de fusionar por nombre parecido: canonicalización dudosa queda pendiente/marcada. Registrar fuente, fecha observada, fecha de importación e id original; reingresar lo mismo es idempotente (`duplicate`) y contenido distinto es `conflict`.
+6. Comando manual documentado (por ejemplo `npm.cmd run import:mock -- --provider=mock --date=AAAA-MM-DD`), sin jobs ni servicios externos; no correr contra producción.
+7. Tests (phase-07): import mock end-to-end, normalización coherente, backpressure y memoria acotada con entrada grande sintética en streaming, fallo a mitad de lote, registros corruptos, producto sin EAN, precio con coma decimal, proveedor alternativo sin tocar dominio.
+8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P7-02.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 5 y P6-01 (historial y análisis de precios, ADR 0016) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P6-02 (gráfico del historial y dashboard de ahorro estimado), descrito en docs/steps/phase-06.md. Probalo con npm.cmd run verify, npm.cmd run test:db y npm.cmd run test:e2e, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 6 (hasta el historial de precios con gráfico y el resumen /dashboard, ADR 0016 y 0017) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P7-01 (puertos de proveedores, pipeline por lotes e importador mock), descrito en docs/steps/phase-07.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

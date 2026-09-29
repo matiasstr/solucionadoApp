@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import type {
   CanonicalPricesDto,
   PaginatedDto,
+  PriceHistoryDto,
   ProductDetailDto,
   SearchProductsResultDto,
   StoreDto,
@@ -74,5 +75,23 @@ export function useStores() {
     queryKey: ['stores', 'options'],
     staleTime: 5 * 60_000,
     queryFn: ({ signal }) => apiRequest<PaginatedDto<StoreDto>>('/stores?limit=50', { signal }),
+  });
+}
+
+/** Día de hoy en Argentina, `AAAA-MM-DD` (`en-CA` formatea así). */
+export const argentineToday = (): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date());
+
+const shiftDays = (date: string, days: number): string =>
+  new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/** Historial del producto en el mismo alcance que la comparación, para los últimos `days` días. */
+export function usePriceHistory(productId: string, filters: SearchFilters, days: number) {
+  const to = argentineToday();
+  const params = { ...locationQuery(filters), from: shiftDays(to, -(days - 1)), to };
+  return useQuery({
+    queryKey: ['products', productId, 'price-history', params],
+    queryFn: ({ signal }) =>
+      apiRequest<PriceHistoryDto>(withQuery(`/products/${productId}/price-history`, params), { signal }),
   });
 }

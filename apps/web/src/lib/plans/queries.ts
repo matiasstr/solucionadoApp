@@ -8,6 +8,7 @@ import type {
   UpdatePlanStatusRequest,
 } from '@tusofertas/shared';
 import { useAuth } from '../auth/auth-provider';
+import { dashboardKey } from '../dashboard/queries';
 
 /**
  * Planes guardados. Las claves llevan el id del usuario (como el resto de la cuenta)
@@ -61,7 +62,10 @@ export function useGeneratePlan() {
         headers: { 'Idempotency-Key': idempotencyKey },
       }),
     onSuccess: (plan) => queryClient.setQueryData(planKeys.detail(userId, plan.id), plan),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: planKeys.list(userId) }),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: planKeys.list(userId) });
+      await queryClient.invalidateQueries({ queryKey: dashboardKey(userId) });
+    },
   });
 }
 
@@ -73,6 +77,9 @@ export function useUpdatePlanStatus() {
     mutationFn: ({ planId, body }: { planId: string; body: UpdatePlanStatusRequest }) =>
       authRequest<ShoppingPlanDto>(`/shopping-plans/${planId}`, { method: 'PATCH', body }),
     onSuccess: (plan) => queryClient.setQueryData(planKeys.detail(userId, plan.id), plan),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: planKeys.all(userId) }),
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: planKeys.all(userId) });
+      await queryClient.invalidateQueries({ queryKey: dashboardKey(userId) });
+    },
   });
 }

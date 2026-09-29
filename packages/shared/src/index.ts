@@ -602,3 +602,63 @@ export interface PriceHistoryDto {
   seriesLimit: number;
   truncated: boolean;
 }
+
+// Dashboard privado (P6-02). Espejo de apps/api/src/modules/dashboard/presentation/dashboard.contracts.ts.
+
+export interface NextPurchaseDto {
+  planId: string;
+  status: 'ACTIVE' | 'DRAFT';
+  startDate: string;
+  endDate: string;
+  /** Próximo día con compras del plan; si todos pasaron, el último y `dateHasPassed`. */
+  date: string;
+  dateHasPassed: boolean;
+  visits: { storeId: string; storeName: string; chainName: string; lineCount: number; subtotal: DecimalString }[];
+  remainingLines: number;
+}
+
+export interface SavingsBucketDto {
+  amount: DecimalString;
+  plans: number;
+}
+
+export interface OpportunityDto {
+  canonicalProductId: string;
+  canonicalName: string;
+  productId: string;
+  productName: string;
+  brand: string | null;
+  store: { id: string; name: string; chainName: string; distanceMeters: number | null };
+  classification: 'HISTORIC_LOW' | 'GOOD_DEAL';
+  price: DecimalString;
+  unitPrice: DecimalString;
+  unitPriceUnit: BaseUnit;
+  observedAt: string;
+  average: DecimalString;
+  lowest: DecimalString;
+  ratioToAverage: DecimalString;
+}
+
+export interface DashboardDto {
+  today: string;
+  nextPurchase: NextPurchaseDto | null;
+  routines: { routineCount: number; itemCount: number };
+  savings: {
+    /** Estimado: planes en uso o completados, uno por período, por fecha de inicio. */
+    estimated: {
+      week: SavingsBucketDto;
+      month: SavingsBucketDto;
+      total: SavingsBucketDto;
+      plansWithoutBaseline: number;
+      selection: 'ONE_PLAN_PER_PERIOD_ACTIVE_OR_COMPLETED';
+    };
+    /** No hay registro de compras todavía. */
+    registered: { available: false; message: string };
+  };
+  opportunities: {
+    items: OpportunityDto[];
+    unavailableReason: 'NO_ROUTINES' | 'NO_LOCATION' | 'NO_STORES_IN_SCOPE' | null;
+    storesConsidered: number;
+    seriesAnalyzed: number;
+  };
+}

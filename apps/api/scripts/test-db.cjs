@@ -70,5 +70,6 @@ async function recreateDatabase() {
     'test/integration/shopping-plans.test.cjs',
     'test/integration/shopping-plans-api.test.cjs',
     'test/integration/price-history.test.cjs',
+    'test/integration/dashboard.test.cjs',
   ]);
 })();
