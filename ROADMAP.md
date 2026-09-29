@@ -59,7 +59,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | COMPLETO |
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | COMPLETO |
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | COMPLETO |
-| P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | PENDIENTE |
+| P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | COMPLETO |
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | PENDIENTE |
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | PENDIENTE |
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | PENDIENTE |
@@ -123,6 +123,14 @@ Verificado al cerrar P5-02: `npm.cmd run verify` (128/128 unitarios —16 nuevos
 Verificado al cerrar la fase: `npm.cmd run verify` (131/131 unitarios, typecheck, lint, build API + web con 13 rutas), `npm.cmd run test:db` (100/100 contra PostgreSQL/PostGIS real, con 9 nuevos de `shopping-plans-api.test.cjs`) y `npm.cmd run test:e2e` (38/38 en Edge real, con 7 nuevos del plan semanal; capturas en `.cache/verification/p5-03`).
 
 **Siguiente: P6-01** (historial y análisis de ofertas con calidad de datos).
+
+## Estado de la fase 6 (historial y oportunidades) — EN CURSO
+
+**P6-01 — COMPLETO.** `GET /products/:id/price-history` (público): una serie por sucursal y fuente, un punto por día argentino (última observación del día, huecos sin rellenar), rango inclusivo de 1 a 366 días (por defecto los últimos 30), una sucursal **o** una ubicación, hasta 20 series. Dominio puro `prices/domain/price-analysis.ts`: cierre diario, base de los 30 días anteriores al precio actual (el día actual no entra), promedio por día, mínimo con fecha, máximo y razón contra el promedio; clasificación con precedencia estable (`STALE`, `INSUFFICIENT_DATA` con menos de 7 días, `HISTORIC_LOW`, `GOOD_DEAL` < 85 %, `EXPENSIVE` > 115 %, `NORMAL`) y comparaciones decimales exactas. Repositorio: `findBetween` y `findLatestPerSeries` (una consulta cada uno). Decisiones en [ADR 0016](docs/architecture-decisions/0016-price-history-analysis.md).
+
+Verificado al cerrar P6-01: `npm.cmd run verify` (140/140 unitarios, 9 nuevos del análisis) y `npm.cmd run test:db` (107/107, 7 nuevos del endpoint contra la base sembrada).
+
+**Siguiente: P6-02** (gráfico del historial en `/producto/[id]` y dashboard de ahorro estimado).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

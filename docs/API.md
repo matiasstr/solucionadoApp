@@ -157,6 +157,58 @@ Precio actual de **una** presentación en cada sucursal alcanzada.
 
 Una fila por sucursal: la observación más reciente, con desempate determinista por fuente, ingesta e id (ADR 0008).
 
+### `GET /products/:id/price-history`
+
+Historial y análisis del precio de **una presentación** (P6-01, [ADR 0016](architecture-decisions/0016-price-history-analysis.md)). Público.
+
+| Parámetro | Regla |
+| --- | --- |
+| `from`, `to` | Días argentinos `AAAA-MM-DD`, ambos incluidos. Por defecto, los últimos 30 días con hoy incluido. Hasta 366 días; `from` posterior a `to` o un día inexistente es `400` |
+| `storeId` | Una sola sucursal. No se combina con ubicación (`400` en `storeId`) |
+| `latitude` + `longitude` (+ `radiusKm`), o `city` + `province` | Mismo alcance que los precios actuales. Sin nada: todas las sucursales con historial |
+
+Respuesta:
+
+```json
+{
+  "product": { "id": "…", "name": "Pollo entero fresco por kg (DEMO)", "…": "…" },
+  "range": { "from": "2026-08-31", "to": "2026-09-29", "days": 30, "timeZone": "America/Argentina/Buenos_Aires", "granularity": "DAY" },
+  "scope": { "origin": "STORE", "radiusKm": null, "storesConsidered": 1 },
+  "policy": { "dailyClose": "LAST_OBSERVATION_OF_DAY", "windowDays": 30, "minDaysWithData": 7, "goodDealBelowRatio": "0.85", "expensiveAboveRatio": "1.15", "maxAgeDays": 7 },
+  "series": [
+    {
+      "store": { "id": "…", "name": "Coto Caballito (DEMO)", "chainName": "Coto", "distanceMeters": null, "…": "…" },
+      "source": "demo-seed",
+      "unitPriceUnit": "KG",
+      "daysInRange": 30,
+      "daysWithData": 29,
+      "points": [
+        "…",
+        { "date": "2026-09-28", "price": "3459.86", "unitPrice": "3459.860000", "observedAt": "2026-09-28T12:00:00.000Z", "observations": 1 }
+      ],
+      "analysis": {
+        "classification": "NORMAL",
+        "current": { "price": "3459.86", "unitPrice": "3459.860000", "observedAt": "2026-09-28T12:00:00.000Z", "date": "2026-09-28", "ageDays": 1, "isStale": false },
+        "baseWindow": { "from": "2026-08-29", "to": "2026-09-27", "days": 30, "daysWithData": 30, "observations": 30 },
+        "average": "3310.864667",
+        "lowest": "3174.950000",
+        "lowestDate": "2026-08-31",
+        "highest": "3459.860000",
+        "ratioToAverage": "1.0450"
+      }
+    }
+  ],
+  "seriesLimit": 20,
+  "truncated": false
+}
+```
+
+- **Una serie por sucursal y fuente**: nunca se mezclan sucursales ni fuentes. Hasta 20 series (las observadas más recientemente); `truncated` avisa si quedaron afuera.
+- **Un punto por día argentino**: la última observación del día; `observations` cuenta las del día. Los días sin dato no aparecen: no se interpolan.
+- **Análisis** del precio actual de la serie (su última observación, aunque sea anterior a `to`) contra los cierres diarios de los **30 días anteriores** a su día (`baseWindow`); el día actual no entra en la base, así se puede detectar un mínimo nuevo. Promedio por día (cada día pesa igual), mínimo con su fecha, máximo y `ratioToAverage`. No depende del rango pedido.
+- **Clasificación**, en este orden: sin precio → `INSUFFICIENT_DATA`; precio de más de `maxAgeDays` días → `STALE`; menos de 7 días con dato en la base → `INSUFFICIENT_DATA`; por debajo del mínimo de la base → `HISTORIC_LOW` (igualarlo no alcanza); por debajo del 85 % del promedio → `GOOD_DEAL`; por encima del 115 % → `EXPENSIVE`; si no, `NORMAL`. Las comparaciones son exactas (sin redondear el umbral).
+- Son precios de góndola observados: las promociones condicionales o por cantidad no entran en la serie.
+
 ### `GET /canonical-products/:id/prices`
 
 La comparación: **todas las presentaciones** de una necesidad, en cada sucursal alcanzada, comparables por unidad base.
@@ -421,4 +473,4 @@ Cada línea (`PlanLineDto`):
 
 ## Qué todavía no expone la API
 
-Historial de precios y gráficos (fase 6), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Gráficos y dashboard de ahorro (P6-02), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

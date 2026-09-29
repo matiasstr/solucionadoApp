@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) y **fase 5 completa** (P5-01 a P5-03). Empezar por **P6-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0015) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03) y **P6-01**. Empezar por **P6-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0016) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P6-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P6-02 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 5 completas
+## Estado: 2026-09-29 — Fases 1 a 5 completas y P6-01 completo
 
-Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
+Raíz: `C:SERSPCDESKTOPTUSOFERTASAPPSOLUCIONADOAPP`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P6-01 — Historial y PriceAnalysisService** (`docs/steps/phase-06.md`): `GET /products/:id/price-history` por sucursal y fuente, promedio/mínimo/máximo de 30 días con una observación diaria, clasificación NORMAL/EXPENSIVE/GOOD_DEAL/HISTORIC_LOW con evidencia mínima y "datos insuficientes". Instrucciones al final de este archivo.
-No están implementados el historial y análisis de precios, el dashboard, los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P6-02 — Historial visual y dashboard** (`docs/steps/phase-06.md`): gráfico accesible del historial en `/producto/[id]` sobre `GET /products/:id/price-history`, y `/dashboard` con próxima compra, rutinas, oportunidades y ahorro **estimado** que no cuente dos veces planes superpuestos. Instrucciones al final de este archivo.
+No están implementados el gráfico, el dashboard, los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -93,6 +93,29 @@ No están implementados el historial y análisis de precios, el dashboard, los i
   - API: `ShoppingPlansService` + `ShoppingPlansController` (`POST /shopping-plans/generate` con `Idempotency-Key`, `GET /shopping-plans`, `GET /shopping-plans/:id`, `PATCH /shopping-plans/:id`), contratos en `presentation/shopping-plan.contracts.ts`, `packages/shared` y `docs/API.md` (sección "Planes de compra"). CORS permite `Idempotency-Key`.
   - Web: `app/(private)/plan-semanal/page.tsx` (con `Suspense`), `components/plans/plan-view.tsx`, `lib/plans/queries.ts`, enlace "Plan semanal" en la barra, tarjeta en `/inicio` (reemplaza "Lo que viene") y estilos `.plan-*`. `apiRequest`/`authRequest` aceptan cabeceras propias.
   - Tests: `test/shopping-plan-persistence.test.cjs` (3), `test/integration/shopping-plans-api.test.cjs` (9) y `apps/web/e2e/plan.e2e.cjs` (7, sumado a `test:e2e`). ADR 0015.
+
+- **P6-01 (sesión 2026-09-29): historial y análisis de precios.**
+  - Dominio puro `apps/api/src/modules/prices/domain/price-analysis.ts`: `argentineDate`/`argentineDayStart` (UTC−3 fijo), `dailyCloses` (última observación del día argentino, desempate ingesta e id), `analyzeSeries` (base de los 30 días anteriores al día del precio actual, promedio por día, mínimo con fecha, máximo, `ratioToAverage`, clasificación con precedencia `STALE` → `INSUFFICIENT_DATA` (< 7 días) → `HISTORIC_LOW` → `GOOD_DEAL` (< 0,85) → `EXPENSIVE` (> 1,15) → `NORMAL`).
+  - `ProductPriceRepository.findBetween` y `findLatestPerSeries` (`DISTINCT ON (storeId, source)`); `GetPriceHistoryUseCase` (rango 1–366 días, `storeId` **o** ubicación con `StoreScopeResolver`, hasta 20 series, hasta 50.000 observaciones); ruta `GET /products/:id/price-history` en `ProductPricesController` con `PriceHistoryQueryDto`; contratos en `prices/presentation/price-history.contracts.ts`, `packages/shared` y `docs/API.md`.
+  - Tests: `test/price-analysis.test.cjs` (9) e integración `test/integration/price-history.test.cjs` (7, último del runner porque inserta observaciones de otra fuente). ADR 0016.
+
+## Verificaciones ejecutadas (P6-01, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **140/140** unitarios, build API + web) |
+| `npm.cmd run test:db` | **107/107** integración real (100 previos + 7 de `price-history.test.cjs`) |
+
+Qué cubren los tests nuevos: día argentino en el borde de las 03:00 UTC; cierre diario con varios precios por día y empate de hora; umbrales exactos (82,449999 buena oferta, 82,45 normal; 111,55 normal, 111,550001 caro); mínimo nuevo gana a buena oferta y el empate con el mínimo no cuenta; base de 30 días que excluye el día actual y lo más viejo; promedio por día aunque haya nueve lecturas en uno; pocos días (6 no, 7 sí), solo el precio actual y sin datos; precio viejo `STALE` con base relativa a su fecha; determinismo. En integración contra la base sembrada: rango por defecto, series únicas por sucursal y fuente, puntos ordenados sin duplicar días; Disco Belgrano `STALE` (dejó de informar hace 12 días); Vea Flores con huecos día por medio y evidencia suficiente; localidad (Morón sin distancia) y radio real; rango acotado que no cambia el análisis y rango sin datos; **otra fuente = otra serie** y dos precios del mismo día = un punto con `observations: 2`; validaciones (orden de fechas, más de 366 días, día inexistente, formato, sucursal + ubicación, radio sin coordenadas, parámetro desconocido, uuid y producto inexistente).
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web desde P5-03) y `npm.cmd audit`.
+
+## Decisiones y notas (P6-01)
+
+- La base del análisis es **la ventana previa** al precio actual (ADR 0016): permite detectar un mínimo nuevo. "Mínimo histórico" = mínimo de esa ventana, y `baseWindow` lo dice.
+- El análisis no depende del rango pedido; el rango solo filtra los puntos que se muestran.
+- Las series se eligen por la observación más reciente (hasta 20) y se muestran ordenadas por cadena, sucursal y fuente.
+- El ejemplo de `docs/API.md` salió de la base de desarrollo; como el seed se corrió con anclas de días distintos, ahí el máximo de la base coincide con el precio actual (el día 0 de cada corrida tiene el mismo precio). No es un error del análisis.
 
 ## Verificaciones ejecutadas (P5-03, 2026-09-29)
 
@@ -345,18 +368,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P4-02** `7092b2b` (publicado).
 - **P5-01** `8288c45` (publicado).
 - **P5-02** `a750151` (publicado).
-- **P5-03**: commit `feat(P5-03): ...` del 2026-09-29 (ver `git log`).
+- **P5-03** `22cdc58` (publicado).
+- **P6-01**: commit `feat(P6-01): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P6-01
+## Cómo seguir con P6-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-06.md` (P6-01), ADR 0002 y 0008 (precio actual, frescura, append-only) y `docs/API.md` (formato estable).
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-06.md` (P6-02), ADR 0004, 0015 y 0016, `apps/web/AGENTS.md` y las guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Dominio puro en `apps/api/src/modules/prices/domain/` (por ejemplo `price-analysis.ts`): serie **por sucursal y fuente** (nunca mezclar sucursales), cierre diario en calendario argentino (una observación por día: la última del día, así diez importaciones no pesan diez veces), promedio/mínimo/máximo de 30 días sobre días con datos, cantidad de observaciones y días cubiertos, período real. Clasificación con umbrales documentados y precedencia estable: `HISTORIC_LOW`, `GOOD_DEAL` (< 85 % del promedio), `EXPENSIVE`, `NORMAL` e `INSUFFICIENT_DATA` con evidencia mínima; precio actual viejo (`PRICE_MAX_AGE_DAYS`) no da etiquetas concluyentes. Documentar si el precio actual entra en la base del mínimo.
-4. API: `GET /products/:id/price-history?storeId=&from=&to=` (validar rango, tamaño máximo y fechas; 400 claros) y el análisis en la misma respuesta o en un campo `analysis`. Contratos en `packages/shared` y `docs/API.md`. El historial del seed DEMO tiene 31 días diarios, una sucursal día por medio (Vea Flores) y una que dejó de informar hace 12 días (Disco Belgrano): sirven para "datos insuficientes" y "desactualizado".
-5. Tests (docs/steps/phase-06.md): umbrales exactos, empate de mínimo, observación actual, días faltantes, varios precios por día, otra sucursal/fuente, pocas muestras, precio viejo, límites horarios de Argentina con reloj fijo; integración contra la base sembrada.
-6. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P6-02 (gráfico y dashboard de ahorro estimado, que debe tomar un solo plan activo/completado por período).
+3. `/producto/[id]`: gráfico accesible del historial (SVG propio o sin dependencias nuevas que compliquen el lockfile; ver notas de Deploy) con filtro de sucursal y período (`from`/`to` en la URL), tabla o resumen equivalente, huecos visibles (sin unir días faltantes como si hubiera dato), fecha y fuente, y la etiqueta del análisis con su explicación (promedio, mínimo con fecha, ventana, "datos insuficientes" o "desactualizado").
+4. `/dashboard` (privado): próxima compra (plan `ACTIVE` o el último `DRAFT` vigente), rutinas, oportunidades (por ejemplo productos habituales con `GOOD_DEAL` o `HISTORIC_LOW` cerca) y ahorro **estimado** semanal/mensual/acumulado que tome **un solo plan por período** (el `ACTIVE`/`COMPLETED`; nunca borradores ni planes reemplazados o superpuestos). Si reduce composición en el frontend, un endpoint privado de resumen. **Ahorro registrado**: no existe registro de compras, así que se muestra "sin compras registradas" y nunca se suman estimaciones como ahorro real.
+5. Estados sin rutina, sin plan o sin datos con acciones útiles. Las alertas (fase 9) no se muestran como enviadas.
+6. Tests: resumen contra datos persistidos, períodos y duplicación, generar/completar no cambia ahorro registrado; E2E de historial con filtros y dashboard vacío/parcial/completo, móvil y teclado.
+7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P6-02 se cierra la fase 6 (siguiente: P7-01).
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 5 (incluidos el planificador, los planes guardados y /plan-semanal, ADR 0013 a 0015) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P6-01 (historial y análisis de precios), descrito en docs/steps/phase-06.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 5 y P6-01 (historial y análisis de precios, ADR 0016) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P6-02 (gráfico del historial y dashboard de ahorro estimado), descrito en docs/steps/phase-06.md. Probalo con npm.cmd run verify, npm.cmd run test:db y npm.cmd run test:e2e, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

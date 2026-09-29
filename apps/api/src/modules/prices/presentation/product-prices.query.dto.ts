@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -18,6 +19,7 @@ import { MAX_PAGE_LIMIT } from '../../../common/pagination';
 import { MAX_RADIUS_KM } from '../../stores/domain/geo';
 
 const PRICE_SORT_BY = ['UNIT_PRICE', 'PRICE', 'DISTANCE'] as const;
+const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const toNumber = ({ value }: { value: unknown }) =>
@@ -79,6 +81,56 @@ export class PricesQueryDto {
 }
 
 export class ProductPricesQueryDto extends PricesQueryDto {}
+
+/**
+ * Historial (P6-01): una sucursal **o** una ubicación (coordenadas + radio, o
+ * localidad), y un rango de días argentinos inclusivo. Sin rango: los últimos 30 días.
+ */
+export class PriceHistoryQueryDto {
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
+
+  /** Formato; que el día exista y el rango entre en el límite lo valida el caso de uso. */
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN)
+  from?: string;
+
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN)
+  to?: string;
+
+  @IsOptional()
+  @Transform(toNumber)
+  @IsLatitude()
+  latitude?: number;
+
+  @IsOptional()
+  @Transform(toNumber)
+  @IsLongitude()
+  longitude?: number;
+
+  @IsOptional()
+  @Transform(toNumber)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.1)
+  @Max(MAX_RADIUS_KM)
+  radiusKm?: number;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  city?: string;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  province?: string;
+}
 
 /** Comparación de alternativas: `productId` marca cuál es la coincidencia exacta. */
 export class CanonicalPricesQueryDto extends PricesQueryDto {

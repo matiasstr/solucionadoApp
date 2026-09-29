@@ -550,3 +550,55 @@ export interface GeneratePlanRequest {
 export interface UpdatePlanStatusRequest {
   status: 'ACTIVE' | 'COMPLETED';
 }
+
+// Historial y análisis de precios (P6-01). Espejo de apps/api/src/modules/prices/presentation/price-history.contracts.ts.
+
+/** `STALE` e `INSUFFICIENT_DATA` no son conclusiones: faltan datos recientes o suficientes. */
+export type PriceClassification = 'HISTORIC_LOW' | 'GOOD_DEAL' | 'NORMAL' | 'EXPENSIVE' | 'STALE' | 'INSUFFICIENT_DATA';
+
+export interface PriceHistoryPointDto {
+  /** Día argentino AAAA-MM-DD; solo días con dato (los huecos no se rellenan). */
+  date: string;
+  price: DecimalString;
+  unitPrice: DecimalString;
+  observedAt: string;
+  observations: number;
+}
+
+export interface PriceAnalysisDto {
+  classification: PriceClassification;
+  current: { price: DecimalString; unitPrice: DecimalString; observedAt: string; date: string; ageDays: number; isStale: boolean } | null;
+  baseWindow: { from: string; to: string; days: number; daysWithData: number; observations: number } | null;
+  average: DecimalString | null;
+  lowest: DecimalString | null;
+  lowestDate: string | null;
+  highest: DecimalString | null;
+  ratioToAverage: DecimalString | null;
+}
+
+export interface PriceHistorySeriesDto {
+  store: StoreDto;
+  source: string;
+  unitPriceUnit: BaseUnit;
+  daysInRange: number;
+  daysWithData: number;
+  points: PriceHistoryPointDto[];
+  analysis: PriceAnalysisDto;
+}
+
+export interface PriceHistoryDto {
+  product: ProductDto;
+  range: { from: string; to: string; days: number; timeZone: string; granularity: 'DAY' };
+  scope: { origin: 'STORE' | 'COORDINATES' | 'LOCALITY' | 'ALL'; radiusKm: number | null; storesConsidered: number | null };
+  policy: {
+    dailyClose: 'LAST_OBSERVATION_OF_DAY';
+    windowDays: number;
+    minDaysWithData: number;
+    goodDealBelowRatio: DecimalString;
+    expensiveAboveRatio: DecimalString;
+    maxAgeDays: number;
+  };
+  series: PriceHistorySeriesDto[];
+  seriesLimit: number;
+  truncated: boolean;
+}

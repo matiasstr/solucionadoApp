@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
 import { StoresModule } from '../stores/stores.module';
 import { GetCurrentPricesUseCase } from './application/get-current-prices.use-case';
+import { GetPriceHistoryUseCase } from './application/get-price-history.use-case';
 import { GetProductPricesUseCase } from './application/get-product-prices.use-case';
 import { RecordPriceObservationUseCase } from './application/record-price-observation.use-case';
 import { ProductPriceRepository } from './infrastructure/product-price.repository';
@@ -17,6 +18,7 @@ import { ProductPricesController } from './presentation/product-prices.controlle
   controllers: [ProductPricesController],
   providers: [
     ProductPriceRepository,
+    GetPriceHistoryUseCase,
     RecordPriceObservationUseCase,
     GetCurrentPricesUseCase,
     GetProductPricesUseCase,
