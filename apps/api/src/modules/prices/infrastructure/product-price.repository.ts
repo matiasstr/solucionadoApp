@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '../../../generated/prisma/client';
 import { isPrismaError } from '../../../database/prisma-errors';
 import { PrismaService } from '../../../database/prisma.service';
 import type { BaseUnit } from '../../catalog/domain/units';
@@ -31,6 +32,29 @@ export interface RecordObservationResult {
   readonly status: RecordObservationStatus;
   readonly observation: PriceObservationRecord;
 }
+
+/** Resultado de un lote de importación: nada se sobrescribe, cada fila se clasifica. */
+export interface RecordBatchResult {
+  readonly created: number;
+  readonly duplicates: number;
+  readonly conflicts: number;
+}
+
+type ObservationContent = Pick<PriceObservationInput, 'productId' | 'storeId' | 'price' | 'unitPrice' | 'unitPriceUnit' | 'observedAt'> & {
+  readonly currency?: string;
+};
+
+/** Filas por INSERT: 11 parámetros cada una, lejos del tope de 65.535 de PostgreSQL. */
+const INSERT_CHUNK = 1000;
+
+const sameContent = (stored: ObservationContent, input: ObservationContent): boolean =>
+  stored.productId === input.productId &&
+  stored.storeId === input.storeId &&
+  stored.price === input.price &&
+  stored.unitPrice === input.unitPrice &&
+  stored.unitPriceUnit === input.unitPriceUnit &&
+  (stored.currency ?? 'ARS') === (input.currency ?? 'ARS') &&
+  stored.observedAt.getTime() === input.observedAt.getTime();
 
 export interface HistoryQuery {
   readonly from?: Date;
@@ -160,6 +184,72 @@ export class ProductPriceRepository {
       skipDuplicates: true,
     });
     return result.count;
+  }
+
+  /**
+   * Lote de un importador (P7-01, ADR 0018): `INSERT … ON CONFLICT DO NOTHING RETURNING`
+   * dice qué claves insertó este lote. El resto (ya guardado, o ganado por otro lote en
+   * paralelo) se compara contra lo guardado: mismo contenido = `duplicate`, distinto =
+   * `conflict`. Nunca se sobrescribe. Dentro del lote gana la primera fila de cada clave.
+   */
+  async recordBatch(inputs: readonly PriceObservationInput[]): Promise<RecordBatchResult> {
+    let created = 0;
+    let duplicates = 0;
+    let conflicts = 0;
+    const bySource = new Map<string, PriceObservationInput[]>();
+    for (const input of inputs) {
+      const group = bySource.get(input.source);
+      if (group) group.push(input);
+      else bySource.set(input.source, [input]);
+    }
+
+    for (const [source, group] of bySource) {
+      const firsts = new Map<string, PriceObservationInput>();
+      const repeats: PriceObservationInput[] = [];
+      for (const input of group) {
+        if (firsts.has(input.idempotencyKey)) repeats.push(input);
+        else firsts.set(input.idempotencyKey, input);
+      }
+
+      const inserted = new Set<string>();
+      const pending = [...firsts.values()];
+      for (let start = 0; start < pending.length; start += INSERT_CHUNK) {
+        const rows = pending.slice(start, start + INSERT_CHUNK).map(
+          (input) => Prisma.sql`(gen_random_uuid(), ${input.productId}::uuid, ${input.storeId}::uuid, ${input.price}::numeric,
+            ${input.unitPrice}::numeric, ${input.unitPriceUnit}::"BaseUnit", ${input.currency ?? 'ARS'}, ${input.source},
+            ${input.idempotencyKey}, ${input.importBatchId ?? null}, ${input.observedAt}::timestamptz)`,
+        );
+        const returned = await this.prisma.$queryRaw<{ idempotencyKey: string }[]>`
+          INSERT INTO "ProductPrice"
+            ("id", "productId", "storeId", "price", "unitPrice", "unitPriceUnit", "currency", "source", "idempotencyKey", "importBatchId", "observedAt")
+          VALUES ${Prisma.join(rows)}
+          ON CONFLICT ("source", "idempotencyKey") DO NOTHING
+          RETURNING "idempotencyKey"`;
+        for (const row of returned) inserted.add(row.idempotencyKey);
+      }
+      created += inserted.size;
+
+      const others = pending.filter((input) => !inserted.has(input.idempotencyKey));
+      const stored = others.length
+        ? new Map(
+            (await this.prisma.productPrice.findMany({
+              where: { source, idempotencyKey: { in: others.map((input) => input.idempotencyKey) } },
+            })).map((row) => [row.idempotencyKey, toRecord(row)]),
+          )
+        : new Map<string, PriceObservationRecord>();
+      for (const input of others) {
+        const reference = stored.get(input.idempotencyKey);
+        if (reference && sameContent(reference, input)) duplicates += 1;
+        else conflicts += 1;
+      }
+      // Repetidas dentro del lote: se comparan con la guardada o con la primera del lote.
+      for (const input of repeats) {
+        const reference = stored.get(input.idempotencyKey) ?? firsts.get(input.idempotencyKey);
+        if (reference && sameContent(reference, input)) duplicates += 1;
+        else conflicts += 1;
+      }
+    }
+    return { created, duplicates, conflicts };
   }
 
   /**

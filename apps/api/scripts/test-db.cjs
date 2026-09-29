@@ -26,6 +26,26 @@ if (process.env.DATABASE_URL && new URL(process.env.DATABASE_URL).pathname === t
 }
 
 const env = { ...process.env, DATABASE_URL: raw };
+
+/**
+ * Orden real de ejecución. Los primeros conservan el orden alfabético con el que se
+ * escribieron (`catalog.test` asume que `catalog-api` ya sembró la base); los que agregan
+ * datos a la base compartida (precios nuevos, sucursales simuladas) van al final.
+ */
+const INTEGRATION_FILES = [
+  'test/integration/auth.test.cjs',
+  'test/integration/catalog-api.test.cjs',
+  'test/integration/catalog.test.cjs',
+  'test/integration/database.test.cjs',
+  'test/integration/promotions.test.cjs',
+  'test/integration/routines-api.test.cjs',
+  'test/integration/search-api.test.cjs',
+  'test/integration/shopping-plans-api.test.cjs',
+  'test/integration/shopping-plans.test.cjs',
+  'test/integration/price-history.test.cjs',
+  'test/integration/dashboard.test.cjs',
+  'test/integration/imports.test.cjs',
+];
 function run(label, command, args, { capture = false } = {}) {
   const result = spawnSync(command, args, { cwd: apiRoot, env, shell: process.platform === 'win32', encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });
   if (capture) process.stdout.write(result.stdout ?? '');
@@ -57,19 +77,20 @@ async function recreateDatabase() {
   if (!/No pending migrations/i.test(second)) fail('la segunda aplicación de migraciones no fue un no-op.');
   run('migrate diff (drift)', 'npx', ['prisma', 'migrate', 'diff', '--from-config-datasource', '--to-schema', 'prisma/schema.prisma', '--exit-code']);
   run('build', 'npm', ['run', 'build']);
-  run('tests de integración', 'node', [
-    '--test',
-    '--test-concurrency=1',
-    'test/integration/database.test.cjs',
-    'test/integration/auth.test.cjs',
-    'test/integration/catalog.test.cjs',
-    'test/integration/catalog-api.test.cjs',
-    'test/integration/promotions.test.cjs',
-    'test/integration/search-api.test.cjs',
-    'test/integration/routines-api.test.cjs',
-    'test/integration/shopping-plans.test.cjs',
-    'test/integration/shopping-plans-api.test.cjs',
-    'test/integration/price-history.test.cjs',
-    'test/integration/dashboard.test.cjs',
-  ]);
+  // Un proceso por archivo y en este orden: `node --test` ordena los archivos alfabéticamente,
+  // y los últimos agregan datos a la base compartida (precios nuevos, sucursales simuladas).
+  const totals = { tests: 0, pass: 0, fail: 0 };
+  const failed = [];
+  for (const file of INTEGRATION_FILES) {
+    const result = spawnSync('node', ['--test', '--test-concurrency=1', file], { cwd: apiRoot, env, encoding: 'utf8' });
+    process.stdout.write(result.stdout ?? '');
+    process.stderr.write(result.stderr ?? '');
+    for (const key of Object.keys(totals)) {
+      const match = new RegExp(`^# ${key} (\\d+)$`, 'm').exec(result.stdout ?? '');
+      totals[key] += match ? Number(match[1]) : 0;
+    }
+    if (result.status !== 0) failed.push(file);
+  }
+  console.log(`test:db — total: ${totals.tests} tests, ${totals.pass} ok, ${totals.fail} con fallas (${INTEGRATION_FILES.length} archivos)`);
+  if (failed.length) fail(`fallaron: ${failed.join(', ')}.`);
 })();

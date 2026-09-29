@@ -1,5 +1,5 @@
 // Dashboard privado (P6-02) contra PostgreSQL/PostGIS real. Ejecutar con `npm.cmd run test:db`.
-// Último del runner: agrega una observación de precio a la base compartida.
+// Corre hacia el final (orden en scripts/test-db.cjs): agrega una observación de precio a la base compartida.
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { after, before, describe, test } = require('node:test');

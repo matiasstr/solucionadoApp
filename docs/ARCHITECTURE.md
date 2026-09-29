@@ -88,7 +88,7 @@ Las carpetas de módulos futuros se crean al implementarlos. No se crean servici
 
 En módulos con reglas usar `domain/` (funciones y tipos puros), `application/` (casos de uso y puertos), `infrastructure/` (Prisma, proveedores) y `presentation/` (controllers/DTO). En health y CRUD sencillo mantener pocos archivos. Dependencias hacia dominio/aplicación; estos no importan adaptadores, decoradores Nest ni el cliente Prisma.
 
-`PriceProvider` y `PromotionProvider` entregan `AsyncIterable` de registros crudos. `PriceImporter`, `PromotionImporter`, `ProductNormalizer` y `PriceNormalizer` orquestan/normalizan mediante contratos de aplicación. Un mock será la primera implementación; SEPA queda como adaptador futuro. Conservar fuente, fecha observada, ingestión y clave de idempotencia. Los contratos concretos se implementan en fase 7, sin pseudocódigo operativo.
+`PriceProvider` y `PromotionProvider` entregan `AsyncIterable` de registros crudos. `PriceImporter` y `PromotionImporter` orquestan; la normalización de productos y registros vive en `imports/domain/import-normalizer.ts` y el precio final lo decide `normalizePrice` (fase 2). Implementado en P7-01 con un proveedor simulado y uno de archivo JSON Lines; SEPA queda como adaptador futuro con su propio paso. Se conservan fuente, fecha observada, ingestión, clave de idempotencia e id de la ejecución; la identidad por fuente vive en `ExternalProductRef`/`ExternalStoreRef`. Ver [ADR 0018](architecture-decisions/0018-import-pipeline.md).
 
 ## API, cliente y entorno
 

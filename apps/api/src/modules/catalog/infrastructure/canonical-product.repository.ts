@@ -59,6 +59,17 @@ export class CanonicalProductRepository {
     return rows.map(toRecord);
   }
 
+  /** Coincidencia **exacta** de nombre normalizado: el importador no vincula por parecido. */
+  async findByNormalizedNames(names: readonly string[]): Promise<CanonicalProductRecord[]> {
+    const normalized = [...new Set(names.map((name) => normalizeName(name, 200)).filter(Boolean))];
+    if (!normalized.length) return [];
+    const rows = await this.prisma.canonicalProduct.findMany({
+      where: { normalizedName: { in: normalized } },
+      orderBy: [{ normalizedName: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(toRecord);
+  }
+
   async searchByName(term: string, limit = 20): Promise<CanonicalProductRecord[]> {
     const normalized = normalizeName(term, 200);
     if (!normalized) return [];

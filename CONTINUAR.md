@@ -2,15 +2,15 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03) y **fase 6 completa** (P6-01, P6-02). Empezar por **P7-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0017) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02) y **P7-01**. Empezar por **P7-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0018) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P7-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P7-02 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 6 completas
+## Estado: 2026-09-29 — Fases 1 a 6 completas y P7-01 completo
 
 Raíz: `C:SERSPCDESKTOPTUSOFERTASAPPSOLUCIONADOAPP`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P7-01 — Puertos y pipeline por lotes** (`docs/steps/phase-07.md`): interfaces de proveedores e importadores independientes de SEPA y Prisma, proveedores mock reproducibles, pipeline en streaming con lotes y backpressure, identidad por fuente/EAN y reingreso idempotente, y un comando manual. Instrucciones al final de este archivo.
+**Próximo paso: P7-02 — Trazabilidad y reintentos** (`docs/steps/phase-07.md`): ejecuciones de importación persistidas con contadores y error saneado, cuarentena de registros inválidos, reintentos limitados y reanudación solo si la fuente lo permite, y documentación del contrato de proveedor. Instrucciones al final de este archivo.
 No están implementados los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
@@ -97,13 +97,40 @@ No están implementados los importadores, los jobs, las alertas ni las promocion
 - **P6-01 (sesión 2026-09-29): historial y análisis de precios.**
   - Dominio puro `apps/api/src/modules/prices/domain/price-analysis.ts`: `argentineDate`/`argentineDayStart` (UTC−3 fijo), `dailyCloses` (última observación del día argentino, desempate ingesta e id), `analyzeSeries` (base de los 30 días anteriores al día del precio actual, promedio por día, mínimo con fecha, máximo, `ratioToAverage`, clasificación con precedencia `STALE` → `INSUFFICIENT_DATA` (< 7 días) → `HISTORIC_LOW` → `GOOD_DEAL` (< 0,85) → `EXPENSIVE` (> 1,15) → `NORMAL`).
   - `ProductPriceRepository.findBetween` y `findLatestPerSeries` (`DISTINCT ON (storeId, source)`); `GetPriceHistoryUseCase` (rango 1–366 días, `storeId` **o** ubicación con `StoreScopeResolver`, hasta 20 series, hasta 50.000 observaciones); ruta `GET /products/:id/price-history` en `ProductPricesController` con `PriceHistoryQueryDto`; contratos en `prices/presentation/price-history.contracts.ts`, `packages/shared` y `docs/API.md`.
-  - Tests: `test/price-analysis.test.cjs` (9) e integración `test/integration/price-history.test.cjs` (7, último del runner porque inserta observaciones de otra fuente). ADR 0016.
+  - Tests: `test/price-analysis.test.cjs` (9) e integración `test/integration/price-history.test.cjs` (7; corre hacia el final porque inserta observaciones de otra fuente). ADR 0016.
 
 - **P6-02 (sesión 2026-09-29): historial visual y resumen.** Cierra la fase 6.
   - API: módulo `apps/api/src/modules/dashboard/` (`domain/savings-summary.ts` con `selectPlansForSavings`/`summarizeSavings`/`weekStart`, `domain/opportunities.ts` con `rankOpportunities`, `application/get-dashboard.use-case.ts`, `presentation/dashboard.controller.ts` y contratos) registrado en `AppModule`: `GET /dashboard` privado. `ProductPriceRepository.findBetween` y `findLatestPerSeries` ahora reciben **varios productos** (`DISTINCT ON (productId, storeId, source)`).
   - Web: `components/product/price-history.tsx` (gráfico SVG, análisis explicado, tabla) integrado en la ficha con `periodo`/`sucursal` en la URL (los filtros de la comparación los conservan); `components/dashboard/dashboard-view.tsx`, `app/(private)/dashboard/page.tsx`, `lib/dashboard/queries.ts`, `usePriceHistory` en `lib/catalog/queries.ts`, enlace "Resumen" en la barra y en `/inicio`; los cambios de plan invalidan el resumen. Estilos `.history-*` y `.dashboard-*`.
   - Contratos en `packages/shared` y `docs/API.md` (secciones del historial y "Resumen"). ADR 0017.
   - Tests: `test/dashboard-savings.test.cjs` (6), `test/integration/dashboard.test.cjs` (4, último del runner: inserta un precio bajo) y `apps/web/e2e/history.e2e.cjs` (7, sumado a `test:e2e`).
+
+- **P7-01 (sesión 2026-09-29): puertos de proveedores e importador por lotes.** Abre la fase 7.
+  - Migración `20260929180000_external_identity_refs`: `ExternalProductRef` y `ExternalStoreRef` (únicas por `(source, externalId)`, `CHECK` de claves no vacías). Aplicada en la base de desarrollo.
+  - `apps/api/src/modules/imports/`: `domain/import.types.ts` (contratos crudos, normalizados, motivos, resumen), `domain/import-normalizer.ts` (`parseLocalizedDecimal`, `isValidGtin`, `parseUnit`, `parseSaleMode`, `parseObservedAt`, `normalizeStore`/`normalizeProduct`/`normalizePriceRecord`/`normalizePromotionRecord`), `domain/batching.ts` (`runBatches`, `BatchRunError`), `application/ports.ts`, `application/import-run.ts` (`ImportRun`, `importId`, `sanitizeError`, `ImportProviderError`), `application/price-importer.ts`, `application/promotion-importer.ts`, `infrastructure/prisma-import.gateway.ts`, `infrastructure/providers/mock-price.provider.ts` (`MockPriceProvider`, `MockPromotionProvider`) y `json-lines-price.provider.ts` (`readLines`), `cli.ts`. Sin módulo Nest ni endpoints.
+  - Repositorios: `ProductPriceRepository.recordBatch` (`INSERT … ON CONFLICT DO NOTHING RETURNING`), `ProductRepository.findManyByIds`/`findByEans`, `CanonicalProductRepository.findByNormalizedNames`. `uuidV5` pasó a `src/common/uuid-v5.ts` (el seed lo reutiliza).
+  - Scripts: `npm.cmd run import` (raíz y API). `scripts/test-db.cjs` corre ahora **un proceso por archivo en el orden declarado** e imprime el total.
+  - Tests: `test/import-normalizer.test.cjs` (6), `test/import-batching.test.cjs` (7) e integración `test/integration/imports.test.cjs` (8, último). ADR 0018.
+
+## Verificaciones ejecutadas (P7-01, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **159/159** unitarios, build API + web) |
+| `npm.cmd run test:db` | **119/119** integración real en 12 archivos (111 previos + 8 de `imports.test.cjs`); repetido tras los últimos ajustes |
+| Comando manual | `npm.cmd run import -- --provider=mock --stores=3 --products=10 --days=3 --corrupt-every=17 --without-ean-every=5 --promotions` contra la base de desarrollo: 90 leídos, 85 creados, 5 rechazados (2 `PRICE_INVALID`, `UNIT_UNKNOWN`, `STORE_INVALID`, `OBSERVED_AT_INVALID`), 3 sucursales y 10 productos creados, 1 pendiente de genérico; promociones 4 creadas y 2 rechazadas. Repetido: 0 creados, 85 repetidos |
+
+Qué cubren los tests nuevos: coma decimal con miles, ambigüedades y negativos; GTIN-8/12/13/14; alias de unidades y venta por peso; fechas con zona, día al mediodía argentino, día imposible y sin zona; registro válido sin redondeo, sin EAN y con EAN inválido descartado; 13 motivos de rechazo sin copiar valores; promociones con importes con coma y datos desconocidos; **backpressure** (retenidos ≤ lote × (concurrencia + 1), identidad en serie); **un millón de registros de 1 KB en streaming con heap acotado**; lote que falla (deja de leer y conserva lo confirmado) y proveedor cortado a mitad de lote (no escribe el incompleto); lectura de líneas partidas, CRLF, demasiado largas y tope total; mock reproducible y perezoso. En integración: mock de punta a punta (72 precios, 3 sucursales, 8 productos, 2 sin EAN, 1 pendiente; fecha de ingesta distinta de la observada; historia DEMO intacta), reimportación sin duplicar, conflicto sin sobrescribir, vínculo por EAN con el producto DEMO y colisión con otro contenido, cambio de contenido de un producto vinculado, corruptos con motivo, fallo a mitad y reanudación sin duplicar, proveedor alternativo `.jsonl.gz` y archivo inexistente, promociones vinculadas/rechazadas y reimportación que actualiza.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P7-01)
+
+- **Identidad por fuente, nunca por nombre** (ADR 0018). Un producto sin genérico exacto queda con `canonicalProductId` null: no participa en planes hasta que se vincule (revisión futura).
+- **La base de desarrollo tiene datos simulados** de la prueba del comando: sucursales `Sucursal Mock N (MOCK)` cerca de Caballito y productos `Producto mock N: … (MOCK)`, fuente `mock-provider`. Pueden aparecer en búsquedas y planes locales; no afectan la base de pruebas ni producción.
+- **Runner de integración**: `node --test` con varios archivos los ordenaba alfabéticamente; los comentarios de "último del runner" de P6 eran falsos (pasaban igual). Ahora `scripts/test-db.cjs` corre un proceso por archivo en el orden de `INTEGRATION_FILES`; `catalog-api` sigue antes que `catalog` porque este asume la base sembrada.
+- El mock usa por defecto el día de **ayer**: un día sin hora es el mediodía argentino y el de hoy puede ser todavía futuro.
+- No hay descarga desde internet: llega con la primera fuente real, con endpoints permitidos por configuración (nunca una URL de un usuario).
 
 ## Verificaciones ejecutadas (P6-02, 2026-09-29)
 
@@ -397,20 +424,21 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P5-02** `a750151` (publicado).
 - **P5-03** `22cdc58` (publicado).
 - **P6-01** `15474cb` (publicado).
-- **P6-02**: commit `feat(P6-02): ...` del 2026-09-29 (ver `git log`).
+- **P6-02** `b11d264` (publicado).
+- **P7-01**: commit `feat(P7-01): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P7-01
+## Cómo seguir con P7-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-07.md` (P7-01), `docs/ARCHITECTURE.md` (importadores), ADR 0001, 0002 y 0008 (normalizador, identidad idempotente, append-only). Conectar SEPA **no** es parte de P7-01: requiere verificar su fuente/contrato actual en un paso explícito.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-07.md` (P7-02), ADR 0008 y 0018.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Módulo `apps/api/src/modules/imports/` (`domain`, `application`, `infrastructure/providers`): interfaces `PriceProvider`, `PromotionProvider`, `PriceImporter`, `PromotionImporter`, `ProductNormalizer` con DTOs propios (sin SEPA ni Prisma), ingesta con `AsyncIterable` o streams con backpressure.
-4. `MockPriceProvider`/`MockPromotionProvider` reproducibles (semilla), reutilizando `normalizePrice`, `buildIdempotencyKey`, `ProductPriceRepository.record`/`recordMany` y la validación de promociones (sin duplicar reglas de unidades ni dinero). Pipeline por etapas (descarga → descompresión → parseo → normalización → lote → base) con tamaño de lote y concurrencia configurables y sin leer archivos completos en memoria.
-5. Identidad por identificador externo + fuente y EAN validado (dígito de control); nada de fusionar por nombre parecido: canonicalización dudosa queda pendiente/marcada. Registrar fuente, fecha observada, fecha de importación e id original; reingresar lo mismo es idempotente (`duplicate`) y contenido distinto es `conflict`.
-6. Comando manual documentado (por ejemplo `npm.cmd run import:mock -- --provider=mock --date=AAAA-MM-DD`), sin jobs ni servicios externos; no correr contra producción.
-7. Tests (phase-07): import mock end-to-end, normalización coherente, backpressure y memoria acotada con entrada grande sintética en streaming, fallo a mitad de lote, registros corruptos, producto sin EAN, precio con coma decimal, proveedor alternativo sin tocar dominio.
-8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P7-02.
+3. Persistir ejecuciones (`ImportRun`: id, fuente, tipo, timestamps, estado, contadores creados/repetidos/conflictos/rechazados y error saneado) con una migración; hoy `ImportRunSummary` solo se imprime. Lotes con transacciones pequeñas (ya lo son).
+4. Cuarentena: guardar los registros rechazados con motivo, posición y un payload mínimo no sensible (ids externos, no el registro entero), consultable por ejecución. Un fallo parcial nunca se informa como éxito (ya: `COMPLETED_WITH_REJECTIONS`/`FAILED`).
+5. Reintentos limitados del lote que falla (con espera) y reanudación con cursor/posición **solo** cuando el proveedor puede reproducir el stream (el mock y un archivo sí; una descarga que no se puede repetir, no): no afirmar reanudación si no es posible. La idempotencia ya garantiza que reintentar no duplica.
+6. Documentar en `docs/` cómo agregar un proveedor (contrato `PriceProvider`/`PromotionProvider`, esquema de entrada JSON Lines, licencias/condiciones a verificar, límites de descarga y descompresión, endpoints permitidos por configuración y nunca una URL enviada por usuarios públicos).
+7. Tests (phase-07): misma importación dos veces sin duplicar, reinicio tras fallo, colisión de identidad, registros fuera de orden, duplicados, reporte de cuarentena; verificar que importar no borra historia ni cambia snapshots de planes.
+8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P7-02 se cierra la fase 7 (siguiente: P8-01, Redis/BullMQ).
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 6 (hasta el historial de precios con gráfico y el resumen /dashboard, ADR 0016 y 0017) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P7-01 (puertos de proveedores, pipeline por lotes e importador mock), descrito en docs/steps/phase-07.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 6 y P7-01 (importadores con identidad por fuente y lotes con backpressure, ADR 0018) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P7-02 (ejecuciones persistidas, cuarentena, reintentos y documentación para proveedores), descrito en docs/steps/phase-07.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

@@ -19,6 +19,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:seed": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed/main.js",
+    "import": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/modules/imports/cli.js",
     "test:db": "node scripts/test-db.cjs"
   },
   "dependencies": {

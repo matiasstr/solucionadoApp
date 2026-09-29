@@ -158,6 +158,7 @@ model Product {
   promotions         Promotion[]
   preferredByItems   ShoppingRoutineItem[] @relation("PreferredProduct")
   planItems          ShoppingPlanItem[]
+  externalRefs       ExternalProductRef[]
 
   @@index([normalizedName])
   @@index([categoryId])
@@ -173,27 +174,55 @@ model StoreChain {
 }
 
 model Store {
-  id         String                                @id @default(uuid()) @db.Uuid
-  chainId    String                                @db.Uuid
-  name       String                                @db.VarChar(180)
-  address    String                                @db.VarChar(240)
-  city       String                                @db.VarChar(120)
-  province   String                                @db.VarChar(120)
-  latitude   Decimal?                              @db.Decimal(9, 6)
-  longitude  Decimal?                              @db.Decimal(9, 6)
+  id           String                                @id @default(uuid()) @db.Uuid
+  chainId      String                                @db.Uuid
+  name         String                                @db.VarChar(180)
+  address      String                                @db.VarChar(240)
+  city         String                                @db.VarChar(120)
+  province     String                                @db.VarChar(120)
+  latitude     Decimal?                              @db.Decimal(9, 6)
+  longitude    Decimal?                              @db.Decimal(9, 6)
   // Derivado por trigger desde longitud/latitud; consultas con SQL parametrizado (StoreProximityRepository).
-  location   Unsupported("geography(Point,4326)")?
-  isActive   Boolean                               @default(true)
-  createdAt  DateTime                              @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime                              @updatedAt @db.Timestamptz(3)
-  chain      StoreChain                            @relation(fields: [chainId], references: [id], onDelete: Restrict)
-  prices     ProductPrice[]
-  promotions Promotion[]
-  planItems  ShoppingPlanItem[]
+  location     Unsupported("geography(Point,4326)")?
+  isActive     Boolean                               @default(true)
+  createdAt    DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                              @updatedAt @db.Timestamptz(3)
+  chain        StoreChain                            @relation(fields: [chainId], references: [id], onDelete: Restrict)
+  prices       ProductPrice[]
+  promotions   Promotion[]
+  planItems    ShoppingPlanItem[]
+  externalRefs ExternalStoreRef[]
 
   @@index([chainId])
   @@index([province, city])
   @@index([location], type: Gist, map: "Store_location_gist_idx")
+}
+
+// Identidad de un producto según una fuente externa (fase 7, ADR 0018). El importador
+// resuelve por acá o por EAN validado; nunca fusiona productos por nombre parecido.
+model ExternalProductRef {
+  id         String   @id @default(uuid()) @db.Uuid
+  source     String   @db.VarChar(80)
+  externalId String   @db.VarChar(200)
+  productId  String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([source, externalId])
+  @@index([productId])
+}
+
+// Identidad de una sucursal según una fuente externa (fase 7, ADR 0018).
+model ExternalStoreRef {
+  id         String   @id @default(uuid()) @db.Uuid
+  source     String   @db.VarChar(80)
+  externalId String   @db.VarChar(200)
+  storeId    String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  store      Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@unique([source, externalId])
+  @@index([storeId])
 }
 
 model ProductPrice {

@@ -87,6 +87,19 @@ export class ProductRepository {
     return row ? toRecord(row) : null;
   }
 
+  async findManyByIds(ids: readonly string[]): Promise<ProductRecord[]> {
+    if (!ids.length) return [];
+    const rows = await this.prisma.product.findMany({ where: { id: { in: [...ids] } }, orderBy: { id: 'asc' } });
+    return rows.map(toRecord);
+  }
+
+  /** Productos por EAN exacto (el importador valida el dígito de control antes). */
+  async findByEans(eans: readonly string[]): Promise<ProductRecord[]> {
+    if (!eans.length) return [];
+    const rows = await this.prisma.product.findMany({ where: { ean: { in: [...eans] } } });
+    return rows.map(toRecord);
+  }
+
   async findByEan(ean: string): Promise<ProductRecord | null> {
     const row = await this.prisma.product.findUnique({ where: { ean } });
     return row ? toRecord(row) : null;

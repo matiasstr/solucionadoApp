@@ -61,7 +61,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | COMPLETO |
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | COMPLETO |
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | COMPLETO |
-| P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | PENDIENTE |
+| P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | COMPLETO |
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | PENDIENTE |
 | P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | PENDIENTE |
 | P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | PENDIENTE |
@@ -135,6 +135,14 @@ Verificado al cerrar P6-01: `npm.cmd run verify` (140/140 unitarios, 9 nuevos de
 Verificado al cerrar la fase: `npm.cmd run verify` (146/146 unitarios, 6 nuevos de ahorro y oportunidades; build web con 14 rutas), `npm.cmd run test:db` (111/111, 4 nuevos de `/dashboard`) y `npm.cmd run test:e2e` (45/45 en Edge real, 7 nuevos de historial y resumen; capturas en `.cache/verification/p6-02`).
 
 **Siguiente: P7-01** (puertos de proveedores, normalización e importador mock por lotes).
+
+## Estado de la fase 7 (importadores) — EN CURSO
+
+**P7-01 — COMPLETO.** Módulo `apps/api/src/modules/imports/`: contratos `PriceProvider`/`PromotionProvider` con registros crudos independientes de SEPA y Prisma; normalización pura y estricta (coma decimal sin ambigüedades, GTIN con dígito de control, alias de unidades, fechas con zona o mediodía argentino, rechazos con motivo); identidad por fuente en `ExternalProductRef`/`ExternalStoreRef` (migración `20260929180000_external_identity_refs`) o EAN válido con el mismo contenido, nunca por nombre, con colisiones y cambios de contenido rechazados y productos sin genérico pendientes de revisión; lotes con backpressure (identidad en serie, persistencia concurrente acotada, memoria ≤ lote × (concurrencia + 1)); precios idempotentes con `INSERT … ON CONFLICT DO NOTHING RETURNING` (`duplicate`/`conflict` sin sobrescribir); promociones que solo se vinculan con lo existente; proveedores mock reproducible y JSON Lines (`.gz`) por trozos con topes; comando `npm.cmd run import`. Decisiones en [ADR 0018](docs/architecture-decisions/0018-import-pipeline.md).
+
+Verificado al cerrar P7-01: `npm.cmd run verify` (159/159 unitarios, 13 nuevos: normalizador, pipeline con un millón de registros en streaming, lectura de líneas, proveedor mock) y `npm.cmd run test:db` (119/119, 8 nuevos de importación). Además se corrigió el runner de integración: ahora corre archivo por archivo en el orden declarado (antes `node --test` los ordenaba alfabéticamente). Comando probado contra la base de desarrollo (85 creados, 5 rechazados con motivo, reingreso 85 repetidos).
+
+**Siguiente: P7-02** (ejecuciones persistidas, cuarentena, reintentos y documentación para proveedores).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 
