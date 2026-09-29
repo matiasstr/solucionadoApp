@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01 y **P4-02**). Empezar por **P5-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0012) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) y **P5-01**. Empezar por **P5-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0013) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-27, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-02 que recuperar.
 
-## Estado: 2026-09-27 — Fases 1, 2, 3 y 4 completas
+## Estado: 2026-09-29 — Fases 1 a 4 completas y P5-01 completo
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P5-01 — Necesidades y candidatos** (`docs/steps/phase-05.md`): generador puro y determinista de necesidades (ocurrencias por ventana, consolidación por canónico, inventario restado una vez) y de candidatos de compra (precios observados, promociones vigentes, radio/localidad, preferencias y marcas), con razones de exclusión.
-No están implementados el optimizador, los planes, los importadores ni los jobs. **El despliegue de producción no incluye P4-02** (último deploy: 2026-09-24); ver "Deploy".
+**Próximo paso: P5-02 — Optimización y costos explicables** (`docs/steps/phase-05.md`): optimizador determinista sobre los candidatos de P5-01 (`PlanCandidates`), costo efectivo con penalidades en ARS, base habitual en una sola sucursal y ahorro estimado honesto (ADR 0004). Instrucciones al final de este archivo.
+No están implementados el optimizador, los planes persistidos, las pantallas del plan, los importadores ni los jobs. **El despliegue de producción no incluye P4-02 ni P5-01** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -74,6 +74,33 @@ No están implementados el optimizador, los planes, los importadores ni los jobs
   - `lib/api.ts` y `authRequest` aceptan `DELETE`; `AuthProvider.updateUser` mantiene el usuario de sesión al día tras editar el perfil. Contratos de pedido nuevos en `packages/shared` (`UpdateProfileRequest`, `CreateRoutineItemRequest`, …).
   - **API**: `PATCH /users/me` acepta `onboardingCompleted: true` (fecha del servidor, idempotente con `updateMany … onboardingCompletedAt: null`; `false`/`null` son 400). Documentado en `docs/API.md`. ADR 0012.
   - E2E nuevo `apps/web/e2e/account.e2e.cjs` (13 casos) sumado a `npm.cmd run test:e2e`; `auth.e2e.cjs` ahora espera `/onboarding` tras registrarse.
+
+- **P5-01 (sesión 2026-09-29): necesidades y candidatos del planificador.** Abre la fase 5.
+  - Módulo `apps/api/src/modules/shopping-plans/` (registrado en `AppModule`, sin controladores todavía). Dominio puro: `plan-calendar.ts` (ventana inclusiva en calendario argentino, `resolvePlanWindow`, `occurrencesInWindow`, `argentineNoon` = 15:00 UTC), `needs.ts` (`buildNeeds`), `candidates.ts` (`buildCandidates`), `planner.types.ts` (contratos de entrada/salida con `schemaVersion: 1`) y `planning-errors.ts` (`PlanningRuleError`: `PLAN_WINDOW_INVALID`, `PLAN_WINDOW_TOO_LONG`).
+  - Aplicación: `BuildPlanCandidatesUseCase.execute(userId, { startDate?, endDate?, now? })` carga usuario, rutinas con ítems, despensa y canónicos (todo filtrado por `userId`), resuelve ubicación (coordenadas → `StoreScopeResolver` con `maxTravelDistanceKm`; solo localidad → ciudad sin distancia; nada → sin sucursales), precios actuales en **una** consulta, promociones vigentes en la ventana (`PromotionRepository.findActiveBetween`, nuevo; `findActiveFor` lo reutiliza) y presentaciones de todos los canónicos, activas o no (`ProductRepository.listByCanonicalProducts`, nuevo).
+  - Configuración nueva en `ApiConfig.planner` y `apps/api/.env.example`: `PLANNER_MAX_HORIZON_DAYS` (28), `PLANNER_MAX_CANDIDATE_DATES` (7), `PLANNER_MAX_CANDIDATE_STORES` (8), `PLANNER_MAX_OFFERS_PER_STORE` (2).
+  - Tests: `test/shopping-plan-needs.test.cjs` (13), `test/shopping-plan-candidates.test.cjs` (18), uno nuevo en `environment.test.cjs` e integración `test/integration/shopping-plans.test.cjs` (8, sumado a `scripts/test-db.cjs`). ADR 0013.
+
+## Verificaciones ejecutadas (P5-01, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **112/112** unitarios, build API + web con 12 rutas) |
+| `npm.cmd run test:db` | **88/88** integración real (80 previos + 8 de `shopping-plans.test.cjs`) |
+
+Qué cubren los tests nuevos: ventana por defecto de 7 días y rechazo de fechas imposibles, fin anterior y horizonte excedido; mediodía argentino y día ISO; ocurrencias con ancla anterior, posterior y dentro de la ventana, diaria, quincenal (15 días no son dos semanas) y ventana de dos semanas; **5 kg − 2 kg = 3 kg**; despensa mayor, igual y cero; **dos rutinas con el mismo canónico restando la despensa una vez**; cantidades fraccionarias; ítem sin ocurrencias registrado; unidades incompatibles (ítem en L para canónico en KG, despensa en otra unidad no restada, canónico inexistente); restricciones combinadas y conflicto de exactas; venta por peso con precio como estimación fechada; **envases con excedente** (900 ml × 4 para 3 L); **preferido sin sustituto exacto**; preferido desactivado con y sin reemplazos; marcas excluidas sin distinguir mayúsculas; dimensión distinta; **precio stale** descartado y necesidad `ONLY_STALE_PRICES`; sin precio en el alcance; **sin ubicación**; solo localidad con aviso; promoción de los martes solo el martes y bancaria nunca aplicada; 2×1 con uno y dos envases; recorte de sucursales por cobertura/costo/distancia, de ofertas por sucursal conservando la preferida y de fechas; determinismo con la entrada invertida. En integración, contra la base sembrada: 5 kg − 2000 g con ofertas a ≤ 5 km por PostGIS, dos rutinas, quincenal fuera y dentro de la ventana, preferido exacto con el 20 % de Carrefour Almagro aplicado y la bancaria `PAYMENT_CONDITIONED`, CABA por localidad sin distancias y Disco Belgrano descartado por precio viejo, Morón con la sucursal sin coordenadas, sin ubicación, aislamiento entre cuentas y errores 400/401.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P5-01)
+
+- **La ventana es un período de compra**: la necesidad es la suma de las ocurrencias y cualquier fecha evaluada sirve; `firstOccurrence` queda en la salida por si P5-02 decide exigir comprar antes (ADR 0013).
+- **Precios viejos se descartan** (no se usan como estimación) con `PRICE_STALE` y su antigüedad. **Sin ubicación no hay sucursales** (`NO_LOCATION`), nunca "todas".
+- Cada fecha se cobra al **mediodía argentino** (15:00 UTC). Las promociones que no alcanzan a la oferta no se listan; las que sí, se listan por fecha con su `skipReason`.
+- **No se fuerza cantidad extra para activar un 2×1**: con 500 g de fideos se compra un envase y el 2×1 figura `NO_SAVINGS`. Explorar cantidades mayores (y mínimos de compra por sucursal, hoy `MINIMUM_SPEND_UNKNOWN`) es trabajo de P5-02.
+- El recorte conserva siempre la presentación preferida en cada sucursal, además de las N más baratas: la preferencia no está en la función de costo, así que la resuelve el optimizador (por ejemplo, como desempate).
+- `findCurrentByProducts` con `storeIds` vacío devuelve **todas** las sucursales: el caso de uso no consulta precios si no hay sucursales en el alcance.
+- `ProductRepository.listByCanonicalProducts` trae hasta 2000 presentaciones; con catálogo real (fase 7) puede hacer falta acotar por necesidad.
 
 ## Verificaciones ejecutadas (P4-02, 2026-09-27)
 
@@ -229,6 +256,8 @@ No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web)
 
 Desplegado y verificado el 2026-09-24. Cuenta `matiasstr`, scope `matiasstrs-projects`, org `team_HaHit5F3SLJ9EspBBNJOkRgR`. `.vercel/` (ignorado por Git) apunta al proyecto **web**.
 
+**Incidente 2026-09-28 (resuelto el 2026-09-29): base de producción suspendida.** `vercel integration list --all` mostró `tusofertas-db` (Supabase) como **Suspended**: `/api/health/ready` daba 503 (`database: down`) y todo login/registro en producción devolvía 500. No era un bug del código; el usuario reactivó el recurso desde el dashboard. El 2026-09-29 volvió a figurar **Available**, `ready` 200 con `database: up`, y se creó la cuenta de prueba `prueba@example.com` en producción (registro 201, login 200, `/users/me` 200; la contraseña la tiene el usuario, no se guarda acá). Si vuelve a pasar: mismo diagnóstico y reactivar desde Vercel → Storage → `tusofertas-db` (o `vercel integration open supabase`). En local también existe `prueba@example.com` en la base de desarrollo. Producción sigue **sin P4-02**.
+
 | Proyecto | URL | Root | Deploy (desde la raíz del repo) |
 | --- | --- | --- | --- |
 | `tusofertas` (web) | https://tusofertas.vercel.app | `apps/web` | `vercel deploy --prod --yes` |
@@ -257,18 +286,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P3-02** `900f2c9` (publicado).
 - **P4-01** `b965226` (publicado).
 - **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: `3c6c3c7` (publicado).
-- **P4-02**: commit `feat(P4-02): ...` del 2026-09-27 (ver `git log`).
+- **P4-02** `7092b2b` (publicado).
+- **P5-01**: commit `feat(P5-01): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P5-01
+## Cómo seguir con P5-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-01), `docs/DOMAIN.md` y ADR 0002, 0004, 0008, 0009, 0011 y 0012.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-02), ADR 0004 (costo efectivo y ahorro honesto), ADR 0009 (promociones) y ADR 0013 (entrada del optimizador).
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Módulo `apps/api/src/modules/shopping-plans/` con `domain/` puro: ocurrencias de cada ítem entre las fechas inclusivas del plan (desde `anchorDate` cada `frequencyDays`, en calendario argentino), cantidad × ocurrencias en la unidad del canónico (ya normalizada por P4-01), consolidación por canónico entre rutinas e inventario restado **una sola vez** (mínimo cero) con su antigüedad (`updatedAt`).
-4. Candidatos: precios actuales (`ProductPriceRepository.findCurrentByProducts`, frescura de ADR 0008), promociones vigentes (`PromotionRepository.findActiveFor` + `priceLine`), envases enteros (`planPurchase`), sucursales por radio con coordenadas (PostGIS, `StoreScopeResolver`) o por localidad con advertencia. Respetar preferido sin sustitutos (exacto), marcas excluidas/preferidas y un preferido que se desactivó (P4-01 lo permite). Recorte determinista con límites configurables y razones de exclusión; las necesidades sin precio quedan listadas, no se inventan.
-5. Tests del paso (unitarios del dominio + integración): 5 kg − 2 kg = 3 kg; inventario mayor que la necesidad; quincenal y ventanas parciales; dos rutinas con el mismo canónico; excedente de envases; unidades incompatibles; preferido sin sustituto; precio viejo; sin ubicación.
-6. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P5-02.
+3. Optimizador puro en `apps/api/src/modules/shopping-plans/domain/` que reciba `PlanCandidates` (P5-01) y las penalidades del usuario (`storeVisitPenalty`, `distancePenaltyPerKm`, `maxStoresPerShoppingPlan`; hoy el caso de uso solo lee la ubicación): elegir para cada necesidad resuelta una oferta y una fecha (`dateOptions`), contar visitas por sucursal/fecha, distancia ida y vuelta por visita (`distanceMeters × 2`; sin distancia → desconocida, no cero) y minimizar `effectiveCost = productos con descuento + penalidad por visita × visitas + penalidad por km × km`.
+4. Búsqueda exacta sobre subconjuntos de sucursales (≤ 8 por defecto) respetando `maxStoresPerShoppingPlan`, con presupuesto de operaciones y fallback determinista (`EXACT_BOUNDED` / `HEURISTIC`). Desempate estable por costo, visitas, distancia e id. Reevaluar `minimumSpend` con el subtotal por sucursal y considerar cantidades extra para promociones por pares (hoy `NO_SAVINGS` con un solo envase).
+5. Base habitual (ADR 0004): canasta en una sola sucursal con cobertura completa de las mismas necesidades y envases; sin ella no hay ahorro. Plan parcial si hay necesidades con `unresolvedReason`: se listan como faltantes y no se compara contra una base completa. Separar gasto en productos, penalidades y objetivo efectivo.
+6. Tests del paso (`docs/steps/phase-05.md`): 5 kg a $8.000 vs $7.000/kg; segunda tienda que ahorra $500 con $1.000 de penalidad se rechaza; una sola tienda obligatoria; distancias; 2×1 e impares; empates; sin candidatos; límite/fallback; contraste con enumeración exhaustiva independiente en canastas chicas.
+7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P5-03 (persistencia, `POST /shopping-plans/generate` y la pantalla `/plan-semanal`).
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4 (hasta P4-02: onboarding, /mis-compras, /mi-despensa y preferencias) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-01 (necesidades y candidatos del planificador), descrito en docs/steps/phase-05.md, con dominio puro y determinista en apps/api/src/modules/shopping-plans. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4 y P5-01 (necesidades y candidatos del planificador, ADR 0013) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-02 (optimizador determinista y costos explicables), descrito en docs/steps/phase-05.md, con dominio puro en apps/api/src/modules/shopping-plans/domain que reciba el resultado de BuildPlanCandidatesUseCase. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

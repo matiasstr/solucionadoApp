@@ -56,7 +56,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P3-02 | Landing, buscador y ficha de producto | P3-01, P1-04 | COMPLETO |
 | P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | COMPLETO |
 | P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | COMPLETO |
-| P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | PENDIENTE |
+| P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | COMPLETO |
 | P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | PENDIENTE |
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | PENDIENTE |
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | PENDIENTE |
@@ -107,6 +107,21 @@ Verificado al cerrar P4-01: `npm.cmd run verify` (77/77 unitarios, typecheck, li
 Verificado al cerrar la fase: `npm.cmd run verify` (80/80 unitarios, typecheck, lint, build API + web con 12 rutas), `npm.cmd run test:db` (80/80 contra PostgreSQL/PostGIS real, con el test nuevo de `onboardingCompleted`) y `npm.cmd run test:e2e` (31/31 en Edge real: 13 nuevos de cuenta, 8 de auth y 10 de búsqueda; capturas en `.cache/verification/p4-02`).
 
 **Siguiente: P5-01** (necesidad semanal y candidatos de compra).
+
+## Estado de la fase 5 (planificador) — EN CURSO
+
+**P5-01 — COMPLETO.** Dominio puro y determinista en `apps/api/src/modules/shopping-plans/domain/`: `buildNeeds` cuenta ocurrencias de cada ítem en la ventana del plan (fechas inclusivas en calendario argentino, `anchorDate + k × frequencyDays` con `k ≥ 0`), suma los ítems del mismo canónico entre rutinas, resta la despensa una sola vez (mínimo cero, con antigüedad del saldo) y combina restricciones (sin reemplazos, marcas excluidas sobre preferidas; dos exactas distintas son `CONFLICT`). `buildCandidates` filtra presentaciones (dimensión, activa, sustitución, marca), usa la última observación de precio como estimación con fecha y fuente, descarta los precios viejos con su antigüedad, calcula envases enteros con excedente y el costo de cada fecha con `priceLine` (mediodía argentino), y recorta de forma determinista sucursales, ofertas y fechas con límites configurables (`PLANNER_*`), registrando cada descarte y cada necesidad sin ofertas con su motivo. `BuildPlanCandidatesUseCase` carga rutinas, despensa y preferencias del usuario, resuelve la ubicación (radio PostGIS, localidad con aviso o ninguna) y compone ambas funciones. Sin endpoints todavía (P5-03). Decisiones en [ADR 0013](docs/architecture-decisions/0013-planner-needs-candidates.md).
+
+Verificado al cerrar P5-01: `npm.cmd run verify` (112/112 unitarios —31 nuevos de necesidades, candidatos y configuración—, typecheck, lint, build API + web) y `npm.cmd run test:db` (88/88 contra PostgreSQL/PostGIS real, con 8 nuevos en `shopping-plans.test.cjs`).
+
+**Siguiente: P5-02** (optimizador determinista y costos explicables).
+
+## Deuda de diseño (pedida por el usuario el 2026-09-29)
+
+Pendiente, sin paso asignado; no bloquea la fase 5. Resolverla en una sesión propia de UI, con capturas antes/después en escritorio y móvil:
+
+- **Logo**: mejorarlo un poco (hoy es provisorio).
+- **Tipografía**: al usuario le resulta rara la fuente actual; elegir otra más legible para una app de compras y aplicarla de forma consistente (títulos, cuerpo, números/precios).
 
 ## Las diez fases
 

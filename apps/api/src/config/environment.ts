@@ -100,6 +100,31 @@ class Environment {
   @IsString({ each: true })
   @Matches(/^[a-z0-9._-]{1,80}$/, { each: true })
   PRICE_SOURCE_PRECEDENCE: string[] = [];
+
+  // Planificador (P5-01, ADR 0013): acotan el espacio de candidatos del optimizador.
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(62)
+  PLANNER_MAX_HORIZON_DAYS = 28;
+
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  PLANNER_MAX_CANDIDATE_DATES = 7;
+
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  PLANNER_MAX_CANDIDATE_STORES = 8;
+
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  PLANNER_MAX_OFFERS_PER_STORE = 2;
 }
 
 /** Token de inyección de la configuración validada. */
@@ -130,6 +155,16 @@ export interface ApiConfig {
     readonly maxAgeDays: number;
     /** Desempate por fuente ante igual `observedAt`; vacío = orden alfabético. */
     readonly sourcePrecedence: readonly string[];
+  };
+  readonly planner: {
+    /** Días máximos de un plan, extremos incluidos. */
+    readonly maxHorizonDays: number;
+    /** Fechas de compra evaluadas por plan: las primeras de la ventana. */
+    readonly maxCandidateDates: number;
+    /** Sucursales que llegan al optimizador. */
+    readonly maxCandidateStores: number;
+    /** Ofertas más baratas por necesidad y sucursal. */
+    readonly maxOffersPerStore: number;
   };
 }
 
@@ -164,6 +199,8 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     'JWT_ACCESS_SECRET', 'JWT_ISSUER', 'JWT_AUDIENCE', 'ACCESS_TOKEN_TTL_SECONDS', 'REFRESH_TOKEN_TTL_DAYS',
     'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
     'PRICE_MAX_AGE_DAYS', 'PRICE_SOURCE_PRECEDENCE',
+    'PLANNER_MAX_HORIZON_DAYS', 'PLANNER_MAX_CANDIDATE_DATES', 'PLANNER_MAX_CANDIDATE_STORES',
+    'PLANNER_MAX_OFFERS_PER_STORE',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -208,6 +245,12 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     prices: Object.freeze({
       maxAgeDays: env.PRICE_MAX_AGE_DAYS,
       sourcePrecedence: Object.freeze([...new Set(env.PRICE_SOURCE_PRECEDENCE)]),
+    }),
+    planner: Object.freeze({
+      maxHorizonDays: env.PLANNER_MAX_HORIZON_DAYS,
+      maxCandidateDates: env.PLANNER_MAX_CANDIDATE_DATES,
+      maxCandidateStores: env.PLANNER_MAX_CANDIDATE_STORES,
+      maxOffersPerStore: env.PLANNER_MAX_OFFERS_PER_STORE,
     }),
   });
 }

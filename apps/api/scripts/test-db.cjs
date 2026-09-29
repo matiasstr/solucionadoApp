@@ -67,5 +67,6 @@ async function recreateDatabase() {
     'test/integration/promotions.test.cjs',
     'test/integration/search-api.test.cjs',
     'test/integration/routines-api.test.cjs',
+    'test/integration/shopping-plans.test.cjs',
   ]);
 })();

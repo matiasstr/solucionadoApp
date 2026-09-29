@@ -11,6 +11,7 @@ import { PricesModule } from './modules/prices/prices.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { RoutinesModule } from './modules/routines/routines.module';
 import { SearchModule } from './modules/search/search.module';
+import { ShoppingPlansModule } from './modules/shopping-plans/shopping-plans.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -31,6 +32,7 @@ export class AppModule {
         SearchModule,
         RoutinesModule,
         InventoryModule,
+        ShoppingPlansModule,
       ],
       controllers: [HealthController],
     };

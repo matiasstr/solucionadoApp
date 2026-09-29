@@ -30,6 +30,7 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
       secureCookies: true,
     },
     prices: { maxAgeDays: 7, sourcePrecedence: [] },
+    planner: { maxHorizonDays: 28, maxCandidateDates: 7, maxCandidateStores: 8, maxOffersPerStore: 2 },
   });
 });
 
@@ -42,6 +43,24 @@ test('la política de precios se configura por entorno y rechaza valores inváli
   assert.deepEqual(config.prices, { maxAgeDays: 14, sourcePrecedence: ['oficial', 'scraper'] });
   for (const input of [{ PRICE_MAX_AGE_DAYS: '0' }, { PRICE_MAX_AGE_DAYS: '400' }, { PRICE_MAX_AGE_DAYS: '2.5' }, { PRICE_SOURCE_PRECEDENCE: 'Fuente Oficial' }]) {
     assert.throws(() => validateEnvironment({ ...validDb, ...input }), /Configuración inválida:/);
+  }
+});
+
+test('los límites del planificador se configuran por entorno y rechazan valores fuera de rango', () => {
+  const config = validateEnvironment({
+    ...validDb,
+    PLANNER_MAX_HORIZON_DAYS: '14',
+    PLANNER_MAX_CANDIDATE_DATES: '3',
+    PLANNER_MAX_CANDIDATE_STORES: '4',
+    PLANNER_MAX_OFFERS_PER_STORE: '1',
+  });
+  assert.deepEqual(config.planner, { maxHorizonDays: 14, maxCandidateDates: 3, maxCandidateStores: 4, maxOffersPerStore: 1 });
+  for (const input of [
+    { PLANNER_MAX_HORIZON_DAYS: '0' }, { PLANNER_MAX_HORIZON_DAYS: '63' },
+    { PLANNER_MAX_CANDIDATE_DATES: '32' }, { PLANNER_MAX_CANDIDATE_STORES: '21' },
+    { PLANNER_MAX_OFFERS_PER_STORE: '0' }, { PLANNER_MAX_CANDIDATE_STORES: '2.5' },
+  ]) {
+    assert.throws(() => validateEnvironment({ ...validDb, ...input }), /Configuración inválida: PLANNER_/);
   }
 });
 

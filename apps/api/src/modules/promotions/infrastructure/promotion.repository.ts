@@ -128,6 +128,18 @@ export class PromotionRepository {
 
   /** Promociones vigentes que alcanzan a esos comercios y productos. */
   async findActiveFor(query: ActivePromotionsQuery): Promise<PromotionRule[]> {
+    return this.findActiveBetween({ ...query, from: query.instant, until: query.instant }, 200);
+  }
+
+  /**
+   * Promociones vigentes en algún instante de `[from, until]` (el planificador
+   * evalúa varias fechas). Quien las usa decide la vigencia de cada fecha con el
+   * dominio; esta consulta solo evita traer lo que no puede aplicar nunca.
+   */
+  async findActiveBetween(
+    query: Omit<ActivePromotionsQuery, 'instant'> & { readonly from: Date; readonly until: Date },
+    limit = 500,
+  ): Promise<PromotionRule[]> {
     const commercial = [
       ...(query.storeIds?.length ? [{ storeId: { in: [...query.storeIds] } }] : []),
       ...(query.chainIds?.length ? [{ chainId: { in: [...query.chainIds] } }] : []),
@@ -142,13 +154,13 @@ export class PromotionRepository {
     ];
     const rows = await this.prisma.promotion.findMany({
       where: {
-        validFrom: { lte: query.instant },
-        validUntil: { gt: query.instant },
+        validFrom: { lte: query.until },
+        validUntil: { gt: query.from },
         ...(commercial.length ? { OR: commercial } : {}),
         AND: [{ OR: product }],
       },
       orderBy: [{ validUntil: 'asc' }, { id: 'asc' }],
-      take: 200,
+      take: limit,
     });
     return rows.map(toRule);
   }

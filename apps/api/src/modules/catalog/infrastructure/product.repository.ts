@@ -102,6 +102,20 @@ export class ProductRepository {
     return rows.map(toRecord);
   }
 
+  /**
+   * Presentaciones de varios canónicos en **una** consulta, activas o no: el
+   * planificador informa una preferida desactivada en vez de ignorarla.
+   */
+  async listByCanonicalProducts(canonicalProductIds: readonly string[], limit = 2000): Promise<ProductRecord[]> {
+    if (!canonicalProductIds.length) return [];
+    const rows = await this.prisma.product.findMany({
+      where: { canonicalProductId: { in: [...canonicalProductIds] } },
+      orderBy: [{ canonicalProductId: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
   async searchByName(term: string, limit = 20): Promise<ProductRecord[]> {
     const normalized = normalizeName(term);
     if (!normalized) return [];
