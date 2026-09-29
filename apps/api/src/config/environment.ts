@@ -125,6 +125,13 @@ class Environment {
   @Min(1)
   @Max(10)
   PLANNER_MAX_OFFERS_PER_STORE = 2;
+
+  // Presupuesto del optimizador (P5-02, ADR 0014): combinaciones antes del método aproximado.
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(2000000)
+  PLANNER_MAX_COMBINATIONS = 100000;
 }
 
 /** Token de inyección de la configuración validada. */
@@ -165,6 +172,8 @@ export interface ApiConfig {
     readonly maxCandidateStores: number;
     /** Ofertas más baratas por necesidad y sucursal. */
     readonly maxOffersPerStore: number;
+    /** Combinaciones que evalúa la búsqueda exacta antes de pasar al método aproximado. */
+    readonly maxCombinations: number;
   };
 }
 
@@ -200,7 +209,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
     'PRICE_MAX_AGE_DAYS', 'PRICE_SOURCE_PRECEDENCE',
     'PLANNER_MAX_HORIZON_DAYS', 'PLANNER_MAX_CANDIDATE_DATES', 'PLANNER_MAX_CANDIDATE_STORES',
-    'PLANNER_MAX_OFFERS_PER_STORE',
+    'PLANNER_MAX_OFFERS_PER_STORE', 'PLANNER_MAX_COMBINATIONS',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -251,6 +260,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
       maxCandidateDates: env.PLANNER_MAX_CANDIDATE_DATES,
       maxCandidateStores: env.PLANNER_MAX_CANDIDATE_STORES,
       maxOffersPerStore: env.PLANNER_MAX_OFFERS_PER_STORE,
+      maxCombinations: env.PLANNER_MAX_COMBINATIONS,
     }),
   });
 }

@@ -57,7 +57,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P4-01 | CRUD de rutinas y despensa con ownership | P1-03, P2-02 | COMPLETO |
 | P4-02 | Onboarding, mis compras, despensa y preferencias | P4-01, P3-02 | COMPLETO |
 | P5-01 | Necesidad semanal y candidatos de compra | P4-02, P2-03 | COMPLETO |
-| P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | PENDIENTE |
+| P5-02 | Optimizador determinista, límites y pruebas de costo | P5-01 | COMPLETO |
 | P5-03 | Persistencia, cronograma y ahorro estimado del plan | P5-02 | PENDIENTE |
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | PENDIENTE |
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | PENDIENTE |
@@ -114,7 +114,11 @@ Verificado al cerrar la fase: `npm.cmd run verify` (80/80 unitarios, typecheck, 
 
 Verificado al cerrar P5-01: `npm.cmd run verify` (112/112 unitarios —31 nuevos de necesidades, candidatos y configuración—, typecheck, lint, build API + web) y `npm.cmd run test:db` (88/88 contra PostgreSQL/PostGIS real, con 8 nuevos en `shopping-plans.test.cjs`).
 
-**Siguiente: P5-02** (optimizador determinista y costos explicables).
+**P5-02 — COMPLETO.** `optimizePlan` (dominio puro, `shopping-plans/domain/plan-optimizer.ts`) elige visitas (sucursal + fecha) minimizando costo efectivo = productos con promociones + penalidad por visita + penalidad por km de ida y vuelta, con orden lexicográfico (cobertura, costo, visitas, km, id). Descarta fechas dominadas (exacto), enumera todas las combinaciones de hasta `maxStoresPerShoppingPlan` sucursales y sus fechas útiles si entran en `PLANNER_MAX_COMBINATIONS` (`EXACT_BOUNDED`) y si no usa un método aproximado identificado (`HEURISTIC`). Base habitual prudente: las mismas necesidades en la sucursal más barata con todo, a precio regular; sin ella no hay ahorro. Totales separados (productos, penalidades, efectivo) que cierran con los `CHECK` de `ShoppingPlan`, faltantes con motivo (`MAX_STORES_LIMIT` incluido), explicación y alternativas por línea, limitaciones visibles. `PlanShoppingUseCase` aplica las preferencias del usuario. Decisiones en [ADR 0014](docs/architecture-decisions/0014-planner-optimizer.md).
+
+Verificado al cerrar P5-02: `npm.cmd run verify` (128/128 unitarios —16 nuevos del optimizador, entre ellos el contraste con enumeración exhaustiva independiente en 200 canastas aleatorias—, typecheck, lint, build API + web) y `npm.cmd run test:db` (91/91 contra PostgreSQL/PostGIS real, con 3 nuevos del optimizador sobre la base sembrada).
+
+**Siguiente: P5-03** (plan persistido, endpoints `/shopping-plans` y pantalla `/plan-semanal`).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

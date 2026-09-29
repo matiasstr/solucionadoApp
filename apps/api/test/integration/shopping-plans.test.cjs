@@ -11,6 +11,8 @@ const { validateEnvironment } = require('../../dist/config/environment');
 const { PrismaService } = require('../../dist/database/prisma.service');
 const { argentineToday } = require('../../dist/modules/routines/domain/routine-rules');
 const { BuildPlanCandidatesUseCase } = require('../../dist/modules/shopping-plans/application/build-plan-candidates.use-case');
+const { PlanShoppingUseCase } = require('../../dist/modules/shopping-plans/application/plan-shopping.use-case');
+const { DecimalValue } = require('../../dist/modules/catalog/domain/decimal');
 const {
   latestObservationAnchor,
   seedDemoCatalog,
@@ -26,6 +28,8 @@ if (!url || !new URL(url).pathname.endsWith('_test')) {
 }
 
 const POLLO = demoCanonicalProductId('pollo-entero');
+const LECHE = demoCanonicalProductId('leche-entera');
+const DETERGENTE = demoCanonicalProductId('detergente');
 const ARROZ = demoCanonicalProductId('arroz-largo-fino');
 const ARROZ_PAMPA_1KG = demoProductId('arroz-pampa-1kg');
 const CARREFOUR_ALMAGRO = demoStoreId('carrefour-almagro');
@@ -39,6 +43,7 @@ let app;
 let server;
 let prisma;
 let planner;
+let shopping;
 before(async () => {
   prisma = new PrismaService(url);
   await seedDemoCatalog(prisma, { anchorDate: latestObservationAnchor(), historyDays: 31 });
@@ -54,6 +59,7 @@ before(async () => {
   await app.init();
   server = app.getHttpServer();
   planner = app.get(BuildPlanCandidatesUseCase);
+  shopping = app.get(PlanShoppingUseCase);
 });
 after(async () => {
   await app?.close();
@@ -254,5 +260,65 @@ describe('aislamiento y validación', () => {
       });
     }
     await assert.rejects(planner.execute(randomUUID()), (error) => error.getStatus() === 401);
+  });
+});
+
+describe('optimizador sobre la base sembrada', () => {
+  const sum = (values) => values.reduce((total, value) => total.add(DecimalValue.parse(value)), DecimalValue.zero(2)).toFixed(2);
+  async function weeklyBasket(profile) {
+    const user = await register({ ...CABALLITO, ...profile });
+    const weekly = await routine(user, { name: 'Compra semanal', frequencyDays: 7 });
+    await addItem(user, weekly.id, { canonicalProductId: POLLO, quantity: '3', unit: 'KG' });
+    await addItem(user, weekly.id, { canonicalProductId: ARROZ, quantity: '2', unit: 'KG' });
+    await addItem(user, weekly.id, { canonicalProductId: LECHE, quantity: '4', unit: 'L' });
+    await addItem(user, weekly.id, { canonicalProductId: DETERGENTE, quantity: '750', unit: 'ML' });
+    return user;
+  }
+
+  test('canasta semanal: plan exacto, dentro del máximo de sucursales, con importes que cierran y ahorro frente a una sola sucursal', async () => {
+    const user = await weeklyBasket();
+    const { candidates, plan } = await shopping.execute(user.id);
+    assert.equal(plan.search.method, 'EXACT_BOUNDED');
+    assert.equal(plan.coverage, 'COMPLETE');
+    assert.deepEqual(plan.lines.map((line) => line.canonicalProductId).sort(), [ARROZ, DETERGENTE, LECHE, POLLO].sort());
+    assert.ok(plan.totals.storeCount <= 2, 'el máximo por defecto del usuario es 2');
+    const kept = new Set(candidates.candidates.stores.kept.map((store) => store.id));
+    for (const line of plan.lines) {
+      assert.ok(kept.has(line.storeId));
+      assert.ok(candidates.window.dates.includes(line.date));
+      assert.equal(line.priceBasis.basis, 'LATEST_OBSERVATION');
+      assert.ok(line.reason.length > 0);
+    }
+    assert.equal(plan.totals.productCost, sum(plan.lines.map((line) => line.total)));
+    assert.equal(plan.totals.effectiveCost, plan.totals.productCost, 'sin penalidades el costo efectivo es el de productos');
+    assert.equal(plan.baseline.method, 'SINGLE_STORE_REGULAR_PRICES');
+    assert.ok(!DecimalValue.parse(plan.savings.estimatedSavings).isNegative(), 'sin penalidades nunca es peor que una sola sucursal');
+    assert.ok(plan.totals.totalDistanceKm !== null);
+    assert.ok(plan.limitations.some((limitation) => limitation.code === 'PRICES_ARE_ESTIMATES'));
+  });
+
+  test('las preferencias del usuario cambian la recomendación: penalidad por visita alta y una sola sucursal', async () => {
+    const penalized = await weeklyBasket({ storeVisitPenalty: '100000.00' });
+    const onePenalized = (await shopping.execute(penalized.id)).plan;
+    assert.equal(onePenalized.totals.visitCount, 1);
+    assert.equal(onePenalized.totals.storeVisitPenaltyCost, '100000.00');
+    assert.equal(
+      onePenalized.totals.effectiveCost,
+      sum([onePenalized.totals.productCost, onePenalized.totals.storeVisitPenaltyCost, onePenalized.totals.distancePenaltyCost]),
+    );
+
+    const single = await weeklyBasket({ maxStoresPerShoppingPlan: 1 });
+    const oneStore = (await shopping.execute(single.id)).plan;
+    assert.equal(oneStore.totals.storeCount, 1);
+    assert.equal(oneStore.coverage, 'COMPLETE');
+  });
+
+  test('sin ubicación el plan no tiene líneas ni ahorro, y dice por qué', async () => {
+    const user = await register();
+    const weekly = await routine(user, { name: 'Semana', frequencyDays: 7 });
+    await addItem(user, weekly.id, { canonicalProductId: POLLO, quantity: '1', unit: 'KG' });
+    const { plan } = await shopping.execute(user.id);
+    assert.deepEqual([plan.search.method, plan.coverage, plan.lines.length, plan.savings], ['NO_CANDIDATES', 'PARTIAL', 0, null]);
+    assert.deepEqual(plan.unfulfilled.map((entry) => entry.reason), ['NO_LOCATION']);
   });
 });

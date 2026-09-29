@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) y **P5-01**. Empezar por **P5-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0013) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02), **P5-01** y **P5-02**. Empezar por **P5-03**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0014) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P5-03 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 4 completas y P5-01 completo
+## Estado: 2026-09-29 — Fases 1 a 4 completas, P5-01 y P5-02 completos
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P5-02 — Optimización y costos explicables** (`docs/steps/phase-05.md`): optimizador determinista sobre los candidatos de P5-01 (`PlanCandidates`), costo efectivo con penalidades en ARS, base habitual en una sola sucursal y ahorro estimado honesto (ADR 0004). Instrucciones al final de este archivo.
-No están implementados el optimizador, los planes persistidos, las pantallas del plan, los importadores ni los jobs. **El despliegue de producción no incluye P4-02 ni P5-01** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P5-03 — Plan persistido y cronograma** (`docs/steps/phase-05.md`): guardar el resultado de `PlanShoppingUseCase` como snapshot, `POST /shopping-plans/generate` idempotente, `GET /shopping-plans`, `GET /shopping-plans/:id`, transiciones de estado explícitas y la pantalla `/plan-semanal`. Instrucciones al final de este archivo.
+No están implementados los planes persistidos, sus endpoints, las pantallas del plan, los importadores ni los jobs. **El despliegue de producción no incluye P4-02, P5-01 ni P5-02** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -80,6 +80,31 @@ No están implementados el optimizador, los planes persistidos, las pantallas de
   - Aplicación: `BuildPlanCandidatesUseCase.execute(userId, { startDate?, endDate?, now? })` carga usuario, rutinas con ítems, despensa y canónicos (todo filtrado por `userId`), resuelve ubicación (coordenadas → `StoreScopeResolver` con `maxTravelDistanceKm`; solo localidad → ciudad sin distancia; nada → sin sucursales), precios actuales en **una** consulta, promociones vigentes en la ventana (`PromotionRepository.findActiveBetween`, nuevo; `findActiveFor` lo reutiliza) y presentaciones de todos los canónicos, activas o no (`ProductRepository.listByCanonicalProducts`, nuevo).
   - Configuración nueva en `ApiConfig.planner` y `apps/api/.env.example`: `PLANNER_MAX_HORIZON_DAYS` (28), `PLANNER_MAX_CANDIDATE_DATES` (7), `PLANNER_MAX_CANDIDATE_STORES` (8), `PLANNER_MAX_OFFERS_PER_STORE` (2).
   - Tests: `test/shopping-plan-needs.test.cjs` (13), `test/shopping-plan-candidates.test.cjs` (18), uno nuevo en `environment.test.cjs` e integración `test/integration/shopping-plans.test.cjs` (8, sumado a `scripts/test-db.cjs`). ADR 0013.
+
+- **P5-02 (sesión 2026-09-29): optimizador determinista.**
+  - Dominio: `optimized-plan.types.ts` (contrato `OptimizedPlan`, `OPTIMIZER_VERSION`) y `plan-optimizer.ts` (`optimizePlan`, `countCombinations`). Visitas = sucursal + fecha; fechas dominadas descartadas; enumeración exacta de subconjuntos de sucursales (hasta el máximo del usuario) × subconjuntos de fechas útiles si entra en el presupuesto; si no, una fecha por sucursal o agregado de a una sucursal (`HEURISTIC`). Importes en enteros de 1e-5 ARS; totales redondeados una vez por componente.
+  - Aplicación: `PlanShoppingUseCase.execute(userId, query)` → `{ candidates, plan }` con `storeVisitPenalty`, `distancePenaltyPerKm` y `maxStoresPerShoppingPlan` del usuario.
+  - Configuración: `PLANNER_MAX_COMBINATIONS` (100000) en `ApiConfig.planner` y `.env.example`.
+  - Tests: `test/shopping-plan-optimizer.test.cjs` (16, con contraste contra enumeración exhaustiva independiente en 200 canastas con semilla fija), `environment.test.cjs` ampliado y 3 de integración en `shopping-plans.test.cjs`. ADR 0014.
+
+## Verificaciones ejecutadas (P5-02, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **128/128** unitarios, build API + web con 12 rutas) |
+| `npm.cmd run test:db` | **91/91** integración real (88 previos + 3 del optimizador) |
+
+Qué cubren los tests nuevos: 5 kg a $8.000 contra $7.000/kg elige la segunda; segunda sucursal que ahorra $500 con $1.000 de penalidad se rechaza (y con $0 o $400 se acepta); una sola sucursal obligatoria; máximo de sucursales que deja un faltante `MAX_STORES_LIMIT` con base solo sobre lo cubierto; distancia ida y vuelta × $/km y sin coordenadas distancia desconocida; 2×1 con 1, 2 y 3 envases; la misma sucursal en dos días (dos visitas, una sucursal) y con penalidad una sola visita; empates deterministas; sin candidatos y todo cubierto por la despensa; sin sucursal con todo no hay base ni ahorro; importes que cierran (productos, regular, descuento, penalidades, efectivo, visitas, base); promociones bancarias y con mínimo excluidas con aviso; conteo de combinaciones; **200 canastas aleatorias contra enumeración exhaustiva independiente** (costo efectivo y cobertura idénticos, con máximos de sucursales, penalidades y distancias); presupuesto excedido con método aproximado que respeta el máximo y es determinista; ajustes inválidos. En integración: canasta semanal real con plan exacto, ≤ 2 sucursales, importes que cierran y ahorro no negativo frente a una sola sucursal; penalidad por visita alta → una visita; máximo 1 sucursal; sin ubicación sin líneas ni ahorro.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P5-02)
+
+- **Base prudente**: sucursal más barata con todo, a precio regular (ADR 0014). El ahorro estimado solo cuenta productos y puede ser negativo; la diferencia de costo efectivo se informa aparte y no es dinero.
+- **Presupuesto por operaciones, no por tiempo**: determinista. 100.000 combinaciones ≈ 150 ms en el peor caso medido (195.420 combinaciones exactas en ~300 ms).
+- `OPTIMIZER_VERSION = 'planner-2026-09-29.1'`: cambiarla si cambia el algoritmo o el contrato; P5-03 la guarda en `ShoppingPlan.optimizerVersion`.
+- Para persistir (P5-03): `estimatedRegularCost` = `baseline.productCost` y `estimatedSavings` = `savings.estimatedSavings` cuando hay base; **sin base** guardar `estimatedRegularCost = optimizedCost` (ahorro 0) con `baselineMethod = 'NONE'` y que la UI no muestre ahorro (los `CHECK` exigen la igualdad). `optimizedCost` = `totals.productCost`, penalidades y `effectiveCost` de `totals`, `totalDistanceKm` puede ser null.
+- Cada `PlanLine` tiene lo necesario para `ShoppingPlanItem` (canónico, producto, sucursal, `priceBasis.observationId`, promoción, `neededQuantity`, `purchase.purchasedQuantity`, envases, totales, fecha y `reason`). Para venta por peso `packageCount` es null.
 
 ## Verificaciones ejecutadas (P5-01, 2026-09-29)
 
@@ -287,19 +312,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P4-01** `b965226` (publicado).
 - **Deploy de la API (ADR 0010)** `06ab251` (publicado). IP de cliente en Vercel: `3c6c3c7` (publicado).
 - **P4-02** `7092b2b` (publicado).
-- **P5-01**: commit `feat(P5-01): ...` del 2026-09-29 (ver `git log`).
+- **P5-01** `8288c45` (publicado).
+- **P5-02**: commit `feat(P5-02): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P5-02
+## Cómo seguir con P5-03
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-02), ADR 0004 (costo efectivo y ahorro honesto), ADR 0009 (promociones) y ADR 0013 (entrada del optimizador).
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-05.md` (P5-03), ADR 0004, 0013 y 0014, `apps/web/AGENTS.md` y las guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Optimizador puro en `apps/api/src/modules/shopping-plans/domain/` que reciba `PlanCandidates` (P5-01) y las penalidades del usuario (`storeVisitPenalty`, `distancePenaltyPerKm`, `maxStoresPerShoppingPlan`; hoy el caso de uso solo lee la ubicación): elegir para cada necesidad resuelta una oferta y una fecha (`dateOptions`), contar visitas por sucursal/fecha, distancia ida y vuelta por visita (`distanceMeters × 2`; sin distancia → desconocida, no cero) y minimizar `effectiveCost = productos con descuento + penalidad por visita × visitas + penalidad por km × km`.
-4. Búsqueda exacta sobre subconjuntos de sucursales (≤ 8 por defecto) respetando `maxStoresPerShoppingPlan`, con presupuesto de operaciones y fallback determinista (`EXACT_BOUNDED` / `HEURISTIC`). Desempate estable por costo, visitas, distancia e id. Reevaluar `minimumSpend` con el subtotal por sucursal y considerar cantidades extra para promociones por pares (hoy `NO_SAVINGS` con un solo envase).
-5. Base habitual (ADR 0004): canasta en una sola sucursal con cobertura completa de las mismas necesidades y envases; sin ella no hay ahorro. Plan parcial si hay necesidades con `unresolvedReason`: se listan como faltantes y no se compara contra una base completa. Separar gasto en productos, penalidades y objetivo efectivo.
-6. Tests del paso (`docs/steps/phase-05.md`): 5 kg a $8.000 vs $7.000/kg; segunda tienda que ahorra $500 con $1.000 de penalidad se rechaza; una sola tienda obligatoria; distancias; 2×1 e impares; empates; sin candidatos; límite/fallback; contraste con enumeración exhaustiva independiente en canastas chicas.
-7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P5-03 (persistencia, `POST /shopping-plans/generate` y la pantalla `/plan-semanal`).
+3. API: `POST /shopping-plans/generate` (cuerpo opcional `startDate`/`endDate`; idempotente para reintentos, por ejemplo con cabecera `Idempotency-Key` o reutilizando el plan del mismo usuario y ventana generado hace instantes), `GET /shopping-plans` y `GET /shopping-plans/:id`, todos con `JwtAuthGuard`, `Cache-Control: no-store` y ownership (ajeno = 404). Persistir en una transacción `ShoppingPlan` + `ShoppingPlanItem` desde `PlanShoppingUseCase`: snapshot (`inputSnapshot` con `schemaVersion`, candidatos y plan; `snapshot` por línea con nombres, precio, fuente, fecha y promoción), `optimizerVersion`, `baselineMethod` y los importes según las notas de P5-02. Un plan emitido no cambia si después cambian precios o rutinas. Estado inicial `DRAFT`; si se agrega cambio de estado, contrato y transiciones explícitos.
+4. Contratos en `packages/shared` y `docs/API.md`.
+5. Web: `/plan-semanal` (privada, en la barra): botón para generar, cronograma por día y sucursal, totales separados (productos, penalidades, efectivo), ahorro etiquetado **estimado** y oculto sin base, faltantes con motivo, excedentes, alternativas, limitaciones y fecha de los precios. Estados de carga, vacío (sin rutinas o sin ubicación, con enlace a Preferencias) y error.
+6. Tests: integración de generación/lectura, aislamiento, snapshot estable tras cambiar precios, plan parcial, reintento sin duplicar; E2E rutina → despensa → generar → cronograma → recarga con el mismo resultado.
+7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P5-03 se cierra la fase 5 (siguiente: P6-01). Deploy a producción solo si el usuario lo pide.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4 y P5-01 (necesidades y candidatos del planificador, ADR 0013) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-02 (optimizador determinista y costos explicables), descrito en docs/steps/phase-05.md, con dominio puro en apps/api/src/modules/shopping-plans/domain que reciba el resultado de BuildPlanCandidatesUseCase. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 4, P5-01 (necesidades y candidatos, ADR 0013) y P5-02 (optimizador, ADR 0014) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P5-03 (plan persistido, endpoints /shopping-plans y pantalla /plan-semanal), descrito en docs/steps/phase-05.md, usando PlanShoppingUseCase. Probalo con npm.cmd run verify, npm.cmd run test:db y npm.cmd run test:e2e, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
