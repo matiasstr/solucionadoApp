@@ -207,6 +207,12 @@ export interface ImportRunSummary {
   readonly productsPendingCanonical: number;
   readonly eansDiscarded: number;
   readonly batches: number;
+  /** Reintentos de lotes que fallaron y se volvieron a escribir (son idempotentes). */
+  readonly retries: number;
+  /** Última posición del flujo confirmada sin huecos: desde ahí se puede reanudar. */
+  readonly committedPosition: number;
+  readonly resumedFromId: string | null;
+  readonly resumedAfterPosition: number | null;
   /** Mensaje saneado si la ejecución falló; nunca credenciales ni el contenido de registros. */
   readonly error: string | null;
 }

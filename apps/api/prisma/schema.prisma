@@ -198,6 +198,65 @@ model Store {
   @@index([location], type: Gist, map: "Store_location_gist_idx")
 }
 
+enum ImportKind {
+  PRICES
+  PROMOTIONS
+}
+
+enum ImportRunStatus {
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_REJECTIONS
+  FAILED
+}
+
+// Una ejecución de importación (P7-02, ADR 0019): contadores, estado y error saneado.
+model ImportRun {
+  id                       String              @id @default(uuid()) @db.Uuid
+  kind                     ImportKind
+  source                   String              @db.VarChar(80)
+  status                   ImportRunStatus     @default(RUNNING)
+  startedAt                DateTime            @db.Timestamptz(3)
+  finishedAt               DateTime?           @db.Timestamptz(3)
+  // Registros leídos del proveedor, válidos o no.
+  read                     Int                 @default(0)
+  created                  Int                 @default(0)
+  duplicates               Int                 @default(0)
+  conflicts                Int                 @default(0)
+  updated                  Int                 @default(0)
+  rejected                 Int                 @default(0)
+  storesCreated            Int                 @default(0)
+  productsCreated          Int                 @default(0)
+  productsPendingCanonical Int                 @default(0)
+  eansDiscarded            Int                 @default(0)
+  batches                  Int                 @default(0)
+  retries                  Int                 @default(0)
+  // Última posición confirmada sin huecos: desde ahí se reanuda si la fuente se puede repetir.
+  committedPosition        Int                 @default(0)
+  resumedFromId            String?             @db.Uuid
+  error                    String?             @db.VarChar(300)
+  resumedFrom              ImportRun?          @relation("ImportRunResume", fields: [resumedFromId], references: [id], onDelete: SetNull)
+  resumedBy                ImportRun[]         @relation("ImportRunResume")
+  quarantined              QuarantinedRecord[]
+
+  @@index([source, startedAt(sort: Desc)])
+  @@index([status])
+}
+
+// Registro rechazado de una ejecución (P7-02): motivo y referencias, nunca el contenido completo.
+model QuarantinedRecord {
+  id        String    @id @default(uuid()) @db.Uuid
+  runId     String    @db.Uuid
+  position  Int
+  reason    String    @db.VarChar(40)
+  detail    String    @db.VarChar(300)
+  ref       String?   @db.VarChar(200)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  run       ImportRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, position])
+}
+
 // Identidad de un producto según una fuente externa (fase 7, ADR 0018). El importador
 // resuelve por acá o por EAN validado; nunca fusiona productos por nombre parecido.
 model ExternalProductRef {

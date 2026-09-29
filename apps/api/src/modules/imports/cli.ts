@@ -1,24 +1,29 @@
 /**
- * Importación manual (P7-01): `npm.cmd run import -- --provider=mock` (raíz) o
+ * Importación manual (P7-01, P7-02): `npm.cmd run import -- …` (raíz) o
  * `npm run import -w @tusofertas/api -- …`. Sin jobs ni servicios externos.
  *
  *   --provider=mock   [--stores=5] [--products=20] [--days=7] [--seed=1] [--anchor=AAAA-MM-DD]
  *                     [--corrupt-every=0] [--without-ean-every=0] [--promotions]
- *   --provider=jsonl  --file=ruta.jsonl[.gz] --source=nombre [--decimal=,|.]
- *   comunes:          [--batch-size=500] [--concurrency=2]
+ *   --provider=jsonl  (--file=ruta.jsonl[.gz] | --url=https://host/ruta.jsonl[.gz]) --source=nombre [--decimal=,|.]
+ *   comunes:          [--batch-size=500] [--concurrency=2] [--max-retries=2] [--resume=<id de ejecución>]
+ *   informe:          --report=<id de ejecución>
  *
- * Imprime el resumen en JSON y termina con código 1 si la ejecución falló. No corre
- * en producción ni contra una base remota sin `IMPORT_ALLOW_REMOTE=true`.
+ * Cada ejecución queda registrada (`ImportRun`) con su cuarentena. `--url` solo acepta
+ * hosts de `IMPORT_ALLOWED_HOSTS`. Imprime el resumen en JSON y termina con código 1 si
+ * falló. No corre en producción ni contra una base remota sin `IMPORT_ALLOW_REMOTE=true`.
  */
 import { PrismaService } from '../../database/prisma.service';
+import { ImportProviderError } from './application/import-run';
 import { PriceImporter } from './application/price-importer';
 import { PromotionImporter } from './application/promotion-importer';
 import type { PriceProvider } from './application/ports';
+import { PrismaImportRunRecorder } from './infrastructure/prisma-import-run.recorder';
 import { PrismaImportGateway } from './infrastructure/prisma-import.gateway';
 import { JsonLinesPriceProvider } from './infrastructure/providers/json-lines-price.provider';
 import { MockPriceProvider, MockPromotionProvider } from './infrastructure/providers/mock-price.provider';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function fail(message: string): never {
   process.stderr.write(`import — ${message}\n`);
@@ -56,23 +61,28 @@ function provider(): PriceProvider {
     });
   }
   if (kind === 'jsonl') {
-    const file = option('file');
     const source = option('source');
     const decimal = option('decimal') ?? ',';
-    if (!file || !source) fail('--provider=jsonl necesita --file y --source.');
+    if (!source) fail('--provider=jsonl necesita --source.');
     if (decimal !== ',' && decimal !== '.') fail('--decimal debe ser "," o ".".');
-    return new JsonLinesPriceProvider({ path: file, source, decimalSeparator: decimal });
+    return new JsonLinesPriceProvider({
+      path: option('file'),
+      url: option('url'),
+      allowedHosts: (process.env.IMPORT_ALLOWED_HOSTS ?? '').split(',').filter((host) => host.trim()),
+      source,
+      decimalSeparator: decimal,
+    });
   }
   return fail('--provider debe ser mock o jsonl.');
 }
 
-async function main(): Promise<void> {
+function databaseUrl(): string {
   if (process.env.NODE_ENV === 'production') fail('la importación manual no se ejecuta en producción.');
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) fail('falta DATABASE_URL (ver .env.example).');
+  const value = process.env.DATABASE_URL;
+  if (!value) fail('falta DATABASE_URL (ver .env.example).');
   let host = '';
   try {
-    host = new URL(databaseUrl).hostname;
+    host = new URL(value).hostname;
   } catch {
     fail('DATABASE_URL no es una URL válida.');
   }
@@ -80,19 +90,46 @@ async function main(): Promise<void> {
     // El nombre del host no es un secreto; la URL completa sí puede serlo.
     fail(`la base "${host}" no es local; para importar ahí, definir IMPORT_ALLOW_REMOTE=true.`);
   }
+  return value;
+}
 
-  const batchSize = integer('batch-size', 500, 1, 10_000);
-  const concurrency = integer('concurrency', 2, 1, 16);
-  const source = provider();
-  const prisma = new PrismaService(databaseUrl);
+async function main(): Promise<void> {
+  const prisma = new PrismaService(databaseUrl());
+  const recorder = new PrismaImportRunRecorder(prisma);
   let failed = false;
   try {
+    const reportId = option('report');
+    if (reportId !== undefined) {
+      if (!UUID.test(reportId)) fail('--report necesita el id de una ejecución.');
+      const report = await recorder.report(reportId);
+      if (!report) fail('no existe esa ejecución.');
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      return;
+    }
+
+    const source = provider();
+    const batchSize = integer('batch-size', 500, 1, 1000);
+    const concurrency = integer('concurrency', 2, 1, 16);
+    const retries = integer('max-retries', 2, 0, 5);
+    const resumeId = option('resume');
+    let resume: { runId: string; position: number } | null = null;
+    if (resumeId !== undefined) {
+      if (!UUID.test(resumeId)) fail('--resume necesita el id de una ejecución.');
+      const previous = await recorder.find(resumeId);
+      if (!previous || previous.kind !== 'prices' || previous.source !== source.source) {
+        fail('esa ejecución no existe o es de otra fuente.');
+      }
+      if (previous.status !== 'FAILED') fail('solo se reanuda una ejecución que falló.');
+      resume = { runId: previous.id, position: previous.committedPosition };
+    }
+
     const gateway = new PrismaImportGateway(prisma);
-    const prices = await new PriceImporter(gateway).run(source, { batchSize, concurrency });
+    const common = { recorder, retry: { retries, delayMs: 500 } };
+    const prices = await new PriceImporter(gateway).run(source, { ...common, batchSize, concurrency, resume });
     process.stdout.write(`${JSON.stringify(prices, null, 2)}\n`);
     failed = prices.status === 'FAILED';
     if (!failed && flag('promotions') && source instanceof MockPriceProvider) {
-      const promotions = await new PromotionImporter(gateway).run(new MockPromotionProvider(option('anchor')), { batchSize });
+      const promotions = await new PromotionImporter(gateway).run(new MockPromotionProvider(option('anchor')), { ...common, batchSize });
       process.stdout.write(`${JSON.stringify(promotions, null, 2)}\n`);
       failed = promotions.status === 'FAILED';
     }
@@ -103,7 +140,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
+  if (error instanceof ImportProviderError) fail(error.message);
   // Sin detalles del error: puede incluir la URL de la base.
-  process.stderr.write(`import — error inesperado${error instanceof Error ? ` (${error.name})` : ''}.\n`);
-  process.exit(1);
+  fail(`error inesperado${error instanceof Error ? ` (${error.name})` : ''}.`);
 });

@@ -62,7 +62,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P6-01 | Historial y análisis de ofertas con calidad de datos | P2-02 | COMPLETO |
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | COMPLETO |
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | COMPLETO |
-| P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | PENDIENTE |
+| P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | COMPLETO |
 | P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | PENDIENTE |
 | P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | PENDIENTE |
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | PENDIENTE |
@@ -136,13 +136,17 @@ Verificado al cerrar la fase: `npm.cmd run verify` (146/146 unitarios, 6 nuevos 
 
 **Siguiente: P7-01** (puertos de proveedores, normalización e importador mock por lotes).
 
-## Estado de la fase 7 (importadores) — EN CURSO
+## Estado de la fase 7 (importadores) — COMPLETA
 
 **P7-01 — COMPLETO.** Módulo `apps/api/src/modules/imports/`: contratos `PriceProvider`/`PromotionProvider` con registros crudos independientes de SEPA y Prisma; normalización pura y estricta (coma decimal sin ambigüedades, GTIN con dígito de control, alias de unidades, fechas con zona o mediodía argentino, rechazos con motivo); identidad por fuente en `ExternalProductRef`/`ExternalStoreRef` (migración `20260929180000_external_identity_refs`) o EAN válido con el mismo contenido, nunca por nombre, con colisiones y cambios de contenido rechazados y productos sin genérico pendientes de revisión; lotes con backpressure (identidad en serie, persistencia concurrente acotada, memoria ≤ lote × (concurrencia + 1)); precios idempotentes con `INSERT … ON CONFLICT DO NOTHING RETURNING` (`duplicate`/`conflict` sin sobrescribir); promociones que solo se vinculan con lo existente; proveedores mock reproducible y JSON Lines (`.gz`) por trozos con topes; comando `npm.cmd run import`. Decisiones en [ADR 0018](docs/architecture-decisions/0018-import-pipeline.md).
 
 Verificado al cerrar P7-01: `npm.cmd run verify` (159/159 unitarios, 13 nuevos: normalizador, pipeline con un millón de registros en streaming, lectura de líneas, proveedor mock) y `npm.cmd run test:db` (119/119, 8 nuevos de importación). Además se corrigió el runner de integración: ahora corre archivo por archivo en el orden declarado (antes `node --test` los ordenaba alfabéticamente). Comando probado contra la base de desarrollo (85 creados, 5 rechazados con motivo, reingreso 85 repetidos).
 
-**Siguiente: P7-02** (ejecuciones persistidas, cuarentena, reintentos y documentación para proveedores).
+**P7-02 — COMPLETO.** `ImportRun` y `QuarantinedRecord` (migración `20260929220000_import_runs_quarantine`): cada ejecución guarda estado, contadores, reintentos, posición confirmada sin huecos y error saneado; cada rechazo, posición, motivo e ids externos (nunca el registro completo), por tandas. Reintentos limitados con espera creciente (lote máximo 1.000 = un solo `INSERT`, así un reintento nunca encuentra un lote a medias). Reanudación desde la posición confirmada solo si la fuente es repetible (`replayable`); si no, se reimporta completa y es idempotente. Descarga por URL solo de hosts de `IMPORT_ALLOWED_HOSTS`, HTTPS, sin credenciales ni redirecciones, con tiempo y tamaño máximos. Comando con `--resume`, `--max-retries` y `--report`. Guía para agregar proveedores en [docs/IMPORTS.md](docs/IMPORTS.md). Decisiones en [ADR 0019](docs/architecture-decisions/0019-import-runs-recovery.md).
+
+Verificado al cerrar la fase: `npm.cmd run verify` (163/163 unitarios, 4 nuevos de reintentos, marca de confirmado, URL permitida y errores saneados) y `npm.cmd run test:db` (125/125, 6 nuevos: ejecución y cuarentena guardadas con informe, reintento de un error pasajero, fallo y reanudación desde lo confirmado, fuente no repetible que no se reanuda, registros fuera de orden y repetidos, descarga permitida/prohibida/redirigida, planes e historia intactos). Comando probado contra la base de desarrollo (conflictos sin sobrescribir, informe de cuarentena, host no permitido rechazado).
+
+**Siguiente: P8-01** (Redis, BullMQ, workers y comandos manuales).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

@@ -2,6 +2,8 @@
 // Último en scripts/test-db.cjs: crea sucursales y productos simulados cerca de los de la demo.
 const assert = require('node:assert/strict');
 const { mkdtempSync, writeFileSync, rmSync } = require('node:fs');
+const { randomUUID } = require('node:crypto');
+const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { gzipSync } = require('node:zlib');
@@ -11,6 +13,8 @@ const { PrismaService } = require('../../dist/database/prisma.service');
 const { PriceImporter } = require('../../dist/modules/imports/application/price-importer');
 const { PromotionImporter } = require('../../dist/modules/imports/application/promotion-importer');
 const { PrismaImportGateway } = require('../../dist/modules/imports/infrastructure/prisma-import.gateway');
+const { PrismaImportRunRecorder } = require('../../dist/modules/imports/infrastructure/prisma-import-run.recorder');
+const { ImportProviderError } = require('../../dist/modules/imports/application/import-run');
 const { JsonLinesPriceProvider } = require('../../dist/modules/imports/infrastructure/providers/json-lines-price.provider');
 const { MockPriceProvider, MockPromotionProvider } = require('../../dist/modules/imports/infrastructure/providers/mock-price.provider');
 const { argentineDate, shiftDate } = require('../../dist/modules/prices/domain/price-analysis');
@@ -44,9 +48,10 @@ const pricesOf = (source) => count('SELECT count(*)::int AS n FROM "ProductPrice
 const importer = () => new PriceImporter(new PrismaImportGateway(prisma));
 
 /** Proveedor en memoria: cualquier fuente que cumpla el contrato sirve, sin tocar el dominio. */
-const arrayProvider = (source, items) => ({
+const arrayProvider = (source, items, replayable = false) => ({
   source,
   decimalSeparator: ',',
+  replayable,
   async *records() {
     yield* items;
   },
@@ -145,12 +150,18 @@ describe('importación de precios', () => {
       resolveProducts: (...args) => gateway.resolveProducts(...args),
       persistPrices: async (inputs) => {
         calls += 1;
-        if (calls === 3) throw new Error('conexión con la base perdida');
+        if (calls >= 3) throw new Error('conexión con la base perdida');
         return gateway.persistPrices(inputs);
       },
     };
-    const failed = await new PriceImporter(failing).run(arrayProvider('a-mitad', items), { batchSize: 10, concurrency: 1 });
+    const failed = await new PriceImporter(failing).run(arrayProvider('a-mitad', items), {
+      batchSize: 10,
+      concurrency: 1,
+      retry: { retries: 1, delayMs: 0 },
+    });
     assert.equal(failed.status, 'FAILED');
+    assert.equal(failed.retries, 1, 'el lote que falla se reintenta una vez antes de cortar');
+    assert.equal(failed.committedPosition, 20);
     assert.equal(failed.error, 'Error inesperado (Error).', 'sin el mensaje crudo');
     assert.equal(failed.created, 20);
     assert.equal(await pricesOf('a-mitad'), 20);
@@ -201,3 +212,155 @@ async function collect(provider) {
   for await (const item of provider.records()) items.push(item);
   return items;
 }
+
+const planSnapshotHash = async () =>
+  (await pg.query(`SELECT md5(coalesce(string_agg(p."inputSnapshot"::text || p."resultSnapshot"::text || p."effectiveCost"::text, '|' ORDER BY p."id"), '')) AS plans,
+     (SELECT md5(coalesce(string_agg(i."snapshot"::text || i."price"::text, '|' ORDER BY i."id"), '')) FROM "ShoppingPlanItem" i) AS items
+     FROM "ShoppingPlan" p`)).rows[0];
+
+/** Gateway real con fallas inyectadas en la escritura de precios. */
+function withFailures(shouldFail) {
+  const gateway = new PrismaImportGateway(prisma);
+  let calls = 0;
+  return {
+    resolveStores: (...args) => gateway.resolveStores(...args),
+    resolveProducts: (...args) => gateway.resolveProducts(...args),
+    persistPrices: async (inputs) => {
+      calls += 1;
+      if (shouldFail(calls)) throw new Error('la base no responde');
+      return gateway.persistPrices(inputs);
+    },
+  };
+}
+
+describe('ejecuciones, cuarentena y reanudación (P7-02)', () => {
+  let plansBefore;
+  let demoBefore;
+  before(async () => {
+    plansBefore = await planSnapshotHash();
+    demoBefore = await pricesOf('demo-seed');
+  });
+
+  test('cada ejecución queda guardada con sus contadores y su cuarentena, y se puede informar', async () => {
+    const recorder = new PrismaImportRunRecorder(prisma);
+    const items = await collect(new MockPriceProvider({ seed: 21, stores: 2, products: 4, days: 3, anchorDate: ANCHOR, corruptEvery: 5 }));
+    const summary = await importer().run(arrayProvider('con-registro', items), { recorder, batchSize: 5 });
+    assert.equal(summary.status, 'COMPLETED_WITH_REJECTIONS');
+    const { rows: [run] } = await pg.query('SELECT * FROM "ImportRun" WHERE "id" = $1', [summary.runId]);
+    assert.deepEqual(
+      [run.kind, run.source, run.status, run.read, run.created, run.rejected, run.committedPosition, run.finishedAt !== null],
+      ['PRICES', 'con-registro', 'COMPLETED_WITH_REJECTIONS', 24, summary.created, 4, 24, true],
+    );
+    const { rows: quarantined } = await pg.query('SELECT "position", "reason", "detail", "ref" FROM "QuarantinedRecord" WHERE "runId" = $1 ORDER BY "position"', [summary.runId]);
+    assert.deepEqual(quarantined.map((row) => row.position), [5, 10, 15, 20]);
+    assert.ok(quarantined.every((row) => row.reason && !/\d+,\d{2}/.test(JSON.stringify(row))), 'sin precios ni contenido del registro');
+    assert.equal(await pricesOf('con-registro'), summary.created);
+    const { rows: batches } = await pg.query(`SELECT DISTINCT "importBatchId" AS batch FROM "ProductPrice" WHERE "source" = 'con-registro'`);
+    assert.deepEqual(batches, [{ batch: summary.runId }], 'cada precio apunta a la ejecución que lo trajo');
+
+    const report = await recorder.report(summary.runId);
+    assert.equal(report.quarantine.total, 4);
+    assert.deepEqual(report.quarantine.byReason, summary.rejectedByReason);
+    assert.equal(report.run.counters.created, summary.created);
+
+    const again = await importer().run(arrayProvider('con-registro', items), { recorder, batchSize: 5 });
+    assert.deepEqual([again.created, again.duplicates], [0, summary.created], 'la misma importación dos veces no duplica precios');
+    assert.equal(await count(`SELECT count(*)::int AS n FROM "ImportRun" WHERE "source" = 'con-registro'`), 2);
+  });
+
+  test('un error pasajero se supera con un reintento y no se cuenta dos veces', async () => {
+    const items = await collect(new MockPriceProvider({ seed: 31, stores: 1, products: 6, days: 2, anchorDate: ANCHOR }));
+    const summary = await new PriceImporter(withFailures((call) => call === 2)).run(arrayProvider('pasajero', items), {
+      batchSize: 4,
+      concurrency: 1,
+      retry: { retries: 2, delayMs: 0 },
+    });
+    assert.deepEqual([summary.status, summary.retries, summary.created, summary.duplicates], ['COMPLETED', 1, 12, 0]);
+  });
+
+  test('una ejecución que falla se reanuda desde lo confirmado si la fuente se puede repetir', async () => {
+    const recorder = new PrismaImportRunRecorder(prisma);
+    const items = await collect(new MockPriceProvider({ seed: 41, stores: 2, products: 5, days: 3, anchorDate: ANCHOR }));
+    const failed = await new PriceImporter(withFailures((call) => call >= 3)).run(arrayProvider('reanudable', items, true), {
+      recorder,
+      batchSize: 10,
+      concurrency: 1,
+      retry: { retries: 0, delayMs: 0 },
+    });
+    assert.deepEqual([failed.status, failed.created, failed.committedPosition], ['FAILED', 20, 20]);
+    const stored = await recorder.find(failed.runId);
+    assert.deepEqual([stored.status, stored.committedPosition], ['FAILED', 20]);
+
+    const resumed = await importer().run(arrayProvider('reanudable', items, true), {
+      recorder,
+      batchSize: 10,
+      resume: { runId: stored.id, position: stored.committedPosition },
+    });
+    assert.deepEqual(
+      [resumed.status, resumed.read, resumed.created, resumed.duplicates, resumed.resumedFromId, resumed.resumedAfterPosition, resumed.committedPosition],
+      ['COMPLETED', 10, 10, 0, failed.runId, 20, 30],
+      'solo se procesan las posiciones posteriores a la confirmada',
+    );
+    assert.equal(await pricesOf('reanudable'), 30);
+    const { rows: [link] } = await pg.query('SELECT "resumedFromId"::text AS id FROM "ImportRun" WHERE "id" = $1', [resumed.runId]);
+    assert.equal(link.id, failed.runId);
+
+    await assert.rejects(
+      importer().run(arrayProvider('no-repetible', items, false), { resume: { runId: stored.id, position: 20 } }),
+      (error) => error instanceof ImportProviderError && /no se puede reanudar/.test(error.message),
+    );
+  });
+
+  test('registros fuera de orden y repetidos: cada día es su observación y el precio actual es el más reciente', async () => {
+    const newer = rawRecord({ store: { externalId: 'suc-orden' }, product: { externalId: 'prod-orden' }, price: '2.000,00', observedAt: ANCHOR });
+    const older = rawRecord({ store: { externalId: 'suc-orden' }, product: { externalId: 'prod-orden' }, price: '1.800,00', observedAt: shiftDate(ANCHOR, -2) });
+    const summary = await importer().run(arrayProvider('fuera-de-orden', [newer, older, newer]));
+    assert.deepEqual([summary.created, summary.duplicates, summary.conflicts], [2, 1, 0]);
+    const { rows: [current] } = await pg.query(
+      `SELECT "price"::text AS price FROM "ProductPrice" WHERE "source" = 'fuera-de-orden' ORDER BY "observedAt" DESC LIMIT 1`,
+    );
+    assert.equal(current.price, '2000.00');
+  });
+
+  test('descarga por URL: solo hosts permitidos, sin seguir redirecciones, y no se reanuda', async () => {
+    let requests = 0;
+    const line = JSON.stringify(rawRecord({ store: { externalId: 'suc-url' }, product: { externalId: 'prod-url' }, price: '3.210,00' }));
+    const body = gzipSync(`${line}\n`);
+    const server = createServer((request, response) => {
+      requests += 1;
+      if (request.url === '/redirige.jsonl.gz') {
+        response.writeHead(302, { Location: 'http://127.0.0.1:9/otro.jsonl.gz' }).end();
+        return;
+      }
+      response.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': body.length }).end(body);
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const fromUrl = (path, allowedHosts = ['127.0.0.1']) =>
+      new JsonLinesPriceProvider({ url: `${base}${path}`, allowedHosts, source: 'descarga', decimalSeparator: ',' });
+    try {
+      const provider = fromUrl('/precios.jsonl.gz');
+      assert.equal(provider.replayable, false);
+      const summary = await importer().run(provider);
+      assert.deepEqual([summary.status, summary.created], ['COMPLETED', 1]);
+      assert.equal(requests, 1);
+
+      assert.throws(() => fromUrl('/precios.jsonl.gz', []), /no está entre los permitidos/);
+      assert.equal(requests, 1, 'un host no permitido no llega a pedirse');
+
+      const redirected = await importer().run(fromUrl('/redirige.jsonl.gz'));
+      assert.equal(redirected.status, 'FAILED');
+      assert.match(redirected.error, /No se pudo descargar/);
+
+      await assert.rejects(importer().run(provider, { resume: { runId: randomUUID(), position: 1 } }), ImportProviderError);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('importar no borra historia ni cambia planes ya emitidos', async () => {
+    assert.equal(await pricesOf('demo-seed'), demoBefore);
+    assert.deepEqual(await planSnapshotHash(), plansBefore);
+    assert.ok(await count('SELECT count(*)::int AS n FROM "ShoppingPlan"') > 0, 'hay planes de las suites anteriores para comparar');
+  });
+});

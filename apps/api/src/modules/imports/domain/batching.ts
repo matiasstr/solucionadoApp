@@ -39,8 +39,9 @@ export class BatchRunError extends Error {
 }
 
 export function assertBatchOptions(options: BatchOptions): void {
-  if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > 10_000) {
-    throw new RangeError('El tamaño de lote debe ser un entero entre 1 y 10000.');
+  // Hasta 1000: un lote de precios es un solo INSERT, así un reintento nunca lo encuentra a medias.
+  if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > 1000) {
+    throw new RangeError('El tamaño de lote debe ser un entero entre 1 y 1000.');
   }
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 16) {
     throw new RangeError('La concurrencia debe ser un entero entre 1 y 16.');

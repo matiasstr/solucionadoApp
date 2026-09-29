@@ -12,6 +12,8 @@ import type {
   NormalizedStore,
   ProviderPriceItem,
   ProviderPromotionItem,
+  ImportRunSummary,
+  Rejection,
   RejectionReason,
 } from '../domain/import.types';
 
@@ -19,6 +21,11 @@ export interface PriceProvider {
   /** Nombre estable de la fuente: forma parte de la identidad de todo lo que importa. */
   readonly source: string;
   readonly decimalSeparator: DecimalSeparator;
+  /**
+   * `true` si volver a llamar a `records()` entrega exactamente la misma secuencia
+   * (archivo local, generador con semilla). Solo así se puede reanudar por posición.
+   */
+  readonly replayable: boolean;
   /** Registros en orden de lectura. Se consumen de a uno: el proveedor no debe cargar todo en memoria. */
   records(): AsyncIterable<ProviderPriceItem>;
 }
@@ -26,6 +33,7 @@ export interface PriceProvider {
 export interface PromotionProvider {
   readonly source: string;
   readonly decimalSeparator: DecimalSeparator;
+  readonly replayable: boolean;
   records(): AsyncIterable<ProviderPromotionItem>;
 }
 
@@ -77,4 +85,31 @@ export interface PromotionImportGateway {
   resolvePromotionScope(source: string, query: PromotionScopeQuery): Promise<PromotionScope>;
   /** `created` o `updated`; la regla se valida antes de escribir. */
   upsertPromotion(input: PromotionInput): Promise<'created' | 'updated'>;
+}
+
+export type ImportKind = 'prices' | 'promotions';
+
+/** Estado parcial de una ejecución: se guarda después de cada lote confirmado. */
+export interface ImportProgress {
+  readonly summary: ImportRunSummary;
+}
+
+/** Ejecución guardada, lo necesario para reanudarla o informarla. */
+export interface StoredImportRun {
+  readonly id: string;
+  readonly kind: ImportKind;
+  readonly source: string;
+  readonly status: ImportRunSummary['status'] | 'RUNNING';
+  readonly committedPosition: number;
+}
+
+/**
+ * Registro de ejecuciones y cuarentena (P7-02, ADR 0019). La cuarentena guarda motivo,
+ * posición y referencias externas: nunca el registro completo.
+ */
+export interface ImportRunRecorder {
+  start(input: { kind: ImportKind; source: string; startedAt: Date; resumedFromId: string | null }): Promise<string>;
+  quarantine(runId: string, rejections: readonly Rejection[]): Promise<void>;
+  progress(runId: string, progress: ImportProgress): Promise<void>;
+  finish(runId: string, summary: ImportRunSummary): Promise<void>;
 }

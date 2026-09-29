@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02) y **P7-01**. Empezar por **P7-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0018) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02) y **fase 7 completa** (P7-01, P7-02). Empezar por **P8-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0019) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P7-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P8-01 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 6 completas y P7-01 completo
+## Estado: 2026-09-29 — Fases 1 a 7 completas
 
-Raíz: `C:SERSPCDESKTOPTUSOFERTASAPPSOLUCIONADOAPP`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
+Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P7-02 — Trazabilidad y reintentos** (`docs/steps/phase-07.md`): ejecuciones de importación persistidas con contadores y error saneado, cuarentena de registros inválidos, reintentos limitados y reanudación solo si la fuente lo permite, y documentación del contrato de proveedor. Instrucciones al final de este archivo.
-No están implementados los importadores, los jobs, las alertas ni las promociones bancarias. **El despliegue de producción no incluye P4-02 ni la fase 5** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P8-01 — Workers y ejecución manual** (`docs/steps/phase-08.md`): Redis de Compose + BullMQ con configuración validada, worker separado del proceso HTTP, jobs `IMPORT_PRICES`, `IMPORT_PROMOTIONS` y `GENERATE_WEEKLY_PLANS` que llaman a los casos de uso existentes, CLI para encolar y consultar, ids idempotentes y reintentos. Instrucciones al final de este archivo.
+No están implementados los jobs (Redis/BullMQ), las alertas, las promociones bancarias ni una fuente real de precios. **El despliegue de producción no incluye P4-02 ni las fases 5 a 7** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -111,6 +111,32 @@ No están implementados los importadores, los jobs, las alertas ni las promocion
   - Repositorios: `ProductPriceRepository.recordBatch` (`INSERT … ON CONFLICT DO NOTHING RETURNING`), `ProductRepository.findManyByIds`/`findByEans`, `CanonicalProductRepository.findByNormalizedNames`. `uuidV5` pasó a `src/common/uuid-v5.ts` (el seed lo reutiliza).
   - Scripts: `npm.cmd run import` (raíz y API). `scripts/test-db.cjs` corre ahora **un proceso por archivo en el orden declarado** e imprime el total.
   - Tests: `test/import-normalizer.test.cjs` (6), `test/import-batching.test.cjs` (7) e integración `test/integration/imports.test.cjs` (8, último). ADR 0018.
+
+- **P7-02 (sesión 2026-09-29): ejecuciones, cuarentena y recuperación.** Cierra la fase 7.
+  - Migración `20260929220000_import_runs_quarantine`: enums `ImportKind`/`ImportRunStatus`, tablas `ImportRun` (contadores, `committedPosition`, `resumedFromId`, `error`; `CHECK` de contadores y de `finishedAt`) y `QuarantinedRecord`. Aplicada en desarrollo.
+  - Dominio `imports/domain/recovery.ts` (`withRetries` con `shouldRetry`, `CommitWatermark`). `ImportRun` reescrito: `begin` con un `ImportRunRecorder`, cuarentena por tandas (`QUARANTINE_FLUSH_SIZE` = 500), `checkpoint` después de cada lote, `end`; `MEMORY_RECORDER` por defecto. Importadores con `recorder`, `retry` y `resume`; `assertResumable`. Lote máximo 1.000.
+  - `infrastructure/prisma-import-run.recorder.ts` (`start`, `quarantine`, `progress`, `finish`, `find`, `report`). Proveedores con `replayable`; `JsonLinesPriceProvider` con `url` + `allowedHosts` (`assertAllowedUrl`, sin redirecciones, tiempo y tamaño máximos). CLI con `--url`, `--resume`, `--max-retries`, `--report` e `IMPORT_ALLOWED_HOSTS`.
+  - Docs: `docs/IMPORTS.md` (guía para proveedores) y ADR 0019. Tests: `test/import-recovery.test.cjs` (4) y 6 nuevos en `test/integration/imports.test.cjs`.
+
+## Verificaciones ejecutadas (P7-02, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **163/163** unitarios, build API + web) |
+| `npm.cmd run test:db` | **125/125** integración real en 12 archivos (119 previos + 6 de P7-02) |
+| Comando manual | Contra la base de desarrollo: una ejecución con semilla distinta sobre los mismos productos/días dio 1 creado, **21 conflictos sin sobrescribir** y 2 rechazados en cuarentena; la repetición, 0 creados y 1 repetido; `--report` mostró la cuarentena por motivo; `--url` a un host no permitido se rechazó antes de pedirlo |
+
+Qué cubren los tests nuevos: reintentos que superan un error pasajero, se agotan o no reintentan lo que no mejora; opciones inválidas; marca de confirmado con lotes que terminan en desorden y arranque desde una reanudación; URL permitida, HTTP local, host fuera de la lista, HTTP remoto, credenciales, protocolo y host parecido; errores saneados. En integración: ejecución guardada con contadores iguales al resumen, cuarentena con posiciones y sin contenido, precios que apuntan a su ejecución, informe; misma importación dos veces sin duplicar (dos ejecuciones); error pasajero reintentado sin contar dos veces; fallo persistente con posición confirmada 20 y **reanudación que procesa solo lo posterior**, enlazada a la anterior; fuente no repetible que no se reanuda; registros fuera de orden y repetidos; descarga desde un servidor local permitido, host no permitido sin pedido, redirección rechazada, descarga no reanudable; **planes emitidos e historia DEMO intactos** (hash de snapshots).
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (no hubo cambios en la web) y `npm.cmd audit`.
+
+## Decisiones y notas (P7-02)
+
+- **Cuarentena mínima**: motivo, posición, detalle saneado e id externo; nunca el registro (ADR 0019).
+- **Reanudar solo si la fuente es repetible** (`replayable`); una descarga se reimporta completa (idempotente).
+- **Lote máximo 1.000**: un lote de precios es un único `INSERT`, así un reintento no deja conteos engañosos.
+- Una ejecución que muere sin terminar queda `RUNNING` (el `CHECK` exige `finishedAt` solo al terminar): los jobs de la fase 8 pueden detectarlo.
+- La base de desarrollo acumuló ejecuciones y datos simulados de las pruebas del comando (fuente `mock-provider`); son datos locales.
 
 ## Verificaciones ejecutadas (P7-01, 2026-09-29)
 
@@ -425,20 +451,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P5-03** `22cdc58` (publicado).
 - **P6-01** `15474cb` (publicado).
 - **P6-02** `b11d264` (publicado).
-- **P7-01**: commit `feat(P7-01): ...` del 2026-09-29 (ver `git log`).
+- **P7-01** `7f31af1` (publicado).
+- **P7-02**: commit `feat(P7-02): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P7-02
+## Cómo seguir con P8-01
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-07.md` (P7-02), ADR 0008 y 0018.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Persistir ejecuciones (`ImportRun`: id, fuente, tipo, timestamps, estado, contadores creados/repetidos/conflictos/rechazados y error saneado) con una migración; hoy `ImportRunSummary` solo se imprime. Lotes con transacciones pequeñas (ya lo son).
-4. Cuarentena: guardar los registros rechazados con motivo, posición y un payload mínimo no sensible (ids externos, no el registro entero), consultable por ejecución. Un fallo parcial nunca se informa como éxito (ya: `COMPLETED_WITH_REJECTIONS`/`FAILED`).
-5. Reintentos limitados del lote que falla (con espera) y reanudación con cursor/posición **solo** cuando el proveedor puede reproducir el stream (el mock y un archivo sí; una descarga que no se puede repetir, no): no afirmar reanudación si no es posible. La idempotencia ya garantiza que reintentar no duplica.
-6. Documentar en `docs/` cómo agregar un proveedor (contrato `PriceProvider`/`PromotionProvider`, esquema de entrada JSON Lines, licencias/condiciones a verificar, límites de descarga y descompresión, endpoints permitidos por configuración y nunca una URL enviada por usuarios públicos).
-7. Tests (phase-07): misma importación dos veces sin duplicar, reinicio tras fallo, colisión de identidad, registros fuera de orden, duplicados, reporte de cuarentena; verificar que importar no borra historia ni cambia snapshots de planes.
-8. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Con P7-02 se cierra la fase 7 (siguiente: P8-01, Redis/BullMQ).
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-08.md` (P8-01), `docs/ARCHITECTURE.md`, ADR 0015 (planes), 0018 y 0019 (importación) y `docs/IMPORTS.md`.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d` (Compose ya tiene Redis en 6379), `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
+3. Dependencia BullMQ (verificar que publique CommonJS para Vercel, ver la nota de `@nestjs/jwt` en Deploy, y regenerar el lockfile con el cuidado de binarios Linux descrito ahí). `REDIS_URL` validada en `ApiConfig`; el API HTTP no debe depender de Redis para arrancar si los jobs no están habilitados.
+4. Worker con entrypoint propio (fuera del proceso HTTP), shutdown ordenado que libere Redis y Prisma. Jobs `IMPORT_PRICES` e `IMPORT_PROMOTIONS` que llaman a `PriceImporter`/`PromotionImporter` con `PrismaImportRunRecorder` (payload chico: fuente, archivo permitido o parámetros del mock, nunca el archivo), y `GENERATE_WEEKLY_PLANS` que usa `ShoppingPlansService.generate` con una clave idempotente por usuario y semana. `CHECK_PRICE_ALERTS` solo como contrato (fase 9).
+5. Ids de job idempotentes por ejecución lógica, reintentos con backoff, concurrencia limitada; asumir entrega al menos una vez (los casos de uso ya son idempotentes). CLI para encolar y consultar estado; ningún endpoint para usuarios comunes.
+6. Tests con Redis real: un job de cada tipo, estado y datos, caída/reinicio del worker, reintento sin duplicar, shutdown; errores de Redis que no se informan como éxito.
+7. `npm.cmd run verify`, `npm.cmd run test:db` (y el test de jobs); actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P8-02.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 6 y P7-01 (importadores con identidad por fuente y lotes con backpressure, ADR 0018) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P7-02 (ejecuciones persistidas, cuarentena, reintentos y documentación para proveedores), descrito en docs/steps/phase-07.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 7 (hasta la importación con ejecuciones registradas, cuarentena y reanudación, ADR 0018 y 0019) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P8-01 (Redis, BullMQ, workers y comandos manuales), descrito en docs/steps/phase-08.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

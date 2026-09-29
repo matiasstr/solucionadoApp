@@ -58,6 +58,8 @@ export function formatCommaDecimal(cents: number): string {
 export class MockPriceProvider implements PriceProvider {
   readonly source = MOCK_SOURCE;
   readonly decimalSeparator = ',' as const;
+  /** Misma semilla, misma secuencia: se puede reanudar por posición. */
+  readonly replayable = true;
   private readonly options: Required<MockPriceOptions>;
 
   constructor(options: MockPriceOptions = {}) {
@@ -141,6 +143,7 @@ export class MockPriceProvider implements PriceProvider {
 export class MockPromotionProvider implements PromotionProvider {
   readonly source = MOCK_SOURCE;
   readonly decimalSeparator = ',' as const;
+  readonly replayable = true;
 
   constructor(private readonly anchorDate: string = yesterday()) {}
 
