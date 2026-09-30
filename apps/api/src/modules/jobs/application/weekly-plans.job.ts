@@ -2,6 +2,7 @@ import { PublicHttpException } from '../../../common/public-http.exception';
 import type { PrismaService } from '../../../database/prisma.service';
 import type { ShoppingPlansService } from '../../shopping-plans/application/shopping-plans.service';
 import { addDays } from '../../shopping-plans/domain/plan-calendar';
+import { resolveWeekStart } from '../domain/job-contracts';
 import type { WeeklyPlansPayload } from '../domain/job-contracts';
 import { JobFailedError } from './job-context';
 
@@ -35,9 +36,11 @@ export class WeeklyPlansJobRunner {
     private readonly plans: ShoppingPlansService,
   ) {}
 
-  async run(payload: WeeklyPlansPayload): Promise<WeeklyPlansResult> {
-    const weekEnd = addDays(payload.weekStart, 6);
-    const key = `${WEEKLY_PLAN_KEY_PREFIX}${payload.weekStart}`;
+  /** `scheduledFor` resuelve la semana de una programación (`weekStart: null`). */
+  async run(payload: WeeklyPlansPayload, scheduledFor: Date): Promise<WeeklyPlansResult> {
+    const weekStart = resolveWeekStart(payload.weekStart, scheduledFor);
+    const weekEnd = addDays(weekStart, 6);
+    const key = `${WEEKLY_PLAN_KEY_PREFIX}${weekStart}`;
     let users = 0;
     let created = 0;
     let replayed = 0;
@@ -47,7 +50,7 @@ export class WeeklyPlansJobRunner {
     for await (const userId of this.eligibleUsers(payload.userId)) {
       users += 1;
       try {
-        const result = await this.plans.generateScheduled(userId, { startDate: payload.weekStart, endDate: weekEnd }, key);
+        const result = await this.plans.generateScheduled(userId, { startDate: weekStart, endDate: weekEnd }, key);
         if (!result) withoutNeeds += 1;
         else if (result.created) created += 1;
         else replayed += 1;
@@ -62,7 +65,7 @@ export class WeeklyPlansJobRunner {
     if (failed > 0) {
       throw new JobFailedError(`No se pudo generar el plan de ${failed} de ${users} usuarios; al reintentar, los ya generados no se duplican.`);
     }
-    return { weekStart: payload.weekStart, weekEnd, users, created, replayed, withoutNeeds, skipped };
+    return { weekStart, weekEnd, users, created, replayed, withoutNeeds, skipped };
   }
 
   /** Por páginas y en orden de id: no carga todos los usuarios en memoria. */

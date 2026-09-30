@@ -29,6 +29,8 @@ export interface ImportOptions extends Partial<BatchOptions> {
   readonly retry?: Omit<RetryOptions, 'onRetry' | 'shouldRetry'>;
   /** Reanudar después de la posición confirmada de una ejecución anterior de la misma fuente. */
   readonly resume?: ResumePoint | null;
+  /** Se llama con el id de la ejecución apenas se registra (los jobs lo anotan para recuperarla si el proceso cae). */
+  readonly onRunStarted?: (runId: string) => Promise<void>;
 }
 
 function uniqueBy<T>(values: readonly T[], key: (value: T) => string): T[] {
@@ -65,6 +67,7 @@ export class PriceImporter {
       recorder: options.recorder ?? MEMORY_RECORDER,
       resume: options.resume ?? null,
     });
+    await options.onRunStarted?.(run.runId);
     const batchOptions = {
       batchSize: options.batchSize ?? DEFAULT_BATCH_OPTIONS.batchSize,
       concurrency: options.concurrency ?? DEFAULT_BATCH_OPTIONS.concurrency,

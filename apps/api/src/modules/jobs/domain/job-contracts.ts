@@ -4,7 +4,7 @@
  * procesar: lo que llega de Redis no se da por bueno.
  */
 import { createHash } from 'node:crypto';
-import { parseCalendarDate, RoutineRuleError } from '../../routines/domain/routine-rules';
+import { argentineToday, parseCalendarDate, RoutineRuleError } from '../../routines/domain/routine-rules';
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import { addDays, toDayNumber } from '../../shopping-plans/domain/plan-calendar';
 
@@ -48,8 +48,11 @@ export interface MockPricesPayload {
   readonly stores: number;
   readonly products: number;
   readonly days: number;
-  /** Se fija al encolar: un reintento al día siguiente importa lo mismo. */
-  readonly anchorDate: CalendarDate;
+  /**
+   * Se fija al encolar: un reintento al día siguiente importa lo mismo. `null` (programaciones):
+   * el día anterior al instante programado del job, que también es fijo en cada reintento.
+   */
+  readonly anchorDate: CalendarDate | null;
   readonly corruptEvery: number;
   readonly withoutEanEvery: number;
   readonly batchSize: number;
@@ -76,15 +79,16 @@ export type ImportPricesPayload = MockPricesPayload | JsonLinesPricesPayload;
 export interface ImportPromotionsPayload {
   readonly v: 1;
   readonly provider: 'mock';
-  readonly anchorDate: CalendarDate;
+  /** Como en precios: `null` = el día anterior al instante programado. */
+  readonly anchorDate: CalendarDate | null;
   readonly batchSize: number;
   readonly maxRetries: number;
 }
 
 export interface WeeklyPlansPayload {
   readonly v: 1;
-  /** Lunes de la semana del plan (calendario argentino). */
-  readonly weekStart: CalendarDate;
+  /** Lunes de la semana del plan (calendario argentino); `null` = la próxima semana según el instante programado. */
+  readonly weekStart: CalendarDate | null;
   /** Un usuario puntual; null = todos los que tienen rutinas con productos. */
   readonly userId: string | null;
 }
@@ -157,6 +161,10 @@ function calendarDate(raw: Raw, key: string): CalendarDate {
   }
 }
 
+function nullableDate(raw: Raw, key: string): CalendarDate | null {
+  return raw[key] === null ? null : calendarDate(raw, key);
+}
+
 function nullableText(raw: Raw, key: string): string | null {
   const value = raw[key];
   if (value === null) return null;
@@ -196,7 +204,7 @@ function parseImportPrices(raw: Raw): ImportPricesPayload {
       stores: integer(raw, 'stores', IMPORT_LIMITS.stores),
       products: integer(raw, 'products', IMPORT_LIMITS.products),
       days: integer(raw, 'days', IMPORT_LIMITS.days),
-      anchorDate: calendarDate(raw, 'anchorDate'),
+      anchorDate: nullableDate(raw, 'anchorDate'),
       corruptEvery: integer(raw, 'corruptEvery', IMPORT_LIMITS.every),
       withoutEanEvery: integer(raw, 'withoutEanEvery', IMPORT_LIMITS.every),
       ...tuning,
@@ -231,7 +239,7 @@ function parseImportPromotions(raw: Raw): ImportPromotionsPayload {
   return {
     v: version(raw),
     provider: 'mock',
-    anchorDate: calendarDate(raw, 'anchorDate'),
+    anchorDate: nullableDate(raw, 'anchorDate'),
     batchSize: integer(raw, 'batchSize', IMPORT_LIMITS.batchSize),
     maxRetries: integer(raw, 'maxRetries', IMPORT_LIMITS.maxRetries),
   };
@@ -239,8 +247,8 @@ function parseImportPromotions(raw: Raw): ImportPromotionsPayload {
 
 function parseWeeklyPlans(raw: Raw): WeeklyPlansPayload {
   onlyKeys(raw, ['v', 'weekStart', 'userId']);
-  const weekStart = calendarDate(raw, 'weekStart');
-  if (!isMonday(weekStart)) throw new JobPayloadError('weekStart debe ser un lunes.', ['weekStart']);
+  const weekStart = nullableDate(raw, 'weekStart');
+  if (weekStart !== null && !isMonday(weekStart)) throw new JobPayloadError('weekStart debe ser un lunes.', ['weekStart']);
   const userId = nullableText(raw, 'userId');
   if (userId !== null && !UUID.test(userId)) throw new JobPayloadError('userId debe ser un UUID.', ['userId']);
   return { v: version(raw), weekStart, userId: userId?.toLowerCase() ?? null };
@@ -274,6 +282,14 @@ export function upcomingWeekStart(today: CalendarDate): CalendarDate {
   return day === 0 ? today : addDays(today, 7 - day);
 }
 
+/** Ancla del simulado: la fija, o el día anterior (en Argentina) al instante programado. */
+export const resolveAnchorDate = (anchorDate: CalendarDate | null, scheduledFor: Date): CalendarDate =>
+  anchorDate ?? addDays(argentineToday(scheduledFor), -1);
+
+/** Semana del plan: la fija, o la que empieza el día programado (si es lunes) o la siguiente. */
+export const resolveWeekStart = (weekStart: CalendarDate | null, scheduledFor: Date): CalendarDate =>
+  weekStart ?? upcomingWeekStart(argentineToday(scheduledFor));
+
 /** JSON con claves ordenadas: el mismo contenido da el mismo resumen. */
 function canonical(payload: object): string {
   return JSON.stringify(Object.fromEntries(Object.entries(payload).sort(([a], [b]) => a.localeCompare(b))));
@@ -297,11 +313,28 @@ export function jobIdFor<K extends JobName>(name: K, payload: JobPayloads[K], op
     case 'GENERATE_WEEKLY_PLANS': {
       if (key !== undefined) throw new JobPayloadError('Los planes semanales ya son únicos por semana: no llevan clave.', ['key']);
       const { weekStart, userId } = payload as WeeklyPlansPayload;
-      return `weekly-plans-${weekStart}${userId ? `-${userId}` : ''}`;
+      return `weekly-plans-${weekStart ?? 'proxima'}${userId ? `-${userId}` : ''}`;
     }
     default:
       return `price-alerts-${(payload as PriceAlertsPayload).asOf}`;
   }
+}
+
+/**
+ * Marca en el progreso de un job que falló por datos, configuración o destino no permitido
+ * (P8-02): reintentarlo tal cual no sirve, así que el reintento manual lo pide explícito.
+ */
+export const PERMANENT_FAILURE = 'permanent';
+
+export const isPermanentFailure = (progress: unknown): boolean =>
+  typeof progress === 'object' && progress !== null && (progress as { failure?: unknown }).failure === PERMANENT_FAILURE;
+
+/** Id de la ejecución de importación anotada en el progreso o en el resultado de un job. */
+export function importRunIdOf(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { importRunId, runId } = value as { importRunId?: unknown; runId?: unknown };
+  const id = importRunId ?? runId;
+  return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
 }
 
 /** Mismo contenido, sin importar el orden de las claves: detecta una clave reusada con otros datos. */

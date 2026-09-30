@@ -11,6 +11,7 @@ import { PrismaImportRunRecorder } from '../../imports/infrastructure/prisma-imp
 import { PrismaImportGateway } from '../../imports/infrastructure/prisma-import.gateway';
 import { JsonLinesPriceProvider } from '../../imports/infrastructure/providers/json-lines-price.provider';
 import { MockPriceProvider, MockPromotionProvider } from '../../imports/infrastructure/providers/mock-price.provider';
+import { resolveAnchorDate } from '../domain/job-contracts';
 import type { ImportPricesPayload, ImportPromotionsPayload } from '../domain/job-contracts';
 import { JobFailedError, PermanentJobError } from './job-context';
 import type { JobContext } from './job-context';
@@ -53,10 +54,11 @@ const toResult = (summary: ImportRunSummary): ImportJobResult => ({
 
 /**
  * Jobs `IMPORT_PRICES` e `IMPORT_PROMOTIONS` (P8-01): llaman a los mismos importadores que
- * el comando manual (ADR 0018/0019), con cada ejecución registrada. Una ejecución que
- * termina `FAILED` hace fallar el intento (BullMQ reintenta); el reintento la **reanuda**
- * desde su posición confirmada si la fuente se puede repetir y, si no, importa todo de nuevo
- * (es idempotente: lo ya escrito cuenta como repetido).
+ * el comando manual (ADR 0018/0019), con cada ejecución registrada y anotada en el job al
+ * empezar. Una ejecución que termina `FAILED` hace fallar el intento (BullMQ reintenta); el
+ * reintento la **reanuda** desde su posición confirmada si la fuente se puede repetir y, si
+ * no, importa todo de nuevo (es idempotente: lo ya escrito cuenta como repetido). Si el
+ * intento anterior murió con la ejecución abierta, primero la cierra como interrumpida (P8-02).
  */
 export class ImportJobRunner {
   private readonly recorder: PrismaImportRunRecorder;
@@ -69,25 +71,27 @@ export class ImportJobRunner {
 
   async importPrices(payload: ImportPricesPayload, context: JobContext): Promise<ImportJobResult> {
     this.assertAllowed();
-    const provider = this.priceProvider(payload);
+    const provider = this.priceProvider(payload, context.scheduledFor);
     const summary = await new PriceImporter(this.gateway).run(provider, {
       recorder: this.recorder,
       batchSize: payload.batchSize,
       concurrency: payload.concurrency,
       retry: { retries: payload.maxRetries, delayMs: BATCH_RETRY_DELAY_MS },
       resume: await this.resumePoint(context, 'prices', provider),
+      onRunStarted: (runId) => context.saveCheckpoint({ importRunId: runId }),
     });
     return this.settle(summary, context);
   }
 
   async importPromotions(payload: ImportPromotionsPayload, context: JobContext): Promise<ImportJobResult> {
     this.assertAllowed();
-    const provider = new MockPromotionProvider(payload.anchorDate);
+    const provider = new MockPromotionProvider(resolveAnchorDate(payload.anchorDate, context.scheduledFor));
     const summary = await new PromotionImporter(this.gateway).run(provider, {
       recorder: this.recorder,
       batchSize: payload.batchSize,
       retry: { retries: payload.maxRetries, delayMs: BATCH_RETRY_DELAY_MS },
       resume: await this.resumePoint(context, 'promotions', provider),
+      onRunStarted: (runId) => context.saveCheckpoint({ importRunId: runId }),
     });
     return this.settle(summary, context);
   }
@@ -102,23 +106,28 @@ export class ImportJobRunner {
     throw new JobFailedError(`La importación ${summary.runId} falló: ${summary.error ?? 'sin detalle'}`);
   }
 
-  /** Solo se reanuda una ejecución anterior de este mismo job, de la misma fuente y que falló. */
+  /**
+   * Solo se reanuda una ejecución anterior de este mismo job y de la misma fuente, que falló o
+   * quedó abierta. Si quedó abierta, este intento tiene el bloqueo del job: el anterior murió.
+   */
   private async resumePoint(context: JobContext, kind: ImportKind, provider: PriceProvider | PromotionProvider): Promise<ResumePoint | null> {
     const runId = context.checkpoint?.importRunId;
-    if (!runId || !provider.replayable) return null;
+    if (!runId) return null;
     const previous = await this.recorder.find(runId);
-    if (!previous || previous.kind !== kind || previous.source !== provider.source || previous.status !== 'FAILED') return null;
-    return { runId: previous.id, position: previous.committedPosition };
+    if (!previous || previous.kind !== kind || previous.source !== provider.source) return null;
+    if (previous.status === 'RUNNING') await this.recorder.markInterrupted(previous.id, new Date());
+    else if (previous.status !== 'FAILED') return null;
+    return provider.replayable ? { runId: previous.id, position: previous.committedPosition } : null;
   }
 
-  private priceProvider(payload: ImportPricesPayload): PriceProvider {
+  private priceProvider(payload: ImportPricesPayload, scheduledFor: Date): PriceProvider {
     if (payload.provider === 'mock') {
       return new MockPriceProvider({
         seed: payload.seed,
         stores: payload.stores,
         products: payload.products,
         days: payload.days,
-        anchorDate: payload.anchorDate,
+        anchorDate: resolveAnchorDate(payload.anchorDate, scheduledFor),
         corruptEvery: payload.corruptEvery,
         withoutEanEvery: payload.withoutEanEvery,
       });

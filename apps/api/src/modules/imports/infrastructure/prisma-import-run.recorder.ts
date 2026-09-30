@@ -9,6 +9,7 @@ import type { ImportKind, ImportProgress, ImportRunRecorder, StoredImportRun } f
 
 const KIND = { prices: 'PRICES', promotions: 'PROMOTIONS' } as const;
 const FROM_KIND = { PRICES: 'prices', PROMOTIONS: 'promotions' } as const;
+export const INTERRUPTED_ERROR = 'El proceso se interrumpió sin cerrar la ejecución; lo confirmado se conserva y se puede reanudar.';
 
 type Counters = Pick<
   ImportRunSummary,
@@ -94,6 +95,30 @@ export class PrismaImportRunRecorder implements ImportRunRecorder {
       select: { id: true, kind: true, source: true, status: true, committedPosition: true },
     });
     return run ? { ...run, kind: FROM_KIND[run.kind] } : null;
+  }
+
+  /**
+   * Cierra como `FAILED` una ejecución que quedó `RUNNING` porque su proceso cayó (P8-02):
+   * conserva lo confirmado, así se puede reanudar. Solo toca ejecuciones todavía abiertas.
+   */
+  async markInterrupted(runId: string, at: Date): Promise<boolean> {
+    const { count } = await this.prisma.importRun.updateMany({
+      where: { id: runId, status: 'RUNNING' },
+      data: { status: 'FAILED', finishedAt: at, error: INTERRUPTED_ERROR },
+    });
+    return count > 0;
+  }
+
+  /** Ejecuciones abiertas sin avance desde `before`: sus procesos se dan por caídos. */
+  async closeStale(before: Date, at: Date): Promise<string[]> {
+    const stale = await this.prisma.importRun.findMany({
+      where: { status: 'RUNNING', updatedAt: { lt: before } },
+      select: { id: true },
+      orderBy: { startedAt: 'asc' },
+    });
+    const closed: string[] = [];
+    for (const { id } of stale) if (await this.markInterrupted(id, at)) closed.push(id);
+    return closed;
   }
 
   /** Ejecución y cuarentena para diagnosticar: contadores por motivo y las primeras filas. */

@@ -55,6 +55,31 @@ class JobsEnvironment {
   @Max(600_000)
   JOBS_STALLED_INTERVAL_MS = 30_000;
 
+  // Operación (P8-02): una ejecución de importación abierta sin avance durante este tiempo se da por caída.
+  @Transform(toInt)
+  @IsInt()
+  @Min(5)
+  @Max(1440)
+  JOBS_STALE_RUN_MINUTES = 30;
+
+  // Misma variable que el API: antigüedad a partir de la cual un precio está desactualizado.
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  PRICE_MAX_AGE_DAYS = 7;
+
+  // Servidor de salud del worker (`/health`, `/ready`); sin puerto no se abre. En Cloud Run: PORT y 0.0.0.0.
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  WORKER_HEALTH_PORT?: number;
+
+  @Matches(/^[a-zA-Z0-9.:[\]-]+$/)
+  WORKER_HEALTH_HOST = '127.0.0.1';
+
   @IsOptional()
   @IsString()
   IMPORT_FILES_DIR?: string;
@@ -73,6 +98,10 @@ export interface JobsConfig {
   readonly concurrency: { readonly imports: number; readonly plans: number };
   readonly lockDurationMs: number;
   readonly stalledIntervalMs: number;
+  readonly staleRunMinutes: number;
+  readonly priceMaxAgeDays: number;
+  /** null = sin servidor de salud. */
+  readonly health: { readonly port: number; readonly host: string } | null;
   /** Único directorio desde el que un job lee archivos; null = no se aceptan archivos. */
   readonly importFilesDir: string | null;
   readonly allowedHosts: readonly string[];
@@ -91,7 +120,8 @@ export function validateJobsEnvironment(raw: Record<string, unknown>): JobsConfi
   const input: Record<string, unknown> = {};
   for (const key of [
     'REDIS_URL', 'JOBS_PREFIX', 'JOBS_ATTEMPTS', 'JOBS_BACKOFF_MS', 'JOBS_IMPORT_CONCURRENCY', 'JOBS_PLAN_CONCURRENCY',
-    'JOBS_LOCK_DURATION_MS', 'JOBS_STALLED_INTERVAL_MS', 'IMPORT_FILES_DIR', 'IMPORT_ALLOWED_HOSTS',
+    'JOBS_LOCK_DURATION_MS', 'JOBS_STALLED_INTERVAL_MS', 'JOBS_STALE_RUN_MINUTES', 'PRICE_MAX_AGE_DAYS',
+    'WORKER_HEALTH_PORT', 'WORKER_HEALTH_HOST', 'IMPORT_FILES_DIR', 'IMPORT_ALLOWED_HOSTS',
   ]) {
     if (raw[key] !== undefined && raw[key] !== '') input[key] = raw[key];
   }
@@ -111,6 +141,9 @@ export function validateJobsEnvironment(raw: Record<string, unknown>): JobsConfi
     concurrency: Object.freeze({ imports: env.JOBS_IMPORT_CONCURRENCY, plans: env.JOBS_PLAN_CONCURRENCY }),
     lockDurationMs: env.JOBS_LOCK_DURATION_MS,
     stalledIntervalMs: env.JOBS_STALLED_INTERVAL_MS,
+    staleRunMinutes: env.JOBS_STALE_RUN_MINUTES,
+    priceMaxAgeDays: env.PRICE_MAX_AGE_DAYS,
+    health: env.WORKER_HEALTH_PORT === undefined ? null : Object.freeze({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST }),
     importFilesDir: env.IMPORT_FILES_DIR ?? null,
     allowedHosts: Object.freeze((env.IMPORT_ALLOWED_HOSTS ?? '').split(',').map((host) => host.trim()).filter(Boolean)),
   });

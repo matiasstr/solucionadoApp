@@ -26,6 +26,7 @@ export class WorkerModule {
 
 export interface WorkerContext {
   readonly app: INestApplicationContext;
+  readonly prisma: PrismaService;
   readonly handlers: JobHandlers;
   /** Motivo por el que las importaciones se rechazan en este entorno; null = permitidas. */
   readonly importsBlockedReason: string | null;
@@ -53,11 +54,12 @@ export async function createWorkerContext(
   const plans = new WeeklyPlansJobRunner(prisma, app.get(ShoppingPlansService));
   return {
     app,
+    prisma,
     importsBlockedReason,
     handlers: {
       IMPORT_PRICES: (payload, context) => imports.importPrices(payload, context),
       IMPORT_PROMOTIONS: (payload, context) => imports.importPromotions(payload, context),
-      GENERATE_WEEKLY_PLANS: (payload) => plans.run(payload),
+      GENERATE_WEEKLY_PLANS: (payload, context) => plans.run(payload, context.scheduledFor),
     },
   };
 }

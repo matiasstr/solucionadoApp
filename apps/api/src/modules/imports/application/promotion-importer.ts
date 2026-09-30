@@ -31,6 +31,7 @@ export class PromotionImporter {
       recorder: options.recorder ?? MEMORY_RECORDER,
       resume: options.resume ?? null,
     });
+    await options.onRunStarted?.(run.runId);
     let failure: unknown = null;
     try {
       const stats = await runBatches(this.normalized(provider, run), { batchSize: Math.min(options.batchSize ?? 200, 1000), concurrency: 1 }, {

@@ -64,7 +64,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | COMPLETO |
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | COMPLETO |
 | P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | COMPLETO |
-| P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | PENDIENTE |
+| P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | COMPLETO |
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | PENDIENTE |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | PENDIENTE |
 | P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | PENDIENTE |
@@ -146,13 +146,17 @@ Verificado al cerrar P7-01: `npm.cmd run verify` (159/159 unitarios, 13 nuevos: 
 
 Verificado al cerrar la fase: `npm.cmd run verify` (163/163 unitarios, 4 nuevos de reintentos, marca de confirmado, URL permitida y errores saneados) y `npm.cmd run test:db` (125/125, 6 nuevos: ejecución y cuarentena guardadas con informe, reintento de un error pasajero, fallo y reanudación desde lo confirmado, fuente no repetible que no se reanuda, registros fuera de orden y repetidos, descarga permitida/prohibida/redirigida, planes e historia intactos). Comando probado contra la base de desarrollo (conflictos sin sobrescribir, informe de cuarentena, host no permitido rechazado).
 
-## Estado de la fase 8 (jobs) — EN CURSO
+## Estado de la fase 8 (jobs) — COMPLETA
 
 **P8-01 — COMPLETO.** Módulo `apps/api/src/modules/jobs/` con BullMQ 6.3.9 e ioredis 6.0.0 sobre el Redis de Compose. Worker aparte del API HTTP (`npm.cmd run worker`, contexto Nest sin HTTP) con una cola `imports` (concurrencia 1) y otra `plans` (2), apagado ordenado que espera los jobs en curso y libera Redis y la base. Jobs `IMPORT_PRICES` e `IMPORT_PROMOTIONS` (mismos importadores y registro de ejecuciones de la fase 7; una importación fallida se reanuda en el reintento desde su posición confirmada) y `GENERATE_WEEKLY_PLANS` (un borrador por usuario y semana con la clave `job-weekly-<lunes>`, sin planes vacíos ni cambios a los del usuario); `CHECK_PRICE_ALERTS` solo como contrato. Datos chicos validados al encolar y al procesar (rutas relativas a `IMPORT_FILES_DIR`, URLs sin credenciales ni parámetros), ids por ejecución lógica, reintentos con espera exponencial, fallas permanentes sin reintento, mensajes saneados. Comando `npm.cmd run jobs -- enqueue|status|counts`, sin endpoints HTTP. El API HTTP no carga BullMQ. Decisiones en [ADR 0020](docs/architecture-decisions/0020-jobs-bullmq-worker.md).
 
 Verificado: `npm.cmd run verify` (171/171 unitarios, 8 nuevos: contratos, rutas y URLs, ids, semana, configuración, conexiones, destino de importación) y `npm.cmd run test:db` (134/134 en 13 archivos, 9 nuevos con Redis real: un job de cada tipo con estado y datos, dedupe y conflicto de id, semana sin necesidades, reintento sin duplicar, reanudación de una importación fallida, worker caído retomado por otro, apagado que espera y libera conexiones, Redis caído sin éxito falso, worker como proceso aparte). Probado a mano contra la base de desarrollo con el worker real.
 
-**Siguiente: P8-02** (programación en zona argentina, observabilidad, fallos agotados y reintento manual, imágenes y runbook).
+**P8-02 — COMPLETO.** Programaciones con `upsertJobScheduler` en `America/Argentina/Buenos_Aires` (`jobs -- schedule|schedules|unschedule`), idempotentes por id (dos productores → una programación y un turno); fechas relativas (`anchorDate`/`weekStart` en `null`) resueltas con el instante programado del turno, igual en cada reintento. Reporte operativo `jobs -- report` (retraso y cantidades por cola, programaciones, fallidos, último éxito por fuente, ejecuciones abiertas sin avance con la nueva columna `ImportRun.updatedAt` —migración `20260930120000_import_run_progress_time`—, frescura por fuente, planes semanales) y logs con `jobId` e `importRunId`. Fallos agotados en el conjunto `failed` (`jobs -- failed`), fallas permanentes marcadas y reintento manual seguro (`jobs -- retry [--force]`, conserva el progreso). Una importación cuyo worker murió se cierra como interrumpida y se reanuda en el reintento; `jobs -- close-stale-runs` para las del comando manual. Worker con `/health` y `/ready` y modo `--until-idle`. `apps/api/Dockerfile` (`api`, `worker`, `migrate`; usuario `node`, healthchecks, 518 MB), `.dockerignore`, perfil `app` de Compose y [runbook](docs/RUNBOOK.md). Decisiones en [ADR 0021](docs/architecture-decisions/0021-job-scheduling-operations.md).
+
+Verificado al cerrar la fase: `npm.cmd run verify` (176/176 unitarios, 5 nuevos: fechas relativas con reloj controlado, instante del turno, marcas de progreso, configuración, servidor de salud) y `npm.cmd run test:db` dos veces (143/143, 9 nuevos con Redis real: programación con dos productores y próxima corrida en hora argentina, turno programado con semana relativa, fallo agotado y reintento sin duplicar, falla permanente con `--force`, worker caído a mitad de una importación que se cierra y reanuda, ejecuciones colgadas, reporte, `--until-idle` con `/ready`, `/ready` en 503 sin base). Imágenes construidas y probadas con Compose: API y worker `healthy` como `node`, migración no-op, un job procesado por el worker en contenedor y SIGTERM con apagado ordenado (código 0).
+
+**Siguiente: P9-01** (reglas de alertas y bandeja de notificaciones, con `CHECK_PRICE_ALERTS`).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

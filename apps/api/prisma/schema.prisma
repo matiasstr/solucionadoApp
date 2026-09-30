@@ -218,6 +218,8 @@ model ImportRun {
   status                   ImportRunStatus     @default(RUNNING)
   startedAt                DateTime            @db.Timestamptz(3)
   finishedAt               DateTime?           @db.Timestamptz(3)
+  // Último avance (cada lote confirmado): una ejecución RUNNING sin avance es un proceso caído (P8-02).
+  updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
   // Registros leídos del proveedor, válidos o no.
   read                     Int                 @default(0)
   created                  Int                 @default(0)

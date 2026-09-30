@@ -33,6 +33,62 @@ services:
       timeout: 3s
       retries: 5
 
+  # Imágenes de la app (P8-02, ADR 0021): solo con `docker compose --profile app up -d --build`.
+  # `docker compose up -d` sigue levantando únicamente las bases. Toman los valores de desarrollo
+  # de .env y apps/api/.env; las URLs apuntan a los servicios de Compose.
+  migrate:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: migrate }
+    env_file:
+      - { path: .env, required: false }
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tusofertas}:${POSTGRES_PASSWORD:-tusofertas_local}@postgres:5432/${POSTGRES_DB:-tusofertas}?schema=public
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: api }
+    env_file:
+      - { path: .env, required: false }
+      - { path: apps/api/.env, required: false }
+    environment:
+      # Desarrollo: acepta el secreto de ejemplo y cookies sin Secure. Producción pasa los suyos.
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tusofertas}:${POSTGRES_PASSWORD:-tusofertas_local}@postgres:5432/${POSTGRES_DB:-tusofertas}?schema=public
+    ports:
+      # 3011 para no chocar con `npm.cmd run dev` (3001) en la misma máquina.
+      - "127.0.0.1:${API_CONTAINER_PORT:-3011}:3001"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  worker:
+    profiles: ["app"]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: worker }
+    env_file:
+      - { path: .env, required: false }
+      - { path: apps/api/.env, required: false }
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tusofertas}:${POSTGRES_PASSWORD:-tusofertas_local}@postgres:5432/${POSTGRES_DB:-tusofertas}?schema=public
+      REDIS_URL: redis://redis:6379
+      # La base de Compose es local aunque su host se llame `postgres`.
+      IMPORT_ALLOW_REMOTE: "true"
+      WORKER_HEALTH_PORT: "3002"
+      WORKER_HEALTH_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:${WORKER_CONTAINER_PORT:-3012}:3002"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # Apagado ordenado: SIGTERM y hasta 60 s para terminar el job en curso.
+    stop_grace_period: 60s
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

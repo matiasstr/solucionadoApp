@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02) y **P8-01**. Empezar por **P8-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0020) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02) y **fase 8 completa** (P8-01, P8-02). Empezar por **P9-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0021) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P8-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P9-01 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 7 completas y P8-01 completo
+## Estado: 2026-09-30 — Fases 1 a 8 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P8-02 — Programación y operación** (`docs/steps/phase-08.md`): programar importaciones y planes semanales en zona argentina sin doble programación entre réplicas, estado observable (último éxito por proveedor, retraso de cola, errores, frescura), registro de fallos agotados con reintento manual seguro, imágenes reproducibles y runbook. Instrucciones al final de este archivo.
-No están implementados la programación automática de jobs, las alertas, las promociones bancarias ni una fuente real de precios. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`), salvo el worker de jobs, que no está desplegado; ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P9-01 — Reglas de alertas y bandeja** (`docs/steps/phase-09.md`): reglas por producto/canónico con precio objetivo u oportunidad histórica, evaluación con precios frescos en el job `CHECK_PRICE_ALERTS` (hoy solo contrato), notificaciones internas con snapshot, deduplicación resistente a concurrencia, ownership y API `/alerts` y `/notifications`. Instrucciones al final de este archivo.
+No están implementadas las alertas, las promociones bancarias ni una fuente real de precios; el worker de jobs no está desplegado (preparado con imágenes y runbook). **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`); P8-02 no cambia el API HTTP, y su migración `20260930120000_import_run_progress_time` (aditiva) se aplica en el próximo deploy de la API. Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -126,6 +126,37 @@ No están implementados la programación automática de jobs, las alertas, las p
   - `jobs/worker.module.ts` (`WorkerModule`, `createWorkerContext`), `src/worker.ts` (entrypoint con apagado ordenado) y `jobs/cli.ts`. Scripts `npm.cmd run worker` y `npm.cmd run jobs` (raíz y API).
   - `imports/infrastructure/import-target.ts` (`importTargetProblem`): el resguardo "nunca producción ni base remota sin permiso" ahora lo comparten el comando de importación y los jobs.
   - Docs: ADR 0020, README ("Jobs y worker"), `apps/api/.env.example`. Tests: `test/jobs.test.cjs` (8) e integración `test/integration/jobs.test.cjs` (9, último del runner, con Redis real y prefijo propio).
+
+- **P8-02 (sesión 2026-09-30): programación, operación e imágenes.** Cierra la fase 8.
+  - Migración `20260930120000_import_run_progress_time` (`ImportRun.updatedAt`, último avance). Importadores con `onRunStarted`; `PrismaImportRunRecorder.markInterrupted`/`closeStale` e `INTERRUPTED_ERROR`.
+  - Contratos: `anchorDate`/`weekStart` aceptan `null` (relativas), `resolveAnchorDate`/`resolveWeekStart`, `PERMANENT_FAILURE`/`isPermanentFailure`, `importRunIdOf`. `JobContext.scheduledFor` (instante del turno desde el id `repeat:<id>:<ms>`, `scheduledFor()` exportada en `job-workers.ts`). `ImportJobRunner` anota la ejecución al empezar y en el reintento cierra la que quedó abierta y la reanuda.
+  - `job-workers.ts`: fallas permanentes marcadas en el progreso, logs con `importRunId`, `runtime.ready()`. `job-producer.ts`: `schedule`/`schedules`/`unschedule` (`SCHEDULE_TIME_ZONE`, cron de 5 campos), `failed`, `retry` (`JobRetryError`, `--force`), `health` (retraso). `application/operations-report.ts` (`OperationsReport.snapshot`). `infrastructure/worker-health.ts` (`/health`, `/ready`). `jobs.config.ts`: `JOBS_STALE_RUN_MINUTES`, `PRICE_MAX_AGE_DAYS`, `WORKER_HEALTH_PORT`/`HOST`.
+  - `src/worker.ts`: servidor de salud y `--until-idle`. `jobs/cli.ts`: `schedule`, `schedules`, `unschedule`, `failed`, `retry`, `report`, `close-stale-runs`.
+  - `apps/api/Dockerfile` (`api`, `worker`, `migrate`), `.dockerignore`, perfil `app` en `docker-compose.yml`. Docs: ADR 0021, `docs/RUNBOOK.md`, README, `.env.example`. Tests: 5 unitarios nuevos en `test/jobs.test.cjs` y 9 de integración en `test/integration/jobs.test.cjs` (describe "operación de jobs").
+
+## Verificaciones ejecutadas (P8-02, 2026-09-30)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (**176/176** unitarios, build API + web) |
+| `npm.cmd run test:db` | **143/143** en 13 archivos, dos corridas seguidas con la base recreada (134 previos + 9 de P8-02) |
+| Comando manual (base de desarrollo, prefijo `tusofertas-smoke`) | `schedule` semanal → próxima corrida domingo 2026-10-04 20:00 (23:00Z); repetirlo no duplicó; importación diaria 06:30 → 09:30Z; cron inválido (`99 …`, `… 9`, texto) rechazado con mensaje claro; `report` con colas, programaciones, último éxito por fuente, frescura (`demo-seed`, `mock-provider`) y los 14 planes de la semana 2026-10-05. Prefijo borrado |
+| Imágenes y Compose | `docker build` de `api`, `worker` y `migrate`; `docker compose --profile app up -d --build`: migración no-op, API y worker **healthy** como `node`, `/api/health/ready` y `/ready` del worker OK, un job encolado desde el host procesado en el contenedor (log con `importRunId`), `docker compose stop worker` → SIGTERM, `worker_stopping`/`worker_stopped`, código 0. Contenedores quitados; volúmenes intactos |
+
+Qué cubren los tests nuevos: fechas relativas con reloj controlado (domingo 20:00, domingo 23:30 que ya es lunes en UTC, lunes 00:00, cruces de mes), instante del turno desde el id, marcas de progreso, configuración de operación, servidor de salud (vivo, listo, apagándose, 404/405). En integración: dos productores programan a la vez → una programación y un turno, próxima corrida en hora argentina, cron inválido, quitarla borra el turno; turno programado cada segundo resuelve la semana con su instante y no duplica el plan; fallo agotado listado (no permanente, con `importRunId`) y reintento manual sin duplicar precios; falla permanente (archivo inexistente) sin reintento automático ni manual sin `--force`, y con el archivo creado completa; **worker que se cuelga a mitad** con la ejecución abierta en la posición 8 → otro worker la cierra como interrumpida y la reanuda leyendo solo 4; ejecuciones colgadas en el reporte y `closeStale` que cierra solo las viejas; reporte sin datos de usuarios y retraso de cola; `--until-idle` con `/ready` 200 que termina solo con código 0; `/ready` 503 con la base caída sin mostrar la contraseña.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (sin cambios en la web) ni un despliegue del worker (Cloud Run queda documentado en el runbook, no creado).
+
+## Decisiones y notas (P8-02)
+
+- **Programaciones solo por comando** (`jobs -- schedule`), idempotentes por id; el worker no las crea al arrancar (ADR 0021).
+- **El instante del turno sale del id del job** (`repeat:<programación>:<ms>`): BullMQ no guarda `opts.prevMillis` con el job (se comprobó en el test).
+- **Todas las réplicas de un prefijo con los mismos `JOBS_LOCK_DURATION_MS`/`JOBS_STALLED_INTERVAL_MS`**: el test encontró que un worker con 30 s fija `stalled-check` por 30 s y demora la detección de jobs caídos de los demás. Por eso los procesos aparte de los tests usan los mismos tiempos.
+- **Reintento manual conserva el progreso** y pone los intentos en cero; las fallas permanentes piden `--force`.
+- **Imagen de runtime con `--omit=dev --omit=optional`**: el CLI de Prisma, TypeScript y Prisma Studio entraban como peers opcionales de `@prisma/client` (`devOptional`); sin ellos, 518 MB. `msgpackr-extract` (opcional) queda afuera: BullMQ usa la versión en JavaScript.
+- Compose, perfil `app`: API en `127.0.0.1:3011` y salud del worker en `127.0.0.1:3012` (3000/3001 los usa otro proyecto del usuario). Usa `NODE_ENV=development` (secreto de ejemplo) e `IMPORT_ALLOW_REMOTE=true` porque el host de la base de Compose es `postgres`.
+- Quedaron imágenes locales `tusofertas-api`, `tusofertas-worker` y `tusofertas-migrate` (`:latest`, de Compose). La base de desarrollo tiene una ejecución `IMPORT_PROMOTIONS` más (la del worker en contenedor).
+- `JOBS_TEST_VERBOSE=1` muestra los logs de los workers en `test/integration/jobs.test.cjs`.
 
 ## Verificaciones ejecutadas (P8-01, 2026-09-29)
 
@@ -488,19 +519,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P6-02** `b11d264` (publicado).
 - **P7-01** `7f31af1` (publicado).
 - **P7-02** `f9d5b11` (publicado).
-- **P8-01**: commit `feat(P8-01): ...` del 2026-09-29 (ver `git log`).
+- **P8-01** `337320b` (publicado; desplegado el 2026-09-30, registro del deploy en `200f484`).
+- **P8-02**: commit `feat(P8-02): ...` del 2026-09-30 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P8-02
+## Cómo seguir con P9-01
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-08.md` (P8-02), ADR 0020 (jobs), 0019 (ejecuciones de importación) y 0016 (frescura de precios), y la sección "Jobs y worker" del README.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-09.md` (P9-01), ADR 0016 (análisis de precios), 0017 (dashboard), 0020 y 0021 (jobs) y `docs/RUNBOOK.md`.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Programación en zona argentina (UTC−3 fijo, como el resto del proyecto): job schedulers de BullMQ con id fijo para no duplicar la programación al arrancar varias réplicas; importaciones diarias y planes semanales (domingo para la semana siguiente). Probar con reloj controlado. Documentar qué sigue manual (no hay fuente real: el programador no debe correr el simulado en producción).
-4. Estado observable: último éxito por proveedor (desde `ImportRun`), retraso de cola y fallidos (desde BullMQ), frescura de precios; logs correlacionados por job e `importRunId`, sin datos personales. Detectar ejecuciones `RUNNING` sin avance (worker caído) y marcarlas.
-5. Fallos agotados: registro explícito (o cola de fallidos) y comando de reintento manual seguro (`jobs -- retry <id>`), sin reintentar lo que falló por datos inválidos.
-6. Imágenes reproducibles (usuario sin privilegios, healthchecks) para API y worker si Docker está disponible; runbook con arranque, parada, observabilidad y recuperación. Explicar API HTTP vs worker persistente vs job finito en Cloud Run. Separar secretos del worker (hoy necesita `JWT_ACCESS_SECRET` por los módulos que arma).
-7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P9-01.
+3. Confirmar el contrato de `/alerts` y `/notifications` contra `docs/API.md` (formato de errores, paginación, ownership) antes de implementar; documentar ajustes.
+4. Modelos y migración: reglas por usuario (producto o canónico, precio objetivo u oportunidad histórica, radio/preferencias, activa) con límite por usuario; notificaciones con snapshot (motivo, fuente, precio, fecha, enlace) y **restricción única** por regla/evento/ventana para deduplicar entre workers.
+5. Evaluación reutilizando `price-analysis` (P6-01) y la frescura (ADR 0008): nunca precios vencidos, pocos datos ni promociones inelegibles; un aviso por alternativa lo dice; respetar sustitutos y marcas. Cooldown configurable.
+6. Implementar `CHECK_PRICE_ALERTS` (hoy solo contrato en `job-contracts.ts`: agregarlo a `IMPLEMENTED_JOBS`, a una cola consumida por el worker y a `JobHandlers`); leer el estado vigente de la regla antes de crear el aviso. Programable con `jobs -- schedule`.
+7. Tests: cruce de umbral, nuevo mínimo, pocos datos, precio vencido, sustituto no permitido, regla pausada, job duplicado, usuarios distintos y **dos workers que no crean dos avisos iguales**. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P9-02.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 7 y P8-01 (jobs con BullMQ y worker aparte, ADR 0020) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P8-02 (programación, observabilidad, fallos agotados, imágenes y runbook), descrito en docs/steps/phase-08.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 8 (hasta los jobs con BullMQ, programaciones, reporte operativo e imágenes, ADR 0020 y 0021, runbook en docs/RUNBOOK.md) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P9-01 (reglas de alertas y bandeja de notificaciones con el job CHECK_PRICE_ALERTS), descrito en docs/steps/phase-09.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
