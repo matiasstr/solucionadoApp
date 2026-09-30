@@ -5,6 +5,8 @@ import { ConfigModule } from '../../config/config.module';
 import type { ApiConfig } from '../../config/environment';
 import { DatabaseModule } from '../../database/database.module';
 import { PrismaService } from '../../database/prisma.service';
+import { AlertsModule } from '../alerts/alerts.module';
+import { EvaluatePriceAlertsUseCase } from '../alerts/application/evaluate-price-alerts.use-case';
 import { importTargetProblem } from '../imports/infrastructure/import-target';
 import { ShoppingPlansService } from '../shopping-plans/application/shopping-plans.service';
 import { ShoppingPlansModule } from '../shopping-plans/shopping-plans.module';
@@ -19,7 +21,7 @@ export class WorkerModule {
   static forRoot(config: ApiConfig): DynamicModule {
     return {
       module: WorkerModule,
-      imports: [ConfigModule.forRoot(config), DatabaseModule.forRoot(config.databaseUrl), ShoppingPlansModule],
+      imports: [ConfigModule.forRoot(config), DatabaseModule.forRoot(config.databaseUrl), ShoppingPlansModule, AlertsModule],
     };
   }
 }
@@ -52,6 +54,7 @@ export async function createWorkerContext(
     blockedReason: importsBlockedReason,
   });
   const plans = new WeeklyPlansJobRunner(prisma, app.get(ShoppingPlansService));
+  const alerts = app.get(EvaluatePriceAlertsUseCase);
   return {
     app,
     prisma,
@@ -60,6 +63,8 @@ export async function createWorkerContext(
       IMPORT_PRICES: (payload, context) => imports.importPrices(payload, context),
       IMPORT_PROMOTIONS: (payload, context) => imports.importPromotions(payload, context),
       GENERATE_WEEKLY_PLANS: (payload, context) => plans.run(payload, context.scheduledFor),
+      // El instante del job (programado o de encolado) define la frescura: igual en cada reintento.
+      CHECK_PRICE_ALERTS: (payload, context) => alerts.run({ now: context.scheduledFor, userId: payload.userId }),
     },
   };
 }

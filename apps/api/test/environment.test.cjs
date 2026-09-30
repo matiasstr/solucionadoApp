@@ -31,6 +31,7 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
     },
     prices: { maxAgeDays: 7, sourcePrecedence: [] },
     planner: { maxHorizonDays: 28, maxCandidateDates: 7, maxCandidateStores: 8, maxOffersPerStore: 2, maxCombinations: 100000 },
+    alerts: { cooldownHours: 24 },
   });
 });
 

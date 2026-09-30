@@ -7,7 +7,7 @@ Operación del worker, las colas y las importaciones (P8-01 y P8-02). Decisiones
 | Pieza | Qué hace | Cómo se ejecuta | Dónde está hoy |
 | --- | --- | --- | --- |
 | API HTTP | Atiende la web. No usa Redis | `npm.cmd run dev` / imagen `api` | Vercel (producción) y local |
-| Worker | Procesa las colas `imports` y `plans` | `npm.cmd run worker` / imagen `worker` | **Solo local** (no desplegado) |
+| Worker | Procesa las colas `imports`, `plans` y `alerts` | `npm.cmd run worker` / imagen `worker` | **Solo local** (no desplegado) |
 | Comando `jobs` | Encola, programa, consulta, reintenta | `npm.cmd run jobs -- …` | Local |
 | Redis | Colas y programaciones (persistente, AOF) | Compose | Local |
 | PostgreSQL | Datos, `ImportRun`, cuarentena | Compose / Supabase | Local y producción |
@@ -36,6 +36,7 @@ Variables en `apps/api/.env.example` (`JOBS_*`, `WORKER_HEALTH_*`, `IMPORT_FILES
 
 ```powershell
 npm.cmd run jobs -- schedule GENERATE_WEEKLY_PLANS --cron="0 20 * * 0"                 # domingo 20:00: semana siguiente
+npm.cmd run jobs -- schedule CHECK_PRICE_ALERTS --cron="15 * * * *"                     # alertas de precio cada hora (P9-01)
 npm.cmd run jobs -- schedule IMPORT_PRICES --cron="30 6 * * *" --provider=jsonl --source=mi-fuente --file=diario/precios.jsonl.gz
 npm.cmd run jobs -- schedules                                                          # próxima corrida de cada una
 npm.cmd run jobs -- unschedule weekly-plans

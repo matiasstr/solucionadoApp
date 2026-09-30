@@ -163,13 +163,27 @@ describe('jobs (P8-01)', () => {
     await assert.rejects(producer.enqueue('IMPORT_PRICES', mockPrices({ seed: 8 }), first.jobId), JobConflictError, 'el mismo id con otros datos no se ignora');
   });
 
-  test('IMPORT_PROMOTIONS y CHECK_PRICE_ALERTS: uno se procesa, el otro es solo contrato', async () => {
+  test('IMPORT_PROMOTIONS: se procesa con su ejecución registrada', async () => {
     const payload = { v: 1, provider: 'mock', anchorDate: addDays(TODAY, -1), batchSize: 200, maxRetries: 0 };
     const job = await enqueue('IMPORT_PROMOTIONS', payload);
     const status = await withWorkers(context.handlers, () => waitFor(job.jobId));
     assert.equal(status.state, 'completed', status.failedReason);
     assert.deepEqual([status.result.kind, status.result.status, status.result.read, status.result.rejected], ['promotions', 'COMPLETED_WITH_REJECTIONS', 6, 2]);
-    await assert.rejects(enqueue('CHECK_PRICE_ALERTS', { v: 1, asOf: TODAY }), /fase 9/);
+  });
+
+  test('CHECK_PRICE_ALERTS: el worker evalúa las alertas con el mismo caso de uso, sin duplicar avisos', async () => {
+    const before = await count('SELECT count(*)::int AS n FROM "Notification"');
+    const first = await enqueue('CHECK_PRICE_ALERTS', { v: 1, userId: null }, `alertas-${process.pid}-1`);
+    const again = await enqueue('CHECK_PRICE_ALERTS', { v: 1, userId: null }, `alertas-${process.pid}-2`);
+    assert.equal(first.queue, 'alerts');
+    const [done, repeated] = await withWorkers(context.handlers, async () => [await waitFor(first.jobId), await waitFor(again.jobId)]);
+    assert.equal(done.state, 'completed', done.failedReason);
+    assert.deepEqual(Object.keys(done.result).sort(), ['notified', 'outcomes', 'rules', 'users']);
+    assert.ok(done.result.rules >= 1, 'hay alertas activas de la suite de alertas');
+    assert.equal(repeated.state, 'completed', repeated.failedReason);
+    assert.equal(repeated.result.notified, 0, 'evaluar otra vez con los mismos precios no avisa de nuevo');
+    const after = await count('SELECT count(*)::int AS n FROM "Notification"');
+    assert.equal(after - before, done.result.notified);
   });
 
   test('GENERATE_WEEKLY_PLANS: un borrador por usuario y semana, sin duplicar ni guardar planes vacíos', async () => {

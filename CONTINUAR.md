@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02) y **fase 8 completa** (P8-01, P8-02). Empezar por **P9-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0021) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02) y **P9-01**. Empezar por **P9-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0022) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P9-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P9-02 que recuperar.
 
-## Estado: 2026-09-30 — Fases 1 a 8 completas
+## Estado: 2026-09-30 — Fases 1 a 8 completas y P9-01 completo
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P9-01 — Reglas de alertas y bandeja** (`docs/steps/phase-09.md`): reglas por producto/canónico con precio objetivo u oportunidad histórica, evaluación con precios frescos en el job `CHECK_PRICE_ALERTS` (hoy solo contrato), notificaciones internas con snapshot, deduplicación resistente a concurrencia, ownership y API `/alerts` y `/notifications`. Instrucciones al final de este archivo.
-No están implementadas las alertas, las promociones bancarias ni una fuente real de precios; el worker de jobs no está desplegado (preparado con imágenes y runbook). **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`); P8-02 no cambia el API HTTP, y su migración `20260930120000_import_run_progress_time` (aditiva) se aplica en el próximo deploy de la API. Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P9-02 — Pantallas de alertas y bandeja** (`docs/steps/phase-09.md`): crear alertas desde `/producto/[id]` y el buscador, bandeja y resumen en `/dashboard`, administración de reglas (pausar, borrar), estados sin datos recientes, sin afirmar envíos fuera de la app, y E2E crear regla → precio → job → aviso → leído. Instrucciones al final de este archivo.
+No están implementadas las pantallas de alertas, las promociones bancarias ni una fuente real de precios; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP) y P9-01 (API `/alerts` y `/notifications`); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time` y `20260930180000_price_alerts_notifications` (aditivas). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -133,6 +133,35 @@ No están implementadas las alertas, las promociones bancarias ni una fuente rea
   - `job-workers.ts`: fallas permanentes marcadas en el progreso, logs con `importRunId`, `runtime.ready()`. `job-producer.ts`: `schedule`/`schedules`/`unschedule` (`SCHEDULE_TIME_ZONE`, cron de 5 campos), `failed`, `retry` (`JobRetryError`, `--force`), `health` (retraso). `application/operations-report.ts` (`OperationsReport.snapshot`). `infrastructure/worker-health.ts` (`/health`, `/ready`). `jobs.config.ts`: `JOBS_STALE_RUN_MINUTES`, `PRICE_MAX_AGE_DAYS`, `WORKER_HEALTH_PORT`/`HOST`.
   - `src/worker.ts`: servidor de salud y `--until-idle`. `jobs/cli.ts`: `schedule`, `schedules`, `unschedule`, `failed`, `retry`, `report`, `close-stale-runs`.
   - `apps/api/Dockerfile` (`api`, `worker`, `migrate`), `.dockerignore`, perfil `app` en `docker-compose.yml`. Docs: ADR 0021, `docs/RUNBOOK.md`, README, `.env.example`. Tests: 5 unitarios nuevos en `test/jobs.test.cjs` y 9 de integración en `test/integration/jobs.test.cjs` (describe "operación de jobs").
+
+- **P9-01 (sesión 2026-09-30): alertas de precio y bandeja.** Abre la fase 9.
+  - Migración `20260930180000_price_alerts_notifications`: enums `AlertCondition`/`NotificationKind`, tablas `PriceAlertRule` (`revision`, `notifiedUnitPrice`, `lastOutcome`, …; `CHECK` de moneda ARS, objetivo según condición, positivo, radio, sustitutos, marcas ≤ 20) y `Notification` (snapshot, `readAt`; único `(ruleId, eventKey)`, `ruleId` pasa a `null` al borrar la regla).
+  - Dominio `alerts/domain/`: `alert-rules.ts` (`assertAlertRule`, `MAX_ALERT_RULES_PER_USER` = 20), `alert-evaluation.ts` (`eligibleProducts`, `evaluateRule`, `decide`, `alertEventKey`), `notification-content.ts` (`buildNotificationContent`, `formatArs`).
+  - Aplicación: `PriceAlertsService` (CRUD con ownership, límite con bloqueo del usuario, `revision` +1 y rearmado en cada edición), `NotificationsService` (cursor, `unread`, `unreadCount`, leído idempotente), `EvaluatePriceAlertsUseCase` (`run`, `evaluateUser` sin escribir, `apply` con `FOR UPDATE` y `createMany … skipDuplicates`). Controladores `AlertsController` y `NotificationsController`; `AlertsModule` en la raíz y en el worker.
+  - `prices/application/current-price-analysis.ts` (`CurrentPriceAnalysis`): el análisis del precio actual por serie, extraído del dashboard; `GetDashboardUseCase` ahora lo usa (sin cambio de comportamiento, 152/152).
+  - Config: `ALERT_COOLDOWN_HOURS` (24, 0 a 720) en `ApiConfig.alerts`; `JOBS_ALERT_CONCURRENCY` (1). Jobs: `CHECK_PRICE_ALERTS` implementado, payload `{ v, userId }` (reemplaza `{ v, asOf }`, que nunca se había encolado), cola `alerts` consumida por el worker, id `price-alerts-<día>-<resumen>` o `--key`; `schedule CHECK_PRICE_ALERTS` con id `price-alerts`.
+  - Contratos en `packages/shared` (`PriceAlertDto`, `NotificationDto`, …), `docs/API.md` (sección "Alertas y avisos"), ADR 0022, README, RUNBOOK. Tests: `test/alerts.test.cjs` (8), `test/integration/alerts.test.cjs` (8, después de `dashboard` en el runner) y 1 en `test/integration/jobs.test.cjs`.
+
+## Verificaciones ejecutadas (P9-01, 2026-09-30)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (**184/184** unitarios, build API + web) |
+| `npm.cmd run test:db` | **152/152** en 14 archivos (143 previos + 8 de alertas + 1 del job `CHECK_PRICE_ALERTS`) |
+| Prueba manual (base de desarrollo, API en 3010, prefijo `tusofertas-smoke`) | Registro, ubicación en Caballito, alerta `TARGET_PRICE` de pollo a $ 4.000/kg (201) y `GOOD_DEAL` de arroz (201); `enqueue CHECK_PRICE_ALERTS --user=…` y `worker --until-idle`: job completado, aviso real "Pollo entero fresco por kg (DEMO) a $ 3.191,30 … en Carrefour Almagro (DEMO) … Tu objetivo: $ 4.000,00 por kg", `lastOutcome` `NOTIFIED` y `NO_MATCH`. API detenida y prefijo borrado |
+
+Qué cubren los tests nuevos: reglas (objetivo requerido o prohibido, cero, decimales, unidad, moneda, sustitutos, radio); presentaciones elegibles (sin reemplazos, marcas sin mayúsculas, preferida con marca excluida); umbral (igualar alcanza, vencido, otra moneda, otra unidad, otro genérico, sustituto no permitido); oportunidades (mínimo, buena oferta, pocos datos, el objetivo no necesita historial); elección (menor precio, preferida, cercanía, alternativa); decisión (primera vez, pausa, cambio de versión, mismo precio, mejora, espera, sin espera, rearmado, sin datos); clave del evento; texto del aviso. En integración: API con errores por código, `userId` rechazado, dueño (`404`), `PATCH` evaluado sobre el resultado, marcas normalizadas, límite 20 (`409`); flujo 1600 → 1450 (avisa) → mismo (no repite) → 1700 (rearma) → 1400 (avisa); mínimo del mes con 12 días de historial y `INSUFFICIENT_DATA` con 4; precio de 10 días (`NO_FRESH_PRICES`), sin reemplazos no usa otra presentación, marcas excluidas, alternativa informada; pausa, edición y borrado **entre evaluación y aviso**; tres corridas simultáneas y el índice único con el estado borrado; bandeja con cursor, `unread`, leído idempotente, aislamiento entre personas y avisos que quedan al borrar la regla; sin ubicación y sin sucursales; el job por el worker sin duplicar al repetirlo.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (sin cambios en la web) ni deploy de P8-02/P9-01.
+
+## Decisiones y notas (P9-01)
+
+- **Objetivo por unidad base del genérico** (KG, L, UNIT): compara presentaciones; la web puede mostrar el equivalente por paquete (ADR 0022).
+- **Sin promociones** en la evaluación: nunca avisa por una promoción que podría no aplicar; sumar las elegibles queda para la fase 10.
+- **Disparo por flanco + cooldown**: avisa al cumplirse y al mejorar; no repite un precio estable.
+- **Evaluar sin escribir, aplicar con la regla bloqueada** y `ON CONFLICT DO NOTHING` por observación: sin duplicados entre workers ni avisos de reglas pausadas/editadas/borradas.
+- `CHECK_PRICE_ALERTS` cambió de contrato (`{ v, userId }`); nunca se había encolado, así que se mantuvo `v: 1`.
+- La base de desarrollo quedó con una cuenta `alertas-smoke-…@example.com`, dos alertas y un aviso; son datos locales.
 
 ## Verificaciones ejecutadas (P8-02, 2026-09-30)
 
@@ -520,19 +549,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P7-01** `7f31af1` (publicado).
 - **P7-02** `f9d5b11` (publicado).
 - **P8-01** `337320b` (publicado; desplegado el 2026-09-30, registro del deploy en `200f484`).
-- **P8-02**: commit `feat(P8-02): ...` del 2026-09-30 (ver `git log`).
+- **P8-02** `345ed37` (publicado).
+- **P9-01**: commit `feat(P9-01): ...` del 2026-09-30 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P9-01
+## Cómo seguir con P9-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-09.md` (P9-01), ADR 0016 (análisis de precios), 0017 (dashboard), 0020 y 0021 (jobs) y `docs/RUNBOOK.md`.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Confirmar el contrato de `/alerts` y `/notifications` contra `docs/API.md` (formato de errores, paginación, ownership) antes de implementar; documentar ajustes.
-4. Modelos y migración: reglas por usuario (producto o canónico, precio objetivo u oportunidad histórica, radio/preferencias, activa) con límite por usuario; notificaciones con snapshot (motivo, fuente, precio, fecha, enlace) y **restricción única** por regla/evento/ventana para deduplicar entre workers.
-5. Evaluación reutilizando `price-analysis` (P6-01) y la frescura (ADR 0008): nunca precios vencidos, pocos datos ni promociones inelegibles; un aviso por alternativa lo dice; respetar sustitutos y marcas. Cooldown configurable.
-6. Implementar `CHECK_PRICE_ALERTS` (hoy solo contrato en `job-contracts.ts`: agregarlo a `IMPLEMENTED_JOBS`, a una cola consumida por el worker y a `JobHandlers`); leer el estado vigente de la regla antes de crear el aviso. Programable con `jobs -- schedule`.
-7. Tests: cruce de umbral, nuevo mínimo, pocos datos, precio vencido, sustituto no permitido, regla pausada, job duplicado, usuarios distintos y **dos workers que no crean dos avisos iguales**. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P9-02.
+1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web), `ROADMAP.md`, `docs/steps/phase-09.md` (P9-02), ADR 0022, la sección "Alertas y avisos" de `docs/API.md` y los tipos de `packages/shared` (`PriceAlertDto`, `NotificationDto`, …).
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API en 3010 y web en 3100 como en sesiones anteriores (3000/3001 son de otro proyecto del usuario).
+3. Crear alerta desde `/producto/[id]` (y el buscador): condición, objetivo por unidad base (mostrar el equivalente del paquete), sustitutos y marcas; errores por código de la API.
+4. Bandeja: contador de no leídos y últimos avisos en `/dashboard`, lista completa con paginación, marcar leído; administración de alertas (pausar, reanudar, borrar) mostrando `status.lastOutcome` en palabras ("sin precios recientes", "todavía sin historial suficiente", …). No decir que se envió un email: el canal es solo la app.
+5. Seguir el patrón de TanStack Query de `lib/plans` y `lib/dashboard`; estados de carga, vacío y error; accesibilidad (foco, anuncios de cambios).
+6. E2E (Edge, como `plan.e2e.cjs`/`history.e2e.cjs`): crear regla → insertar/importar un precio que cruce el umbral → correr `CHECK_PRICE_ALERTS` (worker `--until-idle` o el caso de uso) → ver el aviso → marcar leído; recargar conserva el estado; borrar la regla antes de evaluar no avisa; otra cuenta no ve el aviso.
+7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; capturas en `.cache/verification/p9-02`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P10-01.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 8 (hasta los jobs con BullMQ, programaciones, reporte operativo e imágenes, ADR 0020 y 0021, runbook en docs/RUNBOOK.md) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P9-01 (reglas de alertas y bandeja de notificaciones con el job CHECK_PRICE_ALERTS), descrito en docs/steps/phase-09.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 8 y P9-01 (alertas de precio y bandeja de avisos con el job CHECK_PRICE_ALERTS, ADR 0022, contrato en docs/API.md) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P9-02 (pantallas de alertas y bandeja en la web, con E2E), descrito en docs/steps/phase-09.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

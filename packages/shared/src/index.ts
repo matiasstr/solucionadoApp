@@ -662,3 +662,94 @@ export interface DashboardDto {
     seriesAnalyzed: number;
   };
 }
+
+/** Alertas de precio (P9-01, ADR 0022). */
+export type AlertCondition = 'TARGET_PRICE' | 'HISTORIC_LOW' | 'GOOD_DEAL';
+
+export type AlertOutcome =
+  | 'NOTIFIED'
+  | 'ALREADY_NOTIFIED'
+  | 'COOLDOWN'
+  | 'NO_MATCH'
+  | 'NO_FRESH_PRICES'
+  | 'INSUFFICIENT_DATA'
+  | 'NO_ELIGIBLE_PRODUCTS'
+  | 'NO_LOCATION'
+  | 'NO_STORES_IN_SCOPE'
+  | 'PAUSED'
+  | 'RULE_CHANGED'
+  | 'RULE_DELETED';
+
+export interface PriceAlertDto {
+  id: string;
+  canonicalProduct: { id: string; name: string; defaultUnit: BaseUnit };
+  /** Presentación preferida; `null` = cualquiera del genérico. */
+  product: { id: string; name: string; brand: string | null } | null;
+  allowSubstitutes: boolean;
+  excludedBrands: string[];
+  condition: AlertCondition;
+  /** Solo en `TARGET_PRICE`: precio por unidad base del genérico, en pesos. */
+  target: { unitPrice: DecimalString; unit: BaseUnit; currency: 'ARS' } | null;
+  /** `null` = el radio de las preferencias. */
+  radiusKm: DecimalString | null;
+  active: boolean;
+  status: { lastEvaluatedAt: string | null; lastOutcome: AlertOutcome | null; lastNotifiedAt: string | null };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PriceAlertListDto {
+  items: PriceAlertDto[];
+  limit: number;
+}
+
+export interface CreatePriceAlertRequest {
+  canonicalProductId: string;
+  condition: AlertCondition;
+  productId?: string | null;
+  allowSubstitutes?: boolean;
+  excludedBrands?: string[];
+  targetUnitPrice?: DecimalString | null;
+  targetUnit?: BaseUnit | null;
+  currency?: 'ARS';
+  radiusKm?: DecimalString | null;
+  active?: boolean;
+}
+
+export type UpdatePriceAlertRequest = Partial<Omit<CreatePriceAlertRequest, 'canonicalProductId'>>;
+
+/** Snapshot de un aviso de precio: tal como estaba al avisar. */
+export interface PriceAlertNotificationData {
+  reason: AlertCondition;
+  canonicalProduct: { id: string; name: string };
+  product: { id: string; name: string; brand: string | null };
+  isAlternative: boolean;
+  preferredProduct: { id: string; name: string } | null;
+  store: { id: string; name: string; chainName: string; distanceMeters: number | null };
+  price: DecimalString;
+  unitPrice: DecimalString;
+  unitPriceUnit: BaseUnit;
+  currency: 'ARS';
+  source: string;
+  observedAt: string;
+  target: { unitPrice: DecimalString; unit: BaseUnit; currency: 'ARS' } | null;
+  analysis: { classification: string; average: DecimalString | null; lowest: DecimalString | null; ratioToAverage: DecimalString | null };
+}
+
+export interface NotificationDto {
+  id: string;
+  kind: 'PRICE_ALERT';
+  ruleId: string | null;
+  title: string;
+  message: string;
+  link: string;
+  data: PriceAlertNotificationData;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationPageDto {
+  items: NotificationDto[];
+  page: { limit: number; nextCursor: string | null };
+  unreadCount: number;
+}

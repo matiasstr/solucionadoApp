@@ -42,6 +42,13 @@ class JobsEnvironment {
   @Max(8)
   JOBS_PLAN_CONCURRENCY = 2;
 
+  // Alertas (P9-01): una evaluación por vez alcanza; cada regla se aplica bloqueada igual.
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  JOBS_ALERT_CONCURRENCY = 1;
+
   // Un job cuyo worker deja de renovar el bloqueo durante este tiempo se considera caído.
   @Transform(toInt)
   @IsInt()
@@ -95,7 +102,7 @@ export interface JobsConfig {
   readonly prefix: string;
   readonly attempts: number;
   readonly backoffMs: number;
-  readonly concurrency: { readonly imports: number; readonly plans: number };
+  readonly concurrency: { readonly imports: number; readonly plans: number; readonly alerts: number };
   readonly lockDurationMs: number;
   readonly stalledIntervalMs: number;
   readonly staleRunMinutes: number;
@@ -119,7 +126,7 @@ function isRedisUrl(value: string): boolean {
 export function validateJobsEnvironment(raw: Record<string, unknown>): JobsConfig {
   const input: Record<string, unknown> = {};
   for (const key of [
-    'REDIS_URL', 'JOBS_PREFIX', 'JOBS_ATTEMPTS', 'JOBS_BACKOFF_MS', 'JOBS_IMPORT_CONCURRENCY', 'JOBS_PLAN_CONCURRENCY',
+    'REDIS_URL', 'JOBS_PREFIX', 'JOBS_ATTEMPTS', 'JOBS_BACKOFF_MS', 'JOBS_IMPORT_CONCURRENCY', 'JOBS_PLAN_CONCURRENCY', 'JOBS_ALERT_CONCURRENCY',
     'JOBS_LOCK_DURATION_MS', 'JOBS_STALLED_INTERVAL_MS', 'JOBS_STALE_RUN_MINUTES', 'PRICE_MAX_AGE_DAYS',
     'WORKER_HEALTH_PORT', 'WORKER_HEALTH_HOST', 'IMPORT_FILES_DIR', 'IMPORT_ALLOWED_HOSTS',
   ]) {
@@ -138,7 +145,7 @@ export function validateJobsEnvironment(raw: Record<string, unknown>): JobsConfi
     prefix: env.JOBS_PREFIX,
     attempts: env.JOBS_ATTEMPTS,
     backoffMs: env.JOBS_BACKOFF_MS,
-    concurrency: Object.freeze({ imports: env.JOBS_IMPORT_CONCURRENCY, plans: env.JOBS_PLAN_CONCURRENCY }),
+    concurrency: Object.freeze({ imports: env.JOBS_IMPORT_CONCURRENCY, plans: env.JOBS_PLAN_CONCURRENCY, alerts: env.JOBS_ALERT_CONCURRENCY }),
     lockDurationMs: env.JOBS_LOCK_DURATION_MS,
     stalledIntervalMs: env.JOBS_STALLED_INTERVAL_MS,
     staleRunMinutes: env.JOBS_STALE_RUN_MINUTES,

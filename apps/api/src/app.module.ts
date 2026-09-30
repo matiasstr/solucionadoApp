@@ -3,6 +3,7 @@ import type { DynamicModule } from '@nestjs/common';
 import { ConfigModule } from './config/config.module';
 import type { ApiConfig } from './config/environment';
 import { DatabaseModule } from './database/database.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -35,6 +36,7 @@ export class AppModule {
         InventoryModule,
         ShoppingPlansModule,
         DashboardModule,
+        AlertsModule,
       ],
       controllers: [HealthController],
     };

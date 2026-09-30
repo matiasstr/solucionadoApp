@@ -65,7 +65,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | COMPLETO |
 | P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | COMPLETO |
 | P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | COMPLETO |
-| P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | PENDIENTE |
+| P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | COMPLETO |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | PENDIENTE |
 | P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | PENDIENTE |
 | P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | PENDIENTE |
@@ -156,7 +156,13 @@ Verificado: `npm.cmd run verify` (171/171 unitarios, 8 nuevos: contratos, rutas 
 
 Verificado al cerrar la fase: `npm.cmd run verify` (176/176 unitarios, 5 nuevos: fechas relativas con reloj controlado, instante del turno, marcas de progreso, configuración, servidor de salud) y `npm.cmd run test:db` dos veces (143/143, 9 nuevos con Redis real: programación con dos productores y próxima corrida en hora argentina, turno programado con semana relativa, fallo agotado y reintento sin duplicar, falla permanente con `--force`, worker caído a mitad de una importación que se cierra y reanuda, ejecuciones colgadas, reporte, `--until-idle` con `/ready`, `/ready` en 503 sin base). Imágenes construidas y probadas con Compose: API y worker `healthy` como `node`, migración no-op, un job procesado por el worker en contenedor y SIGTERM con apagado ordenado (código 0).
 
-**Siguiente: P9-01** (reglas de alertas y bandeja de notificaciones, con `CHECK_PRICE_ALERTS`).
+## Estado de la fase 9 (alertas) — EN CURSO
+
+**P9-01 — COMPLETO.** Módulo `apps/api/src/modules/alerts/` y migración `20260930180000_price_alerts_notifications` (`PriceAlertRule`, `Notification`, `CHECK` de moneda, objetivo según condición, rangos y sustitutos; índice único `(ruleId, eventKey)`). Reglas por genérico con presentación preferida, sustitutos y marcas excluidas; condiciones `TARGET_PRICE` (por unidad base del genérico), `HISTORIC_LOW` y `GOOD_DEAL`; hasta 20 por persona. Evaluación con precios frescos y sin promociones, historial mínimo para las oportunidades, aviso de alternativa; disparo por flanco (avisa al cumplirse y al mejorar), `ALERT_COOLDOWN_HOURS` y aplicación con la regla bloqueada (pausada, editada o borrada no avisa; la misma observación nunca genera dos avisos). Avisos internos con snapshot, bandeja con cursor, no leídos y marcar leído. API `GET/POST /alerts`, `PATCH/DELETE /alerts/:id`, `GET /notifications`, `PATCH /notifications/:id/read`; job `CHECK_PRICE_ALERTS` en la cola `alerts` del worker. El análisis de precios actuales pasó a `prices/application/current-price-analysis.ts`, compartido con el dashboard. Contrato en [docs/API.md](docs/API.md#alertas-y-avisos-privados); decisiones en [ADR 0022](docs/architecture-decisions/0022-price-alerts-notifications.md).
+
+Verificado: `npm.cmd run verify` (184/184 unitarios, 8 nuevos: reglas, presentaciones elegibles, umbral, oportunidades y pocos datos, elección entre candidatos, decisión con flanco, pausa, cambios y espera, clave del evento, contenido del aviso) y `npm.cmd run test:db` (152/152 en 14 archivos, 9 nuevos: API con validaciones, dueño y límite; cruce de umbral que avisa una vez y otra al volver a cumplirse; nuevo mínimo con historial y pocos datos sin aviso; precio viejo, sustituto no permitido y alternativa; regla pausada, editada o borrada entre evaluación y aviso; tres evaluaciones simultáneas y el índice único; bandeja entre personas, paginación y leído; sin ubicación o sin sucursales; job `CHECK_PRICE_ALERTS` por el worker). Probado a mano contra la base de desarrollo: alerta de pollo con objetivo $ 4.000/kg → aviso real de $ 3.191,30/kg en Carrefour Almagro (DEMO) por el worker.
+
+**Siguiente: P9-02** (pantallas de alertas y bandeja, E2E crear regla → precio → job → aviso → leído).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

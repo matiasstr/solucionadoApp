@@ -8,6 +8,7 @@
  *                                  [--batch-size=500] [--concurrency=2] [--max-retries=2] [--key=clave]
  *   enqueue IMPORT_PROMOTIONS      [--anchor=AAAA-MM-DD] [--batch-size=200] [--max-retries=2] [--key=clave]
  *   enqueue GENERATE_WEEKLY_PLANS  [--week=AAAA-MM-DD (lunes; por defecto, la próxima semana)] [--user=<uuid>]
+ *   enqueue CHECK_PRICE_ALERTS     [--user=<uuid>] [--key=clave]   (P9-01: evalúa alertas y crea avisos)
  *   schedule <JOB> --cron="m h dm M dw" [mismas opciones que enqueue; sin --anchor/--week las fechas son relativas] [--id=…]
  *   schedules | unschedule <id>
  *   status <id del job> | counts | failed [--limit=20] | retry <id del job> [--force]
@@ -92,12 +93,12 @@ function rawPayload(name: JobName, today: string, config: JobsConfig, relative: 
     }
     return { v: 1, weekStart, userId: option('user') ?? null };
   }
-  return { v: 1, asOf: option('as-of') ?? today };
+  return { v: 1, userId: option('user') ?? null };
 }
 
 function jobArgument(): JobName {
   const name = positional[1];
-  if (!isJobName(name)) throw new CliError('indicá IMPORT_PRICES, IMPORT_PROMOTIONS o GENERATE_WEEKLY_PLANS.');
+  if (!isJobName(name)) throw new CliError('indicá IMPORT_PRICES, IMPORT_PROMOTIONS, GENERATE_WEEKLY_PLANS o CHECK_PRICE_ALERTS.');
   if (name === 'IMPORT_PRICES' || name === 'IMPORT_PROMOTIONS') {
     // Mismo resguardo que el worker: se avisa antes de dejar un job que igual se rechazaría.
     const problem = importTargetProblem(process.env);
@@ -119,6 +120,7 @@ function defaultScheduleId(name: JobName, payload: Record<string, unknown>): str
   const slug = (value: unknown) => String(value).toLowerCase().replace(/[^a-z0-9-]+/g, '-');
   if (name === 'IMPORT_PRICES') return `import-prices-${slug(payload.provider === 'mock' ? 'mock-provider' : payload.source)}`;
   if (name === 'IMPORT_PROMOTIONS') return 'import-promotions-mock-provider';
+  if (name === 'CHECK_PRICE_ALERTS') return payload.userId ? `price-alerts-${slug(payload.userId)}` : 'price-alerts';
   return payload.userId ? `weekly-plans-${slug(payload.userId)}` : 'weekly-plans';
 }
 

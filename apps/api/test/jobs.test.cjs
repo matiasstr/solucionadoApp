@@ -23,9 +23,13 @@ const rejects = (name, raw, field) =>
 
 test('contratos: nombres, colas y qué está implementado', () => {
   assert.deepEqual(JOB_QUEUE, { IMPORT_PRICES: 'imports', IMPORT_PROMOTIONS: 'imports', GENERATE_WEEKLY_PLANS: 'plans', CHECK_PRICE_ALERTS: 'alerts' });
-  assert.deepEqual(IMPLEMENTED_JOBS, ['IMPORT_PRICES', 'IMPORT_PROMOTIONS', 'GENERATE_WEEKLY_PLANS']);
-  assert.deepEqual(WORKER_QUEUES, ['imports', 'plans'], 'la cola de alertas no se consume hasta la fase 9');
-  assert.deepEqual(parseJobPayload('CHECK_PRICE_ALERTS', { v: 1, asOf: '2026-09-29' }), { v: 1, asOf: '2026-09-29' });
+  assert.deepEqual(IMPLEMENTED_JOBS, ['IMPORT_PRICES', 'IMPORT_PROMOTIONS', 'GENERATE_WEEKLY_PLANS', 'CHECK_PRICE_ALERTS']);
+  assert.deepEqual(WORKER_QUEUES, ['imports', 'plans', 'alerts'], 'desde P9-01 el worker también evalúa alertas');
+  assert.deepEqual(parseJobPayload('CHECK_PRICE_ALERTS', { v: 1, userId: null }), { v: 1, userId: null });
+  const user = 'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE';
+  assert.equal(parseJobPayload('CHECK_PRICE_ALERTS', { v: 1, userId: user }).userId, user.toLowerCase());
+  rejects('CHECK_PRICE_ALERTS', { v: 1, userId: 'yo' }, 'userId');
+  rejects('CHECK_PRICE_ALERTS', { v: 1, asOf: '2026-09-29' }, 'asOf');
 });
 
 test('datos de importación: válidos, completos y sin campos de más', () => {
@@ -94,7 +98,9 @@ test('ids de job: una ejecución lógica, deterministas y aptos para BullMQ', ()
   assert.equal(jobIdFor('GENERATE_WEEKLY_PLANS', { v: 1, weekStart: '2026-10-05', userId: null }, { today }), 'weekly-plans-2026-10-05');
   assert.throws(() => jobIdFor('IMPORT_PRICES', mock, { today, key: 'con:dos-puntos' }), JobPayloadError);
   assert.throws(() => jobIdFor('GENERATE_WEEKLY_PLANS', { v: 1, weekStart: '2026-10-05', userId: null }, { today, key: 'otra' }), JobPayloadError);
-  for (const id of [first, 'weekly-plans-2026-10-05', jobIdFor('CHECK_PRICE_ALERTS', { v: 1, asOf: today }, { today })]) {
+  assert.match(jobIdFor('CHECK_PRICE_ALERTS', { v: 1, userId: null }, { today }), /^price-alerts-2026-09-29-[0-9a-f]{16}$/);
+  assert.equal(jobIdFor('CHECK_PRICE_ALERTS', { v: 1, userId: null }, { today, key: 'manual-1' }), 'price-alerts-manual-1');
+  for (const id of [first, 'weekly-plans-2026-10-05', jobIdFor('CHECK_PRICE_ALERTS', { v: 1, userId: null }, { today })]) {
     assert.ok(!id.includes(':') && !/^\d+$/.test(id), id);
   }
   assert.ok(samePayload({ a: 1, b: 2 }, { b: 2, a: 1 }));
@@ -105,7 +111,7 @@ test('configuración de jobs: valores por defecto y errores sin valores', () => 
   const config = validateJobsEnvironment({ REDIS_URL: 'redis://localhost:6379', IMPORT_ALLOWED_HOSTS: ' datos.example.gob.ar , ,otro.example ' });
   assert.deepEqual(
     [config.prefix, config.attempts, config.backoffMs, config.concurrency, config.lockDurationMs, config.importFilesDir, config.allowedHosts],
-    ['tusofertas', 3, 30000, { imports: 1, plans: 2 }, 60000, null, ['datos.example.gob.ar', 'otro.example']],
+    ['tusofertas', 3, 30000, { imports: 1, plans: 2, alerts: 1 }, 60000, null, ['datos.example.gob.ar', 'otro.example']],
   );
   assert.equal(validateJobsEnvironment({ REDIS_URL: 'rediss://:secreto@redis.example:6380', JOBS_ATTEMPTS: '5' }).attempts, 5);
 
@@ -180,6 +186,7 @@ test('configuración de operación: umbrales, frescura y servidor de salud', () 
   const base = { REDIS_URL: 'redis://localhost:6379' };
   const defaults = validateJobsEnvironment(base);
   assert.deepEqual([defaults.staleRunMinutes, defaults.priceMaxAgeDays, defaults.health], [30, 7, null]);
+  assert.deepEqual(defaults.concurrency, { imports: 1, plans: 2, alerts: 1 });
   const custom = validateJobsEnvironment({ ...base, JOBS_STALE_RUN_MINUTES: '45', PRICE_MAX_AGE_DAYS: '3', WORKER_HEALTH_PORT: '8080', WORKER_HEALTH_HOST: '0.0.0.0' });
   assert.deepEqual([custom.staleRunMinutes, custom.priceMaxAgeDays, custom.health], [45, 3, { port: 8080, host: '0.0.0.0' }]);
   assert.throws(() => validateJobsEnvironment({ ...base, WORKER_HEALTH_PORT: '0', JOBS_STALE_RUN_MINUTES: '1' }), /JOBS_STALE_RUN_MINUTES, WORKER_HEALTH_PORT/);

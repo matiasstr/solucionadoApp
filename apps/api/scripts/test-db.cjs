@@ -45,6 +45,8 @@ const INTEGRATION_FILES = [
   'test/integration/shopping-plans.test.cjs',
   'test/integration/price-history.test.cjs',
   'test/integration/dashboard.test.cjs',
+  // Crea sucursales y presentaciones propias en Rosario y precios con fuente `alertas-test`.
+  'test/integration/alerts.test.cjs',
   'test/integration/imports.test.cjs',
   // Necesita Redis (docker compose): usa un prefijo propio y lo borra al terminar.
   'test/integration/jobs.test.cjs',

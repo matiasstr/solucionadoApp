@@ -21,10 +21,10 @@ export const JOB_QUEUE: Readonly<Record<JobName, QueueName>> = {
   CHECK_PRICE_ALERTS: 'alerts',
 };
 
-/** `CHECK_PRICE_ALERTS` es solo contrato hasta la fase 9: no se encola ni se procesa. */
-export const IMPLEMENTED_JOBS: readonly JobName[] = ['IMPORT_PRICES', 'IMPORT_PROMOTIONS', 'GENERATE_WEEKLY_PLANS'];
+/** Todos implementados desde P9-01 (`CHECK_PRICE_ALERTS`). */
+export const IMPLEMENTED_JOBS: readonly JobName[] = ['IMPORT_PRICES', 'IMPORT_PROMOTIONS', 'GENERATE_WEEKLY_PLANS', 'CHECK_PRICE_ALERTS'];
 /** Colas que consume el worker. */
-export const WORKER_QUEUES: readonly QueueName[] = ['imports', 'plans'];
+export const WORKER_QUEUES: readonly QueueName[] = ['imports', 'plans', 'alerts'];
 
 export const isJobName = (value: unknown): value is JobName => (JOB_NAMES as readonly unknown[]).includes(value);
 export const isImplementedJob = (name: JobName): boolean => IMPLEMENTED_JOBS.includes(name);
@@ -93,10 +93,10 @@ export interface WeeklyPlansPayload {
   readonly userId: string | null;
 }
 
-/** Contrato para la fase 9: todavía no hay alertas que revisar. */
+/** Evaluación de alertas de precio (P9-01): de una persona o de todas las que tienen alertas activas. */
 export interface PriceAlertsPayload {
   readonly v: 1;
-  readonly asOf: CalendarDate;
+  readonly userId: string | null;
 }
 
 export interface JobPayloads {
@@ -255,8 +255,10 @@ function parseWeeklyPlans(raw: Raw): WeeklyPlansPayload {
 }
 
 function parsePriceAlerts(raw: Raw): PriceAlertsPayload {
-  onlyKeys(raw, ['v', 'asOf']);
-  return { v: version(raw), asOf: calendarDate(raw, 'asOf') };
+  onlyKeys(raw, ['v', 'userId']);
+  const userId = nullableText(raw, 'userId');
+  if (userId !== null && !UUID.test(userId)) throw new JobPayloadError('userId debe ser un UUID.', ['userId']);
+  return { v: version(raw), userId: userId?.toLowerCase() ?? null };
 }
 
 const PARSERS: { readonly [K in JobName]: (raw: Raw) => JobPayloads[K] } = {
@@ -300,7 +302,8 @@ const digest = (payload: object): string => createHash('sha256').update(canonica
 /**
  * Id del job por ejecución lógica (BullMQ no acepta `:` ni ids numéricos). Encolar lo mismo
  * dos veces devuelve el job existente. Importaciones: mismos datos el mismo día, salvo que
- * se indique otra clave; planes: la semana (y el usuario, si es uno solo).
+ * se indique otra clave; planes: la semana (y el usuario, si es uno solo); alertas: el día y
+ * los datos, salvo otra clave.
  */
 export function jobIdFor<K extends JobName>(name: K, payload: JobPayloads[K], options: { readonly today: CalendarDate; readonly key?: string }): string {
   const { key, today } = options;
@@ -316,7 +319,8 @@ export function jobIdFor<K extends JobName>(name: K, payload: JobPayloads[K], op
       return `weekly-plans-${weekStart ?? 'proxima'}${userId ? `-${userId}` : ''}`;
     }
     default:
-      return `price-alerts-${(payload as PriceAlertsPayload).asOf}`;
+      // Evaluar dos veces no duplica avisos: un mismo día y datos es una ejecución, salvo otra clave.
+      return `price-alerts-${key ?? `${today}-${digest(payload)}`}`;
   }
 }
 

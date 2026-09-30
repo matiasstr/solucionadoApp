@@ -132,6 +132,13 @@ class Environment {
   @Min(1)
   @Max(2000000)
   PLANNER_MAX_COMBINATIONS = 100000;
+
+  // Alertas (P9-01, ADR 0022): horas mínimas entre dos avisos de la misma regla. 0 = sin espera.
+  @Transform(toInt)
+  @IsInt()
+  @Min(0)
+  @Max(720)
+  ALERT_COOLDOWN_HOURS = 24;
 }
 
 /** Token de inyección de la configuración validada. */
@@ -175,6 +182,10 @@ export interface ApiConfig {
     /** Combinaciones que evalúa la búsqueda exacta antes de pasar al método aproximado. */
     readonly maxCombinations: number;
   };
+  readonly alerts: {
+    /** Horas mínimas entre dos avisos de la misma regla. */
+    readonly cooldownHours: number;
+  };
 }
 
 function isPostgresUrl(value: string): boolean {
@@ -209,7 +220,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
     'PRICE_MAX_AGE_DAYS', 'PRICE_SOURCE_PRECEDENCE',
     'PLANNER_MAX_HORIZON_DAYS', 'PLANNER_MAX_CANDIDATE_DATES', 'PLANNER_MAX_CANDIDATE_STORES',
-    'PLANNER_MAX_OFFERS_PER_STORE', 'PLANNER_MAX_COMBINATIONS',
+    'PLANNER_MAX_OFFERS_PER_STORE', 'PLANNER_MAX_COMBINATIONS', 'ALERT_COOLDOWN_HOURS',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -262,5 +273,6 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
       maxOffersPerStore: env.PLANNER_MAX_OFFERS_PER_STORE,
       maxCombinations: env.PLANNER_MAX_COMBINATIONS,
     }),
+    alerts: Object.freeze({ cooldownHours: env.ALERT_COOLDOWN_HOURS }),
   });
 }

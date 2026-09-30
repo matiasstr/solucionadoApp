@@ -1,6 +1,6 @@
 # API de Tus Ofertas
 
-Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas, despensa y planes de compra. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
+Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas, despensa, planes de compra, alertas y avisos. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
 
 Todos los ejemplos salieron del dataset **DEMO** (`npm.cmd run db:seed`): los precios son ficticios y no representan ofertas reales de esas cadenas.
 
@@ -510,6 +510,68 @@ Requiere sesión; `Cache-Control: no-store`. Todo sale de los datos del usuario 
 - `savings.registered`: siempre `available: false` hasta que exista registro de compras. Nunca se completa con estimaciones.
 - `opportunities.items`: productos habituales (respetando "sin reemplazos" y marcas excluidas) cuyo precio actual en una sucursal de la zona es `HISTORIC_LOW` o `GOOD_DEAL` según el análisis del historial; hasta 10. Cada ítem trae producto, sucursal (con distancia si hay coordenadas), `price`, `unitPrice`, `average`, `lowest` y `ratioToAverage`. `unavailableReason`: `NO_ROUTINES`, `NO_LOCATION` o `NO_STORES_IN_SCOPE`.
 
+## Alertas y avisos (privados)
+
+Mismas reglas que rutinas y planes: `Authorization: Bearer`, `Cache-Control: no-store`, y una alerta o un aviso ajenos responden `404` igual que uno inexistente. Los avisos son **solo dentro de la app**: no se envían emails ni notificaciones push. Decisiones en [ADR 0022](architecture-decisions/0022-price-alerts-notifications.md).
+
+| Método y ruta | Cuerpo | Resultado |
+| --- | --- | --- |
+| `GET /alerts` | — | `200 { items: PriceAlertDto[], limit: 20 }`, por fecha de alta |
+| `POST /alerts` | ver abajo | `201 PriceAlertDto`; `409 ALERT_LIMIT` (20 por persona) |
+| `PATCH /alerts/:id` | los mismos campos salvo `canonicalProductId` | `200 PriceAlertDto`. Las reglas se evalúan sobre el resultado; editar vuelve a habilitar el aviso |
+| `DELETE /alerts/:id` | — | `204`. Los avisos ya emitidos quedan en la bandeja con `ruleId: null` |
+| `GET /notifications?limit=&cursor=&unread=` | — | `200 { items: NotificationDto[], page: { limit, nextCursor }, unreadCount }`, del más nuevo al más viejo; `unread=true` solo los no leídos |
+| `PATCH /notifications/:id/read` | — | `200 NotificationDto` con `readAt`; repetirlo conserva la primera fecha |
+
+Campos de una alerta:
+
+| Campo | Regla |
+| --- | --- |
+| `canonicalProductId` | Obligatorio al crear; no se cambia. Inexistente: `400 CANONICAL_NOT_FOUND` |
+| `condition` | `TARGET_PRICE` (el precio por unidad llega al objetivo o baja de él), `HISTORIC_LOW` (mínimo de los últimos 30 días según el historial) o `GOOD_DEAL` (buena oferta o mínimo) |
+| `targetUnitPrice` + `targetUnit` | Solo y obligatorios en `TARGET_PRICE`: precio **por unidad base del genérico** (`KG`, `L` o `UNIT`), hasta 2 decimales y mayor que cero. Falta: `400 TARGET_PRICE_REQUIRED`; en otra condición: `400 TARGET_PRICE_NOT_ALLOWED`; otra unidad: `400 UNIT_DIMENSION_MISMATCH`; cero: `400 TARGET_PRICE_INVALID` |
+| `currency` | Opcional, solo `"ARS"`: otra es `400 CURRENCY_NOT_SUPPORTED` |
+| `productId` | Presentación preferida, opcional (`null` la quita). Debe ser activa y del mismo genérico: `400 PREFERRED_PRODUCT_INVALID` |
+| `allowSubstitutes` | `true` por defecto. En `false` exige `productId` (`400 PREFERRED_PRODUCT_REQUIRED`) y solo vigila esa presentación |
+| `excludedBrands` | Hasta 20; se recortan y deduplican sin distinguir mayúsculas ni tildes. No se aplican a la presentación preferida |
+| `radiusKm` | 0,1 a 100 (`400 RADIUS_INVALID`); `null` usa `maxTravelDistanceKm` de las preferencias. Sin coordenadas se usa la localidad |
+| `active` | `false` pausa la alerta: no se evalúa ni avisa |
+
+```json
+{
+  "id": "…",
+  "canonicalProduct": { "id": "…", "name": "Pollo entero fresco", "defaultUnit": "KG" },
+  "product": null,
+  "allowSubstitutes": true,
+  "excludedBrands": [],
+  "condition": "TARGET_PRICE",
+  "target": { "unitPrice": "4000.00", "unit": "KG", "currency": "ARS" },
+  "radiusKm": null,
+  "active": true,
+  "status": { "lastEvaluatedAt": "2026-09-30T20:19:07.831Z", "lastOutcome": "NOTIFIED", "lastNotifiedAt": "2026-09-30T20:19:07.831Z" },
+  "createdAt": "2026-09-30T20:19:06.810Z",
+  "updatedAt": "2026-09-30T20:19:06.810Z"
+}
+```
+
+**Cuándo avisa.** La evaluación la hace el job `CHECK_PRICE_ALERTS` (a mano o programado, ver [RUNBOOK](RUNBOOK.md)), no el API. Usa la última observación de cada presentación en las sucursales de la zona (hasta 20), **solo precios frescos** (`PRICE_MAX_AGE_DAYS`) y **sin promociones**: nunca avisa por una promoción que podría no aplicarle a la persona. Las oportunidades exigen el historial mínimo del análisis (7 días con dato). Entre varios candidatos gana el menor precio por unidad. Avisa la primera vez que la condición se cumple y de nuevo solo si el precio **mejora** o si la condición dejó de cumplirse y volvió a cumplirse; nunca antes de `ALERT_COOLDOWN_HOURS` (24) desde el aviso anterior. `status.lastOutcome` explica la última evaluación: `NOTIFIED`, `ALREADY_NOTIFIED`, `COOLDOWN`, `NO_MATCH`, `NO_FRESH_PRICES`, `INSUFFICIENT_DATA`, `NO_ELIGIBLE_PRODUCTS`, `NO_LOCATION` o `NO_STORES_IN_SCOPE`.
+
+Un aviso es un snapshot: un precio nuevo no lo cambia. `data` trae el motivo, el producto, si es una **alternativa** a la presentación preferida, la sucursal (con distancia si hay coordenadas), precio, precio por unidad, fuente, fecha observada, el objetivo y el análisis:
+
+```json
+{
+  "id": "…",
+  "kind": "PRICE_ALERT",
+  "ruleId": "…",
+  "title": "Pollo entero fresco llegó a tu precio objetivo",
+  "message": "Pollo entero fresco por kg (DEMO) a $ 3.191,30 ($ 3.191,30 por kg) en Carrefour Almagro (DEMO), precio visto el 29/09 (fuente demo-seed). Tu objetivo: $ 4.000,00 por kg.",
+  "link": "/producto/…",
+  "data": { "reason": "TARGET_PRICE", "isAlternative": false, "price": "3191.30", "unitPrice": "3191.300000", "unitPriceUnit": "KG", "source": "demo-seed", "observedAt": "2026-09-29T12:00:00.000Z", "…": "…" },
+  "readAt": null,
+  "createdAt": "2026-09-30T20:19:09.371Z"
+}
+```
+
 ## Qué todavía no expone la API
 
-Importadores de fuentes reales (fase 7), jobs (fase 8), alertas (fase 9) y promociones bancarias aplicadas (fase 10). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Importadores de fuentes reales, avisos fuera de la app (email o push) y promociones bancarias aplicadas (fase 10). Los jobs se operan por comando, no por HTTP ([RUNBOOK](RUNBOOK.md)). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

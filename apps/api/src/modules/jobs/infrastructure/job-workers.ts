@@ -17,7 +17,7 @@ import type { JobName, JobPayloads, QueueName } from '../domain/job-contracts';
 import type { JobsConfig } from '../jobs.config';
 import { workerConnection } from './redis-connection';
 
-type ImplementedJob = Exclude<JobName, 'CHECK_PRICE_ALERTS'>;
+type ImplementedJob = JobName;
 
 /** Un handler por job implementado: recibe datos ya validados. */
 export type JobHandlers = {
@@ -137,7 +137,7 @@ export async function startJobWorkers(
     const worker = new Worker(queue, (job: Job) => processJob(queue, job, handlers), {
       connection: workerConnection(config.redisUrl, `${connectionName}-${queue}`),
       prefix: config.prefix,
-      concurrency: config.concurrency[queue as 'imports' | 'plans'],
+      concurrency: config.concurrency[queue],
       lockDuration: config.lockDurationMs,
       stalledInterval: config.stalledIntervalMs,
       maxStalledCount: 1,

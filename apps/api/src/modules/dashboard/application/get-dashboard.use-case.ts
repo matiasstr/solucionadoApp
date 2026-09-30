@@ -1,21 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PublicHttpException } from '../../../common/public-http.exception';
-import { API_CONFIG } from '../../../config/environment';
-import type { ApiConfig } from '../../../config/environment';
 import { PrismaService } from '../../../database/prisma.service';
 import { DecimalValue } from '../../catalog/domain/decimal';
 import { normalizeName } from '../../catalog/domain/naming';
 import { toAmountString } from '../../catalog/infrastructure/decimal-mapper';
 import { ProductRepository } from '../../catalog/infrastructure/product.repository';
-import {
-  ANALYSIS_WINDOW_DAYS,
-  analyzeSeries,
-  argentineDate,
-  argentineDayStart,
-  shiftDate,
-} from '../../prices/domain/price-analysis';
+import { CurrentPriceAnalysis } from '../../prices/application/current-price-analysis';
+import { argentineDate } from '../../prices/domain/price-analysis';
 import type { PriceObservationRecord } from '../../prices/domain/price-records';
-import { ProductPriceRepository } from '../../prices/infrastructure/product-price.repository';
 import { effectiveStatus } from '../../shopping-plans/domain/plan-status';
 import type { PlanItemSnapshot } from '../../shopping-plans/domain/plan-snapshot';
 import { StoreScopeResolver } from '../../stores/application/resolve-store-scope.use-case';
@@ -27,7 +19,6 @@ import type { DashboardDto, NextPurchaseDto, OpportunityDto } from '../presentat
 
 /** Sucursales más cercanas (o de la localidad) donde se buscan oportunidades. */
 const MAX_OPPORTUNITY_STORES = 20;
-const MAX_OBSERVATIONS = 50_000;
 const toCalendarDate = (date: Date): string => date.toISOString().slice(0, 10);
 const REGISTERED_MESSAGE = 'Todavía no registramos compras: el ahorro de esta pantalla es estimado.';
 
@@ -43,10 +34,9 @@ export class GetDashboardUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly products: ProductRepository,
-    private readonly prices: ProductPriceRepository,
+    private readonly currentPrices: CurrentPriceAnalysis,
     private readonly stores: StoreRepository,
     private readonly storeScope: StoreScopeResolver,
-    @Inject(API_CONFIG) private readonly config: ApiConfig,
   ) {}
 
   async execute(userId: string, now: Date = new Date()): Promise<DashboardDto> {
@@ -178,42 +168,19 @@ export class GetDashboardUseCase {
     });
     if (!allowed.length) return none(null, storeIds.length);
 
-    const maxAgeDays = this.config.prices.maxAgeDays;
-    const latest = (await this.prices.findLatestPerSeries(allowed.map((product) => product.id), storeIds))
-      .filter((observation) => now.getTime() - observation.observedAt.getTime() <= (maxAgeDays + 1) * 86_400_000);
-    if (!latest.length) return none(null, storeIds.length);
-    // Precio actual reciente + los 30 días anteriores: alcanza con mirar esa ventana hacia atrás.
-    const from = argentineDayStart(shiftDate(argentineDate(now), -(ANALYSIS_WINDOW_DAYS + maxAgeDays + 1)));
-    const observations = await this.prices.findBetween(allowed.map((product) => product.id), {
-      storeIds,
-      from,
-      until: new Date(now.getTime() + 1),
-      limit: MAX_OBSERVATIONS,
-    });
-    const bySeries = new Map<string, PriceObservationRecord[]>();
-    for (const observation of observations.slice(0, MAX_OBSERVATIONS)) {
-      const key = `${observation.productId}|${observation.storeId}|${observation.source}`;
-      const group = bySeries.get(key);
-      if (group) group.push(observation);
-      else bySeries.set(key, [observation]);
-    }
-
+    const current = await this.currentPrices.analyze(allowed.map((product) => product.id), storeIds, now);
+    if (!current.length) return none(null, storeIds.length);
     const productsById = new Map(allowed.map((product) => [product.id, product]));
     const canonicalNames = new Map(
       (await this.prisma.canonicalProduct.findMany({ where: { id: { in: [...rules.keys()] } }, select: { id: true, name: true } }))
         .map((canonical) => [canonical.id, canonical.name]),
     );
-    const analyzed: AnalyzedSeries<PriceObservationRecord>[] = latest.map((current) => ({
-      canonicalName: canonicalNames.get(productsById.get(current.productId)?.canonicalProductId ?? '') ?? '',
-      productId: current.productId,
-      storeId: current.storeId,
-      analysis: analyzeSeries({
-        observations: bySeries.get(`${current.productId}|${current.storeId}|${current.source}`) ?? [],
-        latest: current,
-        now,
-        maxAgeDays,
-      }),
-      payload: current,
+    const analyzed: AnalyzedSeries<PriceObservationRecord>[] = current.map(({ latest, analysis }) => ({
+      canonicalName: canonicalNames.get(productsById.get(latest.productId)?.canonicalProductId ?? '') ?? '',
+      productId: latest.productId,
+      storeId: latest.storeId,
+      analysis,
+      payload: latest,
     }));
 
     const ranked = rankOpportunities(analyzed);

@@ -52,6 +52,17 @@ enum DiscountCapPeriod {
   CAMPAIGN
 }
 
+// Qué dispara una alerta de precio (P9-01, ADR 0022).
+enum AlertCondition {
+  TARGET_PRICE
+  HISTORIC_LOW
+  GOOD_DEAL
+}
+
+enum NotificationKind {
+  PRICE_ALERT
+}
+
 enum ShoppingPlanStatus {
   DRAFT
   ACTIVE
@@ -82,6 +93,8 @@ model User {
   shoppingRoutines         ShoppingRoutine[]
   inventory                UserInventory[]
   shoppingPlans            ShoppingPlan[]
+  priceAlertRules          PriceAlertRule[]
+  notifications            Notification[]
 }
 
 model RefreshSession {
@@ -129,6 +142,7 @@ model CanonicalProduct {
   routineItems   ShoppingRoutineItem[]
   inventories    UserInventory[]
   planItems      ShoppingPlanItem[]
+  alertRules     PriceAlertRule[]
 
   @@index([categoryId])
   @@index([normalizedName])
@@ -159,6 +173,7 @@ model Product {
   preferredByItems   ShoppingRoutineItem[] @relation("PreferredProduct")
   planItems          ShoppingPlanItem[]
   externalRefs       ExternalProductRef[]
+  alertRules         PriceAlertRule[]
 
   @@index([normalizedName])
   @@index([categoryId])
@@ -471,4 +486,60 @@ model ShoppingPlanItem {
   @@index([storeId])
   @@index([productPriceId])
   @@index([promotionId])
+}
+
+// Alerta de precio de un usuario (P9-01, ADR 0022): sobre un genérico, con presentación
+// preferida opcional. El precio objetivo es por unidad base del genérico (KG, L o UNIT).
+model PriceAlertRule {
+  id                 String           @id @default(uuid()) @db.Uuid
+  userId             String           @db.Uuid
+  canonicalProductId String           @db.Uuid
+  productId          String?          @db.Uuid
+  allowSubstitutes   Boolean          @default(true)
+  excludedBrands     String[]         @default([])
+  condition          AlertCondition
+  targetUnitPrice    Decimal?         @db.Decimal(18, 6)
+  targetUnit         BaseUnit?
+  currency           String           @default("ARS") @db.Char(3)
+  // null = el radio de las preferencias del usuario.
+  radiusKm           Decimal?         @db.Decimal(7, 2)
+  active             Boolean          @default(true)
+  // Sube con cada cambio del usuario: el job no aplica una evaluación hecha sobre una versión vieja.
+  revision           Int              @default(0)
+  // Precio por unidad del último aviso mientras la condición siga cumpliéndose; null = se puede avisar.
+  notifiedUnitPrice  Decimal?         @db.Decimal(18, 6)
+  lastNotifiedAt     DateTime?        @db.Timestamptz(3)
+  lastEvaluatedAt    DateTime?        @db.Timestamptz(3)
+  lastOutcome        String?          @db.VarChar(40)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canonicalProduct   CanonicalProduct @relation(fields: [canonicalProductId], references: [id], onDelete: Restrict)
+  product            Product?         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  notifications      Notification[]
+
+  @@index([userId, createdAt])
+  @@index([active, userId])
+}
+
+// Aviso dentro de la app (P9-01). Un snapshot: no cambia si después cambian precios o la regla.
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  // Si la regla se borra, el aviso queda en la bandeja.
+  ruleId    String?          @db.Uuid
+  kind      NotificationKind
+  // Observación que lo originó: la misma nunca genera dos avisos de la misma regla.
+  eventKey  String           @db.VarChar(200)
+  title     String           @db.VarChar(160)
+  message   String           @db.VarChar(400)
+  link      String           @db.VarChar(200)
+  snapshot  Json
+  readAt    DateTime?        @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @db.Timestamptz(3)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rule      PriceAlertRule?  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@unique([ruleId, eventKey])
+  @@index([userId, createdAt(sort: Desc), id])
 }
