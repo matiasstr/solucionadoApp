@@ -18,6 +18,7 @@ import {
 import type { PlanRow, ShoppingPlanDto, ShoppingPlanSummaryDto } from '../presentation/shopping-plan.contracts';
 import type { GeneratePlanDto } from '../presentation/shopping-plans.dto';
 import { PlanShoppingUseCase } from './plan-shopping.use-case';
+import type { ShoppingPlanComputation } from './plan-shopping.use-case';
 
 /** Token opaco del cliente: UUID u otro identificador de 8 a 80 caracteres seguros. */
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
@@ -46,69 +47,24 @@ export class ShoppingPlansService {
   ) {}
 
   async generate(userId: string, dto: GeneratePlanDto, idempotencyKey: string | undefined): Promise<GeneratedPlan> {
-    if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
-      throw new PublicHttpException(
-        400,
-        'IDEMPOTENCY_KEY_REQUIRED',
-        'Falta la cabecera Idempotency-Key (8 a 80 letras, números, guiones o guiones bajos).',
-        ['Idempotency-Key'],
-      );
-    }
-    const replay = await this.findByKey(userId, idempotencyKey);
+    const key = this.assertIdempotencyKey(idempotencyKey);
+    const replay = await this.findByKey(userId, key);
     if (replay) return { created: false, plan: this.replayOf(replay, dto) };
+    return this.save(userId, dto, key, await this.planner.execute(userId, { startDate: dto.startDate, endDate: dto.endDate }));
+  }
 
-    const { candidates, plan } = await this.planner.execute(userId, { startDate: dto.startDate, endDate: dto.endDate });
-    const record = toPlanRecord(candidates, plan);
-    try {
-      const row = await this.prisma.shoppingPlan.create({
-        data: {
-          userId,
-          idempotencyKey,
-          startDate: fromCalendarDate(record.startDate),
-          endDate: fromCalendarDate(record.endDate),
-          estimatedRegularCost: record.estimatedRegularCost,
-          optimizedCost: record.optimizedCost,
-          estimatedSavings: record.estimatedSavings,
-          storeVisitPenaltyCost: record.storeVisitPenaltyCost,
-          distancePenaltyCost: record.distancePenaltyCost,
-          effectiveCost: record.effectiveCost,
-          totalDistanceKm: record.totalDistanceKm,
-          optimizerVersion: record.optimizerVersion,
-          baselineMethod: record.baselineMethod,
-          inputSnapshot: json(record.inputSnapshot),
-          resultSnapshot: json(record.resultSnapshot),
-          unfulfilledNeeds: json(record.unfulfilledNeeds),
-          generatedAt: new Date(candidates.generatedAt),
-          items: {
-            create: record.items.map((item) => ({
-              canonicalProductId: item.canonicalProductId,
-              productId: item.productId,
-              storeId: item.storeId,
-              productPriceId: item.productPriceId,
-              promotionId: item.promotionId,
-              neededQuantity: item.neededQuantity,
-              quantity: item.quantity,
-              unit: item.unit,
-              packageCount: item.packageCount,
-              price: item.price,
-              estimatedRegularPrice: item.estimatedRegularPrice,
-              estimatedSavings: item.estimatedSavings,
-              recommendedDate: fromCalendarDate(item.recommendedDate),
-              reason: item.reason,
-              snapshot: json(item.snapshot),
-            })),
-          },
-        },
-        include: planInclude,
-      });
-      return { created: true, plan: toPlanDto(row, this.today()) };
-    } catch (error: unknown) {
-      // Dos pedidos simultáneos con la misma clave: gana el primero y el otro lo devuelve.
-      if (!isPrismaError(error, 'P2002')) throw error;
-      const winner = await this.findByKey(userId, idempotencyKey);
-      if (!winner) throw error;
-      return { created: false, plan: this.replayOf(winner, dto) };
-    }
+  /**
+   * Generación programada (P8-01, job `GENERATE_WEEKLY_PLANS`): igual que `generate`, pero
+   * un período sin necesidades no guarda un plan vacío y devuelve `null`. Crea un borrador:
+   * no activa ni reemplaza los planes que el usuario ya tiene.
+   */
+  async generateScheduled(userId: string, window: Required<GeneratePlanDto>, idempotencyKey: string): Promise<GeneratedPlan | null> {
+    const key = this.assertIdempotencyKey(idempotencyKey);
+    const replay = await this.findByKey(userId, key);
+    if (replay) return { created: false, plan: this.replayOf(replay, window) };
+    const computation = await this.planner.execute(userId, window);
+    if (computation.candidates.needs.length === 0) return null;
+    return this.save(userId, window, key, computation);
   }
 
   async list(userId: string, limit = DEFAULT_LIST_LIMIT): Promise<ShoppingPlanSummaryDto[]> {
@@ -166,6 +122,73 @@ export class ShoppingPlansService {
       }
     });
     return this.get(userId, planId);
+  }
+
+  private assertIdempotencyKey(idempotencyKey: string | undefined): string {
+    if (!idempotencyKey || !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+      throw new PublicHttpException(
+        400,
+        'IDEMPOTENCY_KEY_REQUIRED',
+        'Falta la cabecera Idempotency-Key (8 a 80 letras, números, guiones o guiones bajos).',
+        ['Idempotency-Key'],
+      );
+    }
+    return idempotencyKey;
+  }
+
+  private async save(userId: string, dto: GeneratePlanDto, key: string, computation: ShoppingPlanComputation): Promise<GeneratedPlan> {
+    const { candidates, plan } = computation;
+    const record = toPlanRecord(candidates, plan);
+    try {
+      const row = await this.prisma.shoppingPlan.create({
+        data: {
+          userId,
+          idempotencyKey: key,
+          startDate: fromCalendarDate(record.startDate),
+          endDate: fromCalendarDate(record.endDate),
+          estimatedRegularCost: record.estimatedRegularCost,
+          optimizedCost: record.optimizedCost,
+          estimatedSavings: record.estimatedSavings,
+          storeVisitPenaltyCost: record.storeVisitPenaltyCost,
+          distancePenaltyCost: record.distancePenaltyCost,
+          effectiveCost: record.effectiveCost,
+          totalDistanceKm: record.totalDistanceKm,
+          optimizerVersion: record.optimizerVersion,
+          baselineMethod: record.baselineMethod,
+          inputSnapshot: json(record.inputSnapshot),
+          resultSnapshot: json(record.resultSnapshot),
+          unfulfilledNeeds: json(record.unfulfilledNeeds),
+          generatedAt: new Date(candidates.generatedAt),
+          items: {
+            create: record.items.map((item) => ({
+              canonicalProductId: item.canonicalProductId,
+              productId: item.productId,
+              storeId: item.storeId,
+              productPriceId: item.productPriceId,
+              promotionId: item.promotionId,
+              neededQuantity: item.neededQuantity,
+              quantity: item.quantity,
+              unit: item.unit,
+              packageCount: item.packageCount,
+              price: item.price,
+              estimatedRegularPrice: item.estimatedRegularPrice,
+              estimatedSavings: item.estimatedSavings,
+              recommendedDate: fromCalendarDate(item.recommendedDate),
+              reason: item.reason,
+              snapshot: json(item.snapshot),
+            })),
+          },
+        },
+        include: planInclude,
+      });
+      return { created: true, plan: toPlanDto(row, this.today()) };
+    } catch (error: unknown) {
+      // Dos pedidos simultáneos con la misma clave: gana el primero y el otro lo devuelve.
+      if (!isPrismaError(error, 'P2002')) throw error;
+      const winner = await this.findByKey(userId, key);
+      if (!winner) throw error;
+      return { created: false, plan: this.replayOf(winner, dto) };
+    }
   }
 
   private findByKey(userId: string, idempotencyKey: string): Promise<PlanRow | null> {

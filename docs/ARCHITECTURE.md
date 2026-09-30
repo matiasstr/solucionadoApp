@@ -21,7 +21,7 @@ flowchart TD
   Rules[Radio + tiendas + condiciones de promociones] --> Optimizer
   Optimizer --> Plan[Cronograma + ahorro estimado]
   Plan --> API
-  Jobs[Jobs manuales; luego BullMQ / Cloud Run Jobs] --> Pipeline
+  Jobs[Worker BullMQ + comando manual; luego Cloud Run Jobs] --> Pipeline
 ```
 
 ## Estructura del monorepo
@@ -49,7 +49,7 @@ apps/
         shopping-plans/          # fase 5
         promotions/              # base P2-03, optimizador fase 5, bancos fase 10
         imports/                 # fase 7
-        jobs/                    # fase 8
+        jobs/                    # fase 8: contratos, handlers, worker y comando (P8-01)
         alerts/                  # fase 9
   web/
     src/app/                     # rutas App Router
@@ -89,6 +89,8 @@ Las carpetas de módulos futuros se crean al implementarlos. No se crean servici
 En módulos con reglas usar `domain/` (funciones y tipos puros), `application/` (casos de uso y puertos), `infrastructure/` (Prisma, proveedores) y `presentation/` (controllers/DTO). En health y CRUD sencillo mantener pocos archivos. Dependencias hacia dominio/aplicación; estos no importan adaptadores, decoradores Nest ni el cliente Prisma.
 
 `PriceProvider` y `PromotionProvider` entregan `AsyncIterable` de registros crudos. `PriceImporter` y `PromotionImporter` orquestan; la normalización de productos y registros vive en `imports/domain/import-normalizer.ts` y el precio final lo decide `normalizePrice` (fase 2). Implementado en P7-01 con un proveedor simulado y uno de archivo JSON Lines; SEPA queda como adaptador futuro con su propio paso. Se conservan fuente, fecha observada, ingestión, clave de idempotencia e id de la ejecución; la identidad por fuente vive en `ExternalProductRef`/`ExternalStoreRef`. Desde P7-02 cada ejecución queda en `ImportRun`, los rechazos en `QuarantinedRecord` (sin el registro completo), los lotes se reintentan con límite y una ejecución fallida se reanuda desde su posición confirmada solo si la fuente es repetible; las descargas se limitan a `IMPORT_ALLOWED_HOSTS`. Ver [ADR 0018](architecture-decisions/0018-import-pipeline.md), [ADR 0019](architecture-decisions/0019-import-runs-recovery.md) y [docs/IMPORTS.md](IMPORTS.md).
+
+Jobs (P8-01, [ADR 0020](architecture-decisions/0020-jobs-bullmq-worker.md)): `src/worker.ts` es un proceso aparte del API HTTP (contexto Nest sin servidor) con un worker de BullMQ por cola (`imports`, `plans`). Los handlers de `jobs/application/` no dependen de BullMQ y llaman a `PriceImporter`, `PromotionImporter` y `ShoppingPlansService.generateScheduled`; `jobs/domain/job-contracts.ts` define nombres, colas, datos (validados al encolar y al procesar) e ids por ejecución lógica. El API HTTP no importa BullMQ ni necesita Redis. Encolar y consultar es un comando (`npm.cmd run jobs`), no un endpoint.
 
 ## API, cliente y entorno
 

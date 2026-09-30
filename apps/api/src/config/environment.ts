@@ -15,7 +15,7 @@ import {
   validateSync,
 } from 'class-validator';
 
-const toInt = ({ value }: { value: unknown }) =>
+export const toInt = ({ value }: { value: unknown }) =>
   typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
 
 /** Valor de ejemplo de .env.example: se rechaza en producción. */

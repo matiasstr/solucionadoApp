@@ -12,13 +12,13 @@ import { ShoppingPlansController } from './presentation/shopping-plans.controlle
 /**
  * Planificador (fase 5). P5-01: necesidades y candidatos; P5-02: optimizador
  * (`PlanShoppingUseCase`); P5-03: planes guardados en `/shopping-plans`.
- * Compone catálogo, precios, comercios y promociones; nadie lo importa, así que
- * no forma ciclos.
+ * Compone catálogo, precios, comercios y promociones; solo lo importan la raíz y
+ * el worker de jobs (P8-01), así que no forma ciclos.
  */
 @Module({
   imports: [AuthModule, CatalogModule, PricesModule, StoresModule, PromotionsModule],
   controllers: [ShoppingPlansController],
   providers: [BuildPlanCandidatesUseCase, PlanShoppingUseCase, ShoppingPlansService],
-  exports: [BuildPlanCandidatesUseCase, PlanShoppingUseCase],
+  exports: [BuildPlanCandidatesUseCase, PlanShoppingUseCase, ShoppingPlansService],
 })
 export class ShoppingPlansModule {}

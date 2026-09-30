@@ -63,7 +63,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P6-02 | Gráfico, dashboard y distinción de ahorro estimado/registrado | P6-01, P5-03 | COMPLETO |
 | P7-01 | Puertos de proveedores, normalización e importador mock por lotes | P2-01, P2-03 | COMPLETO |
 | P7-02 | Ejecuciones idempotentes, cuarentena y documentación para proveedores | P7-01 | COMPLETO |
-| P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | PENDIENTE |
+| P8-01 | Redis, BullMQ, workers y comandos manuales | P7-02, P5-03 | COMPLETO |
 | P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | PENDIENTE |
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | PENDIENTE |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | PENDIENTE |
@@ -146,7 +146,13 @@ Verificado al cerrar P7-01: `npm.cmd run verify` (159/159 unitarios, 13 nuevos: 
 
 Verificado al cerrar la fase: `npm.cmd run verify` (163/163 unitarios, 4 nuevos de reintentos, marca de confirmado, URL permitida y errores saneados) y `npm.cmd run test:db` (125/125, 6 nuevos: ejecución y cuarentena guardadas con informe, reintento de un error pasajero, fallo y reanudación desde lo confirmado, fuente no repetible que no se reanuda, registros fuera de orden y repetidos, descarga permitida/prohibida/redirigida, planes e historia intactos). Comando probado contra la base de desarrollo (conflictos sin sobrescribir, informe de cuarentena, host no permitido rechazado).
 
-**Siguiente: P8-01** (Redis, BullMQ, workers y comandos manuales).
+## Estado de la fase 8 (jobs) — EN CURSO
+
+**P8-01 — COMPLETO.** Módulo `apps/api/src/modules/jobs/` con BullMQ 6.3.9 e ioredis 6.0.0 sobre el Redis de Compose. Worker aparte del API HTTP (`npm.cmd run worker`, contexto Nest sin HTTP) con una cola `imports` (concurrencia 1) y otra `plans` (2), apagado ordenado que espera los jobs en curso y libera Redis y la base. Jobs `IMPORT_PRICES` e `IMPORT_PROMOTIONS` (mismos importadores y registro de ejecuciones de la fase 7; una importación fallida se reanuda en el reintento desde su posición confirmada) y `GENERATE_WEEKLY_PLANS` (un borrador por usuario y semana con la clave `job-weekly-<lunes>`, sin planes vacíos ni cambios a los del usuario); `CHECK_PRICE_ALERTS` solo como contrato. Datos chicos validados al encolar y al procesar (rutas relativas a `IMPORT_FILES_DIR`, URLs sin credenciales ni parámetros), ids por ejecución lógica, reintentos con espera exponencial, fallas permanentes sin reintento, mensajes saneados. Comando `npm.cmd run jobs -- enqueue|status|counts`, sin endpoints HTTP. El API HTTP no carga BullMQ. Decisiones en [ADR 0020](docs/architecture-decisions/0020-jobs-bullmq-worker.md).
+
+Verificado: `npm.cmd run verify` (171/171 unitarios, 8 nuevos: contratos, rutas y URLs, ids, semana, configuración, conexiones, destino de importación) y `npm.cmd run test:db` (134/134 en 13 archivos, 9 nuevos con Redis real: un job de cada tipo con estado y datos, dedupe y conflicto de id, semana sin necesidades, reintento sin duplicar, reanudación de una importación fallida, worker caído retomado por otro, apagado que espera y libera conexiones, Redis caído sin éxito falso, worker como proceso aparte). Probado a mano contra la base de desarrollo con el worker real.
+
+**Siguiente: P8-02** (programación en zona argentina, observabilidad, fallos agotados y reintento manual, imágenes y runbook).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

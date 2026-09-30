@@ -20,6 +20,8 @@
     "db:status": "prisma migrate status",
     "db:seed": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/seed/main.js",
     "import": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/modules/imports/cli.js",
+    "jobs": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/modules/jobs/cli.js",
+    "worker": "npm run build && node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/worker.js",
     "test:db": "node scripts/test-db.cjs"
   },
   "dependencies": {
@@ -30,10 +32,12 @@
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
     "argon2": "0.45.1",
+    "bullmq": "6.3.9",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.2",
     "dotenv": "^17.2.0",
     "helmet": "8.1.0",
+    "ioredis": "6.0.0",
     "jsonwebtoken": "9.0.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"

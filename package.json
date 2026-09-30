@@ -26,6 +26,8 @@
     "db:status": "npm run db:status --workspace=@tusofertas/api",
     "db:seed": "npm run db:seed --workspace=@tusofertas/api",
     "import": "npm run import --workspace=@tusofertas/api --",
+    "jobs": "npm run jobs --workspace=@tusofertas/api --",
+    "worker": "npm run worker --workspace=@tusofertas/api",
     "test:db": "npm run test:db --workspace=@tusofertas/api",
     "db:format": "npm run db:format --workspace=@tusofertas/api",
     "infra:up": "docker compose up -d",

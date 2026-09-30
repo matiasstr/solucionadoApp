@@ -1,7 +1,8 @@
 /**
  * Recrea la base de PRUEBA aislada (TEST_DATABASE_URL, nombre terminado en _test),
  * aplica migraciones dos veces, verifica que no haya drift contra el schema y corre
- * los tests de integración con PostgreSQL/PostGIS real. Nunca toca la base de desarrollo.
+ * los tests de integración con PostgreSQL/PostGIS y Redis reales. Nunca toca la base de
+ * desarrollo ni las colas de desarrollo (los jobs usan un prefijo propio).
  */
 const { spawnSync } = require('node:child_process');
 const { resolve } = require('node:path');
@@ -45,6 +46,8 @@ const INTEGRATION_FILES = [
   'test/integration/price-history.test.cjs',
   'test/integration/dashboard.test.cjs',
   'test/integration/imports.test.cjs',
+  // Necesita Redis (docker compose): usa un prefijo propio y lo borra al terminar.
+  'test/integration/jobs.test.cjs',
 ];
 function run(label, command, args, { capture = false } = {}) {
   const result = spawnSync(command, args, { cwd: apiRoot, env, shell: process.platform === 'win32', encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' });

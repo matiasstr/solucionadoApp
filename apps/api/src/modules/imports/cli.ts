@@ -17,12 +17,12 @@ import { ImportProviderError } from './application/import-run';
 import { PriceImporter } from './application/price-importer';
 import { PromotionImporter } from './application/promotion-importer';
 import type { PriceProvider } from './application/ports';
+import { importTargetProblem } from './infrastructure/import-target';
 import { PrismaImportRunRecorder } from './infrastructure/prisma-import-run.recorder';
 import { PrismaImportGateway } from './infrastructure/prisma-import.gateway';
 import { JsonLinesPriceProvider } from './infrastructure/providers/json-lines-price.provider';
 import { MockPriceProvider, MockPromotionProvider } from './infrastructure/providers/mock-price.provider';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function fail(message: string): never {
@@ -77,20 +77,9 @@ function provider(): PriceProvider {
 }
 
 function databaseUrl(): string {
-  if (process.env.NODE_ENV === 'production') fail('la importación manual no se ejecuta en producción.');
-  const value = process.env.DATABASE_URL;
-  if (!value) fail('falta DATABASE_URL (ver .env.example).');
-  let host = '';
-  try {
-    host = new URL(value).hostname;
-  } catch {
-    fail('DATABASE_URL no es una URL válida.');
-  }
-  if (!LOCAL_HOSTS.has(host) && process.env.IMPORT_ALLOW_REMOTE !== 'true') {
-    // El nombre del host no es un secreto; la URL completa sí puede serlo.
-    fail(`la base "${host}" no es local; para importar ahí, definir IMPORT_ALLOW_REMOTE=true.`);
-  }
-  return value;
+  const problem = importTargetProblem(process.env);
+  if (problem) fail(problem);
+  return process.env.DATABASE_URL as string;
 }
 
 async function main(): Promise<void> {

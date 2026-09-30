@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02) y **fase 7 completa** (P7-01, P7-02). Empezar por **P8-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0019) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02) y **P8-01**. Empezar por **P8-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0020) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P8-01 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-29, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P8-02 que recuperar.
 
-## Estado: 2026-09-29 — Fases 1 a 7 completas
+## Estado: 2026-09-29 — Fases 1 a 7 completas y P8-01 completo
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P8-01 — Workers y ejecución manual** (`docs/steps/phase-08.md`): Redis de Compose + BullMQ con configuración validada, worker separado del proceso HTTP, jobs `IMPORT_PRICES`, `IMPORT_PROMOTIONS` y `GENERATE_WEEKLY_PLANS` que llaman a los casos de uso existentes, CLI para encolar y consultar, ids idempotentes y reintentos. Instrucciones al final de este archivo.
-No están implementados los jobs (Redis/BullMQ), las alertas, las promociones bancarias ni una fuente real de precios. **El despliegue de producción no incluye P4-02 ni las fases 5 a 7** (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P8-02 — Programación y operación** (`docs/steps/phase-08.md`): programar importaciones y planes semanales en zona argentina sin doble programación entre réplicas, estado observable (último éxito por proveedor, retraso de cola, errores, frescura), registro de fallos agotados con reintento manual seguro, imágenes reproducibles y runbook. Instrucciones al final de este archivo.
+No están implementados la programación automática de jobs, las alertas, las promociones bancarias ni una fuente real de precios. **El despliegue de producción no incluye P4-02, las fases 5 a 7 ni P8-01** (el worker no está desplegado) (último deploy: 2026-09-24); ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -117,6 +117,39 @@ No están implementados los jobs (Redis/BullMQ), las alertas, las promociones ba
   - Dominio `imports/domain/recovery.ts` (`withRetries` con `shouldRetry`, `CommitWatermark`). `ImportRun` reescrito: `begin` con un `ImportRunRecorder`, cuarentena por tandas (`QUARANTINE_FLUSH_SIZE` = 500), `checkpoint` después de cada lote, `end`; `MEMORY_RECORDER` por defecto. Importadores con `recorder`, `retry` y `resume`; `assertResumable`. Lote máximo 1.000.
   - `infrastructure/prisma-import-run.recorder.ts` (`start`, `quarantine`, `progress`, `finish`, `find`, `report`). Proveedores con `replayable`; `JsonLinesPriceProvider` con `url` + `allowedHosts` (`assertAllowedUrl`, sin redirecciones, tiempo y tamaño máximos). CLI con `--url`, `--resume`, `--max-retries`, `--report` e `IMPORT_ALLOWED_HOSTS`.
   - Docs: `docs/IMPORTS.md` (guía para proveedores) y ADR 0019. Tests: `test/import-recovery.test.cjs` (4) y 6 nuevos en `test/integration/imports.test.cjs`.
+
+- **P8-01 (sesión 2026-09-29): Redis, BullMQ, worker y comandos.** Abre la fase 8.
+  - Dependencias `bullmq` 6.3.9 e `ioredis` 6.0.0 (exactas, CommonJS; BullMQ 6 carga ioredis solo si está instalado). Lockfile con los binarios de `msgpackr-extract` de todas las plataformas.
+  - `modules/jobs/domain/job-contracts.ts`: nombres, colas (`imports`, `plans`, `alerts`), datos por job con `parseJobPayload` estricto (al encolar y al procesar), `jobIdFor` por ejecución lógica, `upcomingWeekStart`. `jobs.config.ts`: `validateJobsEnvironment` (`REDIS_URL`, `JOBS_*`, `IMPORT_FILES_DIR`, `IMPORT_ALLOWED_HOSTS`).
+  - `jobs/application/`: `JobContext` (sin BullMQ), `JobFailedError`/`PermanentJobError`, `ImportJobRunner` (reanuda en el reintento la ejecución `FAILED` anotada en el progreso del job) y `WeeklyPlansJobRunner` (usuarios con rutinas con productos, por páginas). `ShoppingPlansService.generateScheduled` (no guarda planes vacíos); el servicio ahora se exporta del módulo.
+  - `jobs/infrastructure/`: `redis-connection.ts` (worker reconecta siempre; comando falla rápido), `job-producer.ts` (`enqueue` con dedupe y `JobConflictError`, `status`, `counts`), `job-workers.ts` (`startJobWorkers`, un worker por cola, errores saneados, `UnrecoverableError` para fallas permanentes, `RedisUnavailableError` al arrancar).
+  - `jobs/worker.module.ts` (`WorkerModule`, `createWorkerContext`), `src/worker.ts` (entrypoint con apagado ordenado) y `jobs/cli.ts`. Scripts `npm.cmd run worker` y `npm.cmd run jobs` (raíz y API).
+  - `imports/infrastructure/import-target.ts` (`importTargetProblem`): el resguardo "nunca producción ni base remota sin permiso" ahora lo comparten el comando de importación y los jobs.
+  - Docs: ADR 0020, README ("Jobs y worker"), `apps/api/.env.example`. Tests: `test/jobs.test.cjs` (8) e integración `test/integration/jobs.test.cjs` (9, último del runner, con Redis real y prefijo propio).
+
+## Verificaciones ejecutadas (P8-01, 2026-09-29)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (validate, generate, typecheck, lint, **171/171** unitarios, build API + web) |
+| `npm.cmd run test:db` | **134/134** en 13 archivos (125 previos + 9 de jobs con Redis real) |
+| Worker real (manual) | Contra la base de desarrollo con prefijo `tusofertas-smoke`: `IMPORT_PRICES` completado (16 leídos, 16 **conflictos sin sobrescribir** por datos simulados previos), reencolar lo mismo devolvió el job existente, `IMPORT_PROMOTIONS` completado con 2 rechazos, `GENERATE_WEEKLY_PLANS` para 2026-10-05: 18 usuarios, **14 borradores creados**, 4 sin necesidades; `CHECK_PRICE_ALERTS` rechazado (código 1). Claves de Redis del smoke borradas |
+| API HTTP sin BullMQ | Cargar `dist/bootstrap` no carga `bullmq` ni `ioredis` (`require.cache`); solo los archivos de `modules/jobs/infrastructure` los importan |
+
+Qué cubren los tests nuevos: contratos y colas; datos válidos y rechazados (versión, extras, faltantes, fechas imposibles, rangos, tipos, tamaño); rutas fuera del directorio, absolutas, con `..` o de otro tipo; URLs con credenciales, parámetros, fragmento o protocolo inválido; semana (lunes, cruce de año); ids deterministas, sin `:` ni numéricos, por día y por clave; configuración con valores por defecto y errores sin valores; conexiones; destino de importación. En integración: un job de cada tipo con estado, resultado y datos (`ImportRun`, precios, planes), dedupe y conflicto de id, `CHECK_PRICE_ALERTS` rechazado, semana sin necesidades sin plan guardado, job de todos los usuarios que cuenta a cada uno una vez y repite (no duplica) el ya planificado; **intento que muere después de escribir** y se repite sin duplicar; **importación FAILED reanudada** desde la posición 8 en el reintento; **worker caído** cuyo job queda activo y lo retoma otro al vencer el bloqueo, sin duplicar; **apagado** que espera el job en curso y deja 0 conexiones del worker en `CLIENT LIST`; Redis caído: encolar falla, el worker no arranca y el comando termina con código 1 sin salida ni la contraseña; `dist/worker.js` como proceso aparte procesa un job sin volcar secretos en los logs.
+
+No ejecutado en esta sesión: `npm.cmd run test:e2e` (sin cambios en la web), `npm.cmd audit` (el `npm install` informó 0 vulnerabilidades) ni el apagado por señal del proceso real: en Windows `kill` no entrega SIGTERM, así que el apagado ordenado se probó en el mismo proceso (`runtime.close()` + `app.close()`, lo mismo que hace el manejador de la señal).
+
+## Decisiones y notas (P8-01)
+
+- **El API HTTP no usa Redis** (ADR 0020): BullMQ solo lo cargan `src/worker.ts` y `modules/jobs/cli.ts`. Vercel no cambia.
+- **Datos validados dos veces** y sin secretos: una URL firmada o con usuario no entra a la cola; los archivos, solo relativos a `IMPORT_FILES_DIR`.
+- **Ids por ejecución lógica**: importaciones por día + resumen de los datos (o `--key`), planes por semana; el mismo id con otros datos es un error.
+- **Planes programados como borrador**, clave `job-weekly-<lunes>`, sin planes vacíos. La semana por defecto es la que empieza hoy (si es lunes) o la próxima; el comando acepta desde la semana en curso hasta 4 semanas adelante.
+- **Importaciones por job con el mismo resguardo** que el comando (nunca producción ni base remota sin `IMPORT_ALLOW_REMOTE`): fallan sin reintentar.
+- El worker valida también la configuración del API (necesita `JWT_ACCESS_SECRET` porque arma los mismos módulos); separarlo queda para P8-02 (imágenes y secretos).
+- Una ejecución de importación cuyo worker muere queda `RUNNING`; el job se retoma, pero marcar la ejecución colgada queda para P8-02.
+- La base de desarrollo tiene ahora 14 planes borrador de la semana 2026-10-05 (clave `job-weekly-2026-10-05`) generados por la prueba manual; son datos locales.
 
 ## Verificaciones ejecutadas (P7-02, 2026-09-29)
 
@@ -452,19 +485,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P6-01** `15474cb` (publicado).
 - **P6-02** `b11d264` (publicado).
 - **P7-01** `7f31af1` (publicado).
-- **P7-02**: commit `feat(P7-02): ...` del 2026-09-29 (ver `git log`).
+- **P7-02** `f9d5b11` (publicado).
+- **P8-01**: commit `feat(P8-01): ...` del 2026-09-29 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P8-01
+## Cómo seguir con P8-02
 
-1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-08.md` (P8-01), `docs/ARCHITECTURE.md`, ADR 0015 (planes), 0018 y 0019 (importación) y `docs/IMPORTS.md`.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d` (Compose ya tiene Redis en 6379), `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
-3. Dependencia BullMQ (verificar que publique CommonJS para Vercel, ver la nota de `@nestjs/jwt` en Deploy, y regenerar el lockfile con el cuidado de binarios Linux descrito ahí). `REDIS_URL` validada en `ApiConfig`; el API HTTP no debe depender de Redis para arrancar si los jobs no están habilitados.
-4. Worker con entrypoint propio (fuera del proceso HTTP), shutdown ordenado que libere Redis y Prisma. Jobs `IMPORT_PRICES` e `IMPORT_PROMOTIONS` que llaman a `PriceImporter`/`PromotionImporter` con `PrismaImportRunRecorder` (payload chico: fuente, archivo permitido o parámetros del mock, nunca el archivo), y `GENERATE_WEEKLY_PLANS` que usa `ShoppingPlansService.generate` con una clave idempotente por usuario y semana. `CHECK_PRICE_ALERTS` solo como contrato (fase 9).
-5. Ids de job idempotentes por ejecución lógica, reintentos con backoff, concurrencia limitada; asumir entrega al menos una vez (los casos de uso ya son idempotentes). CLI para encolar y consultar estado; ningún endpoint para usuarios comunes.
-6. Tests con Redis real: un job de cada tipo, estado y datos, caída/reinicio del worker, reintento sin duplicar, shutdown; errores de Redis que no se informan como éxito.
-7. `npm.cmd run verify`, `npm.cmd run test:db` (y el test de jobs); actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P8-02.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-08.md` (P8-02), ADR 0020 (jobs), 0019 (ejecuciones de importación) y 0016 (frescura de precios), y la sección "Jobs y worker" del README.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
+3. Programación en zona argentina (UTC−3 fijo, como el resto del proyecto): job schedulers de BullMQ con id fijo para no duplicar la programación al arrancar varias réplicas; importaciones diarias y planes semanales (domingo para la semana siguiente). Probar con reloj controlado. Documentar qué sigue manual (no hay fuente real: el programador no debe correr el simulado en producción).
+4. Estado observable: último éxito por proveedor (desde `ImportRun`), retraso de cola y fallidos (desde BullMQ), frescura de precios; logs correlacionados por job e `importRunId`, sin datos personales. Detectar ejecuciones `RUNNING` sin avance (worker caído) y marcarlas.
+5. Fallos agotados: registro explícito (o cola de fallidos) y comando de reintento manual seguro (`jobs -- retry <id>`), sin reintentar lo que falló por datos inválidos.
+6. Imágenes reproducibles (usuario sin privilegios, healthchecks) para API y worker si Docker está disponible; runbook con arranque, parada, observabilidad y recuperación. Explicar API HTTP vs worker persistente vs job finito en Cloud Run. Separar secretos del worker (hoy necesita `JWT_ACCESS_SECRET` por los módulos que arma).
+7. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P9-01.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 7 (hasta la importación con ejecuciones registradas, cuarentena y reanudación, ADR 0018 y 0019) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P8-01 (Redis, BullMQ, workers y comandos manuales), descrito en docs/steps/phase-08.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 7 y P8-01 (jobs con BullMQ y worker aparte, ADR 0020) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P8-02 (programación, observabilidad, fallos agotados, imágenes y runbook), descrito en docs/steps/phase-08.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
