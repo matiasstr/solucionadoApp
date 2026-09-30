@@ -57,6 +57,12 @@ export function ProductCard({ product, href }: { product: ProductSearchItemDto; 
           <p className="product-card-empty">Sin precio observado en las sucursales de esta búsqueda.</p>
         )}
       </Link>
+      {product.canonicalProductId && (
+        // Link aparte: un enlace dentro de otro no es válido.
+        <Link href={`${href}#crear-alerta`} className="product-card-alert">
+          Avisame si baja<span className="sr-only"> el precio de {product.name}</span>
+        </Link>
+      )}
     </li>
   );
 }

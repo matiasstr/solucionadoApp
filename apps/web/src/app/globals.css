@@ -439,3 +439,40 @@ select:focus-visible, summary:focus-visible { outline: 3px solid #c06b29; outlin
   .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
   .history-detail { padding: 14px; }
 }
+
+/* Alertas y avisos (P9-02) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.nav-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: #b3401e; color: white; font-size: 12px; font-weight: 700; }
+.alert-creator { margin: 36px 0 12px; padding: 24px; border: 1px solid #e3e8db; border-radius: 16px; background: #fbfcf8; }
+.alert-creator:focus { outline: 3px solid #c06b29; outline-offset: 3px; }
+.alert-creator h2 { font-size: 20px; font-weight: 700; margin: 0 0 14px; }
+.alert-form { display: grid; gap: 16px; max-width: 720px; }
+.alert-price-field input { max-width: 240px; }
+.alert-created:empty { display: none; }
+.alert-created { margin: 0; font-weight: 600; color: #1d5a3a; }
+.product-card-alert { display: inline-block; margin: 0 18px 16px; font-size: 13.5px; font-weight: 650; color: var(--green); }
+.product-card-alert:focus-visible { outline: 3px solid #c06b29; outline-offset: 2px; }
+.alerts-section { margin-bottom: 34px; display: grid; gap: 14px; }
+.alerts-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.alerts-section-head h2 { font-size: 20px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 10px; }
+.alerts-section-head .muted { margin: 0; }
+.count-badge { border-radius: 999px; padding: 3px 10px; background: #fbeee7; color: #8a3a1a; font-size: 12.5px; font-weight: 700; }
+.notification-list, .alert-rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.notification-item { display: grid; gap: 6px; border: 1px solid #e3e8db; border-radius: 14px; padding: 16px 18px; background: white; }
+.notification-item.is-unread { border-color: #9fc08a; box-shadow: inset 4px 0 0 var(--green); }
+.notification-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.notification-title { margin: 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.new-badge { border-radius: 999px; padding: 2px 8px; background: var(--green); color: white; font-size: 11.5px; font-weight: 700; }
+.notification-price, .notification-message { margin: 0; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.notification-message { color: var(--muted); }
+.notification-actions, .alert-rule-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 4px; }
+.alert-rule-card { padding: 18px 20px; display: grid; gap: 6px; }
+.alert-rule.is-paused .alert-rule-card { background: #f7f8f4; }
+.alert-rule-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 8px 12px; }
+.alert-rule-title { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+.alert-rule-card .muted, .alert-rule-status { margin: 0; font-size: 14px; line-height: 1.5; }
+.confirm-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.danger-button { border-color: #e2b4ae; color: #7d1d17; }
+.danger-button:hover:not(:disabled) { border-color: #7d1d17; }
+.dashboard-alert-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; }
+.dashboard-alert-list .is-unread a { font-weight: 700; }

@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02) y **P9-01**. Empezar por **P9-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0022) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02) y **fase 9 completa** (P9-01, P9-02). Empezar por **P10-01**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0022) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P9-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P10-01 que recuperar.
 
-## Estado: 2026-09-30 — Fases 1 a 8 completas y P9-01 completo
+## Estado: 2026-09-30 — Fases 1 a 9 completas
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P9-02 — Pantallas de alertas y bandeja** (`docs/steps/phase-09.md`): crear alertas desde `/producto/[id]` y el buscador, bandeja y resumen en `/dashboard`, administración de reglas (pausar, borrar), estados sin datos recientes, sin afirmar envíos fuera de la app, y E2E crear regla → precio → job → aviso → leído. Instrucciones al final de este archivo.
-No están implementadas las pantallas de alertas, las promociones bancarias ni una fuente real de precios; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP) y P9-01 (API `/alerts` y `/notifications`); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time` y `20260930180000_price_alerts_notifications` (aditivas). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: P10-01 — Elegibilidad y beneficios avanzados** (`docs/steps/phase-10.md`): bancos, medios de pago, días, compra mínima, porcentaje o monto, topes y reintegros (inmediato o posterior), preferencias declaradas sin datos sensibles, reglas de acumulación y topes compartidos, consumo de topes informado o desconocido. Instrucciones al final de este archivo.
+No están implementadas las promociones bancarias con elegibilidad ni una fuente real de precios; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP), P9-01 (API `/alerts` y `/notifications`) y P9-02 (pantallas de alertas); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time` y `20260930180000_price_alerts_notifications` (aditivas). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -141,6 +141,31 @@ No están implementadas las pantallas de alertas, las promociones bancarias ni u
   - `prices/application/current-price-analysis.ts` (`CurrentPriceAnalysis`): el análisis del precio actual por serie, extraído del dashboard; `GetDashboardUseCase` ahora lo usa (sin cambio de comportamiento, 152/152).
   - Config: `ALERT_COOLDOWN_HOURS` (24, 0 a 720) en `ApiConfig.alerts`; `JOBS_ALERT_CONCURRENCY` (1). Jobs: `CHECK_PRICE_ALERTS` implementado, payload `{ v, userId }` (reemplaza `{ v, asOf }`, que nunca se había encolado), cola `alerts` consumida por el worker, id `price-alerts-<día>-<resumen>` o `--key`; `schedule CHECK_PRICE_ALERTS` con id `price-alerts`.
   - Contratos en `packages/shared` (`PriceAlertDto`, `NotificationDto`, …), `docs/API.md` (sección "Alertas y avisos"), ADR 0022, README, RUNBOOK. Tests: `test/alerts.test.cjs` (8), `test/integration/alerts.test.cjs` (8, después de `dashboard` en el runner) y 1 en `test/integration/jobs.test.cjs`.
+
+- **P9-02 (sesión 2026-09-30): pantallas de alertas y bandeja.** Cierra la fase 9.
+  - `apps/web/src/lib/alerts/queries.ts` (`useAlerts`, `useCreateAlert`, `useUpdateAlert`, `useDeleteAlert`, `useNotifications` con `useInfiniteQuery`, `useLatestNotifications`, `useMarkNotificationRead`; claves por usuario) y `lib/alerts/format.ts` (textos de condición, alcance y `lastOutcome`, `packageEquivalent`, `parsePriceInput`).
+  - `components/alerts/alert-creator.tsx` (`AlertCreator` en la ficha, ancla `#crear-alerta` con foco al llegar desde el buscador; ingresar si no hay sesión) y `components/alerts/alerts-view.tsx` (bandeja y administración). Página `app/(private)/alertas/page.tsx`.
+  - Cambios: link "Alertas" con contador de no leídos en `private-shell.tsx`, tarjeta "Avisos de precio" en `dashboard-view.tsx`, `AlertCreator` en `product-view.tsx`, link "Avisame si baja" en `product-card.tsx`, estilos al final de `globals.css` (incluye `.sr-only`).
+  - E2E `apps/web/e2e/alerts.e2e.cjs` (en `test:e2e`); `search.e2e.cjs` (tabula hasta la tarjeta y verifica la acción de alerta) y `history.e2e.cjs` (link de la tarjeta) ajustados por el link nuevo.
+
+## Verificaciones ejecutadas (P9-02, 2026-09-30)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (**184/184** unitarios, typecheck y lint de la web, build API + web) |
+| `npm.cmd run test:db` | **152/152** en 14 archivos (la API no cambió en P9-02) |
+| `npm.cmd run test:e2e` | **49/49** en Edge contra API 3010 y web 3100 (`E2E_BASE_URL=http://127.0.0.1:3100`), 4 nuevos de alertas |
+| Revisión visual | Buscador con "Avisame si baja", formulario (equivalente del envase), `/alertas` vacía y con aviso real de pollo ($ 3.191,30/kg, Carrefour Almagro) generado por el worker, contador "1" en el menú, tarjeta del resumen, móvil 390 px sin desbordes |
+
+Qué cubre el E2E nuevo: del buscador al formulario con el foco en la sección; precio inválido con mensaje; regla "solo esta presentación" a $ 1.500/kg sobre una presentación propia ("Arroz E2E … (TEST)"); primera revisión sin precios ("Sin precios recientes en tu zona", sin avisos); precio de $ 1.200 en Coto Caballito → job real (comando `jobs` + `worker --until-idle` con prefijo propio) → aviso "Nuevo" con precio y sucursal, contador del menú y resumen → marcar leído → recarga sin "Nuevo" ni contador; alerta borrada antes de revisar no avisa; otra cuenta en móvil no ve nada.
+
+## Decisiones y notas (P9-02)
+
+- **La acción de alerta en el buscador es un link aparte** de la tarjeta (no se anidan links); suma una parada de tabulación por resultado.
+- **Por defecto una alerta acepta alternativas** equivalentes; el aviso dice cuando es una alternativa (ADR 0022).
+- **Equivalente del envase** solo como ayuda visual y no para productos por peso ni envases de 1 unidad base; la comparación la hace la API por unidad.
+- **Los textos no prometen frecuencia de revisión** ni envíos fuera de la app.
+- El E2E crea en la base de desarrollo una presentación "Arroz E2E <marca de tiempo> 1 kg (TEST)" por corrida, con un precio de `e2e-alertas`, y la **desactiva al terminar** (sus precios quedan: la historia es append-only). También cuentas `e2e-alertas-*@example.com` y la de revisión `revision-alertas-…@example.com` con dos alertas y un aviso.
 
 ## Verificaciones ejecutadas (P9-01, 2026-09-30)
 
@@ -550,19 +575,20 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P7-02** `f9d5b11` (publicado).
 - **P8-01** `337320b` (publicado; desplegado el 2026-09-30, registro del deploy en `200f484`).
 - **P8-02** `345ed37` (publicado).
-- **P9-01**: commit `feat(P9-01): ...` del 2026-09-30 (ver `git log`).
+- **P9-01** `c12c34a` (publicado).
+- **P9-02**: commit `feat(P9-02): ...` del 2026-09-30 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P9-02
+## Cómo seguir con P10-01
 
-1. Leer `AGENTS.md`, `apps/web/AGENTS.md` (guías de Next 16 en `node_modules/next/dist/docs/` antes de tocar la web), `ROADMAP.md`, `docs/steps/phase-09.md` (P9-02), ADR 0022, la sección "Alertas y avisos" de `docs/API.md` y los tipos de `packages/shared` (`PriceAlertDto`, `NotificationDto`, …).
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API en 3010 y web en 3100 como en sesiones anteriores (3000/3001 son de otro proyecto del usuario).
-3. Crear alerta desde `/producto/[id]` (y el buscador): condición, objetivo por unidad base (mostrar el equivalente del paquete), sustitutos y marcas; errores por código de la API.
-4. Bandeja: contador de no leídos y últimos avisos en `/dashboard`, lista completa con paginación, marcar leído; administración de alertas (pausar, reanudar, borrar) mostrando `status.lastOutcome` en palabras ("sin precios recientes", "todavía sin historial suficiente", …). No decir que se envió un email: el canal es solo la app.
-5. Seguir el patrón de TanStack Query de `lib/plans` y `lib/dashboard`; estados de carga, vacío y error; accesibilidad (foco, anuncios de cambios).
-6. E2E (Edge, como `plan.e2e.cjs`/`history.e2e.cjs`): crear regla → insertar/importar un precio que cruce el umbral → correr `CHECK_PRICE_ALERTS` (worker `--until-idle` o el caso de uso) → ver el aviso → marcar leído; recargar conserva el estado; borrar la regla antes de evaluar no avisa; otra cuenta no ve el aviso.
-7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; capturas en `.cache/verification/p9-02`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P10-01.
+1. Leer `AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-10.md` (P10-01), ADR 0009 (motor de promociones), 0014 (optimizador) y 0015 (snapshots de planes), `docs/DOMAIN.md` (promociones y preferencias) y la sección de promociones de `docs/API.md`.
+2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`.
+3. Modelo: banco, medio de pago, días válidos, compra mínima, porcentaje o monto, tope de reintegro y período (compra, semana, mes); descuento inmediato vs. reintegro posterior con plazo si se informa. Revisar qué ya existe en `Promotion` (P2-03: `paymentMethod`, `bank`, `membershipProgram`, `minimumSpend`, `discountCap`, `capPeriod`) antes de migrar.
+4. Preferencias solo declaradas (bancos, medios, membresías ya están en `User`): nunca número de tarjeta, CVV ni credenciales. Elegibilidad desconocida no es beneficio confirmado.
+5. Motor: reglas explícitas de acumulación y exclusividad, orden de cálculo, **topes compartidos** entre ítems y visitas (no se aplican de nuevo por ítem), consumo de topes informado o desconocido (sin prometer el reintegro completo), redondeo HALF_UP con `DecimalValue`.
+6. Extender DTOs y el contrato de importación de promociones con condiciones y procedencia; promociones viejas siguen interpretables; los snapshots de planes no se recalculan.
+7. Tests: topes por compra/semana/mes, varios ítems y visitas, mínimo, día de semana, vigencia horaria, banco o medio incorrecto, reintegro diferido, acumulación prohibida, redondeo, un tope compartido por varias promociones. `npm.cmd run verify`, `npm.cmd run test:db`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Siguiente: P10-02.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 8 y P9-01 (alertas de precio y bandeja de avisos con el job CHECK_PRICE_ALERTS, ADR 0022, contrato en docs/API.md) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P9-02 (pantallas de alertas y bandeja en la web, con E2E), descrito en docs/steps/phase-09.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 9 (hasta las alertas de precio con su bandeja y pantallas, ADR 0022) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P10-01 (elegibilidad y beneficios avanzados: bancos, medios de pago, topes y reintegros), descrito en docs/steps/phase-10.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

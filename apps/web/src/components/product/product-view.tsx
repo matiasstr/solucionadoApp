@@ -17,6 +17,7 @@ import {
   formatQuantity,
   formatUnitPrice,
 } from '../../lib/format';
+import { AlertCreator } from '../alerts/alert-creator';
 import { HeaderAuthLinks } from '../auth/header-auth-links';
 import { DemoNotice, EmptyState, ErrorState, LoadingState, StaleBadge } from '../common/states';
 import { SearchFiltersBar } from '../search/search-filters';
@@ -159,6 +160,8 @@ export function ProductView({ productId }: { productId: string }) {
               storeId={historyStoreId}
               onChange={applyHistory}
             />
+
+            <AlertCreator product={product.data} />
           </>
         )}
       </main>

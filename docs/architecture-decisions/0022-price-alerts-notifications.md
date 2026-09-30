@@ -18,6 +18,10 @@ Estado: aceptado. Fecha: 2026-09-30. Contexto: P9-01 (abre la fase 9). Usa ADR 0
 
 **API y job.** `GET/POST /alerts`, `PATCH/DELETE /alerts/:id`, `GET /notifications` (cursor, `unread`, `unreadCount`) y `PATCH /notifications/:id/read` (idempotente), con ownership como rutinas y planes (ajeno = `404`). La evaluación la hace el job `CHECK_PRICE_ALERTS` (cola `alerts` del worker; payload `{ v, userId }`, reemplaza el contrato de P8-01 que nunca se había encolado), a mano o programado; `now` es el instante del job. `status.lastOutcome` explica la última evaluación para la pantalla de P9-02.
 
+## Interfaz (P9-02)
+
+Crear desde la ficha (`#crear-alerta`, "Avisame cuando baje") o desde "Avisame si baja" en cada resultado del buscador (link aparte de la tarjeta: un link dentro de otro no es válido). El precio objetivo se escribe por kilo, litro o unidad y la pantalla muestra el equivalente del envase (no para productos por peso ni envases de exactamente 1 unidad base). Por defecto la alerta acepta alternativas equivalentes; "Solo esta presentación" la limita. `/alertas` muestra la bandeja (nuevos, marcar leído, avisos anteriores, un aviso con precio de hace más de dos días dice que puede haber cambiado) y las alertas con su última revisión en palabras (`lastOutcome`), pausar, reanudar y borrar con confirmación en el lugar. El menú privado muestra los no leídos y el resumen los últimos tres. Los textos dicen que los avisos aparecen en la app y que no se envían emails ni mensajes; no prometen cada cuánto se revisa, porque depende de cuándo corre el job (y en producción todavía no hay worker).
+
 ## Alternativas consideradas
 
 - **Objetivo por paquete:** natural para una sola presentación, pero no compara 500 g con 1 kg; la web puede mostrar la conversión.

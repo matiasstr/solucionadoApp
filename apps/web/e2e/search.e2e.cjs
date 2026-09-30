@@ -190,14 +190,18 @@ test('el teclado alcanza para buscar y abrir un producto', async () => {
   await page.waitForURL(/q=yerba/);
   await page.locator('.product-card').first().waitFor();
 
-  // Tabular desde el campo llega a los filtros y a la primera tarjeta.
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  const focused = await page.evaluate(() => document.activeElement?.className ?? '');
+  // Tabular desde el campo pasa por los filtros y llega a la primera tarjeta.
+  const focusedClass = () => page.evaluate(() => document.activeElement?.className ?? '');
+  let focused = '';
+  for (let presses = 0; presses < 8 && !/product-card-link/.test(focused); presses += 1) {
+    await page.keyboard.press('Tab');
+    focused = await focusedClass();
+  }
   assert.match(focused, /product-card-link/, 'la primera tarjeta recibe el foco');
+  // Después de la tarjeta, su acción de alerta (P9-02) también se alcanza con el teclado.
+  await page.keyboard.press('Tab');
+  assert.match(await focusedClass(), /product-card-alert/);
+  await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Enter');
   await page.waitForURL(/\/producto\//);
 });

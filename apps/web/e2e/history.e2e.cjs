@@ -50,7 +50,7 @@ after(async () => {
 
 test('la ficha muestra el historial con su análisis, un gráfico accesible y la tabla equivalente', async () => {
   await page.goto(`${BASE}/buscar?q=pollo`);
-  await page.locator('.product-card', { hasText: 'Pollo entero fresco por kg' }).first().getByRole('link').click();
+  await page.locator('.product-card', { hasText: 'Pollo entero fresco por kg' }).first().locator('.product-card-link').click();
   await page.waitForURL(/\/producto\//);
   productUrl = page.url().split('?')[0];
   await page.getByRole('heading', { name: 'Historial de precios' }).waitFor();

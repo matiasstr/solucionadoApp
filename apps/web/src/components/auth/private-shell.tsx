@@ -4,12 +4,14 @@ import { Brand } from '@tusofertas/ui';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { useLatestNotifications } from '../../lib/alerts/queries';
 import { useAuth } from '../../lib/auth/auth-provider';
 
 const NAV = [
   { href: '/inicio', label: 'Inicio' },
   { href: '/dashboard', label: 'Resumen' },
   { href: '/plan-semanal', label: 'Plan semanal' },
+  { href: '/alertas', label: 'Alertas' },
   { href: '/mis-compras', label: 'Mis compras' },
   { href: '/mi-despensa', label: 'Mi despensa' },
   { href: '/preferencias', label: 'Preferencias' },
@@ -65,11 +67,25 @@ export function PrivateShell({ children }: { children: ReactNode }) {
           {NAV.map((link) => (
             <Link key={link.href} href={link.href} className="private-nav-link" aria-current={pathname === link.href ? 'page' : undefined}>
               {link.label}
+              {link.href === '/alertas' && <UnreadCount />}
             </Link>
           ))}
         </nav>
       </header>
       <main id="contenido" className="private-main mx-auto max-w-6xl px-6">{children}</main>
     </div>
+  );
+}
+
+/** Avisos sin leer junto a "Alertas"; el texto accesible lo dice completo. */
+function UnreadCount() {
+  const latest = useLatestNotifications();
+  const count = latest.data?.unreadCount ?? 0;
+  if (!count) return null;
+  return (
+    <span className="nav-count">
+      <span aria-hidden="true">{count}</span>
+      <span className="sr-only">{count === 1 ? '(1 aviso sin leer)' : `(${count} avisos sin leer)`}</span>
+    </span>
   );
 }

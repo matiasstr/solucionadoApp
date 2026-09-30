@@ -3,6 +3,7 @@
 import type { DashboardDto, OpportunityDto, SavingsBucketDto } from '@tusofertas/shared';
 import { Surface } from '@tusofertas/ui';
 import Link from 'next/link';
+import { useLatestNotifications } from '../../lib/alerts/queries';
 import { useDashboard } from '../../lib/dashboard/queries';
 import { formatArs, formatDistance, formatUnitPrice } from '../../lib/format';
 import { ErrorState, LoadingState } from '../common/states';
@@ -37,6 +38,7 @@ export function DashboardView() {
           <NextPurchase data={dashboard.data} />
           <Savings data={dashboard.data} />
           <Opportunities data={dashboard.data} />
+          <AlertsSummary />
           <Surface className="account-card">
             <h2>Tus compras habituales</h2>
             <p className="account-figure">
@@ -120,6 +122,40 @@ function Savings({ data }: { data: DashboardDto }) {
           ` ${plural(estimated.plansWithoutBaseline, 'plan no suma', 'planes no suman')} porque no hubo con qué comparar.`}
       </p>
       <p className="dashboard-registered"><strong>Ahorro registrado:</strong> {registered.message}</p>
+    </Surface>
+  );
+}
+
+/** Últimos avisos de alertas (P9-02): la bandeja completa está en /alertas. */
+function AlertsSummary() {
+  const latest = useLatestNotifications();
+  const items = latest.data?.items ?? [];
+  const unread = latest.data?.unreadCount ?? 0;
+  return (
+    <Surface className="account-card dashboard-alerts">
+      <h2>Avisos de precio</h2>
+      {latest.isPending && <LoadingState label="Cargando tus avisos…" />}
+      {latest.isError && <ErrorState message={latest.error.message} onRetry={() => void latest.refetch()} />}
+      {latest.isSuccess && items.length === 0 && (
+        <p className="muted">
+          Todavía no hay avisos. Creá una alerta desde la ficha de un producto y te avisamos acá cuando baje.{' '}
+          <Link className="text-link" href="/buscar">Buscar productos</Link>
+        </p>
+      )}
+      {items.length > 0 && (
+        <>
+          <p className="account-figure">{unread === 0 ? 'Leíste todos tus avisos' : plural(unread, 'aviso sin leer', 'avisos sin leer')}</p>
+          <ul className="dashboard-alert-list">
+            {items.map((item) => (
+              <li key={item.id} className={item.readAt ? undefined : 'is-unread'}>
+                <Link className="text-link" href="/alertas">{item.title}</Link>
+                <span className="muted"> · {formatArs(item.data.price)} en {item.data.store.name.replace(/ \(DEMO\)$/, '')}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <p className="account-card-foot"><Link className="text-link" href="/alertas">Ver alertas y avisos</Link></p>
     </Surface>
   );
 }
