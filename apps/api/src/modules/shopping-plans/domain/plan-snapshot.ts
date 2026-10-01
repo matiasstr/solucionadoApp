@@ -5,6 +5,9 @@
  * El plan emitido no depende del catálogo vivo: nombres, presentación, precio,
  * fuente, fecha observada y promoción viajan en el snapshot de cada línea, así
  * un precio nuevo o una rutina editada no reescriben un plan pasado.
+ *
+ * Versión 2 (P10-02, ADR 0024): visitas con pago en caja, reintegro y beneficios no sumados, y el
+ * resumen de beneficios. Los planes en versión 1 se siguen leyendo tal cual: no se recalculan.
  */
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import type { BaseUnit } from '../../catalog/domain/units';
@@ -16,6 +19,7 @@ import type {
   OptimizedPlan,
   OptimizerSettings,
   PlanBaseline,
+  PlanBenefitsSummary,
   PlanCoverage,
   PlanLimitation,
   PlanTotals,
@@ -39,11 +43,14 @@ import type {
   UnresolvedReason,
 } from './planner.types';
 
-export const PLAN_SNAPSHOT_SCHEMA_VERSION = 1;
+export const PLAN_SNAPSHOT_SCHEMA_VERSION = 2;
+/** Versiones que la API sabe leer: la 1 es anterior a los beneficios de pago. */
+export const READABLE_SNAPSHOT_VERSIONS: readonly number[] = [1, 2];
+export type SnapshotVersion = 1 | 2;
 
 /** Entradas del cálculo: preferencias, necesidades con su origen y el recorte aplicado. */
 export interface PlanInputSnapshot {
-  readonly schemaVersion: typeof PLAN_SNAPSHOT_SCHEMA_VERSION;
+  readonly schemaVersion: SnapshotVersion;
   readonly generatedAt: string;
   readonly window: { readonly startDate: CalendarDate; readonly endDate: CalendarDate; readonly days: number; readonly timeZone: string };
   readonly scope: PlanLocationScope;
@@ -69,7 +76,7 @@ export interface PlanInputSnapshot {
 
 /** Lo que el optimizador decidió y no vive en las líneas. */
 export interface PlanResultSnapshot {
-  readonly schemaVersion: typeof PLAN_SNAPSHOT_SCHEMA_VERSION;
+  readonly schemaVersion: SnapshotVersion;
   readonly coverage: PlanCoverage;
   readonly search: SearchSummary;
   readonly totals: PlanTotals;
@@ -79,11 +86,13 @@ export interface PlanResultSnapshot {
   readonly visits: readonly PlanVisit[];
   readonly limitations: readonly PlanLimitation[];
   readonly coveredByInventory: readonly CoveredByInventory[];
+  /** Versión 2: con qué se evaluaron los beneficios; ausente en la versión 1. */
+  readonly benefits?: PlanBenefitsSummary | null;
 }
 
 /** Lo necesario para mostrar una línea sin volver al catálogo. */
 export interface PlanItemSnapshot {
-  readonly schemaVersion: typeof PLAN_SNAPSHOT_SCHEMA_VERSION;
+  readonly schemaVersion: SnapshotVersion;
   readonly offerId: string;
   readonly canonicalName: string;
   readonly productName: string;
@@ -149,8 +158,10 @@ export function toPlanRecord(candidates: PlanCandidates, plan: OptimizedPlan): P
   return {
     startDate: candidates.window.startDate,
     endDate: candidates.window.endDate,
-    estimatedRegularCost: baseline ? baseline.productCost : totals.productCost,
-    optimizedCost: totals.productCost,
+    // Lo que se paga en las cajas (con descuentos de pago, sin reintegros): cierra con los CHECK
+    // `effectiveCost = optimizedCost + penalidades` y `estimatedSavings = regular − optimizado`.
+    estimatedRegularCost: baseline ? baseline.productCost : totals.payToday,
+    optimizedCost: totals.payToday,
     estimatedSavings: plan.savings ? plan.savings.estimatedSavings : '0.00',
     storeVisitPenaltyCost: totals.storeVisitPenaltyCost,
     distancePenaltyCost: totals.distancePenaltyCost,
@@ -198,6 +209,7 @@ export function toPlanRecord(candidates: PlanCandidates, plan: OptimizedPlan): P
       visits: plan.visits,
       limitations: plan.limitations,
       coveredByInventory: plan.coveredByInventory,
+      benefits: plan.benefits,
     },
     unfulfilledNeeds: plan.unfulfilled,
     items: plan.lines.map((line) => ({

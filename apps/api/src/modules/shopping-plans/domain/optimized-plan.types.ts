@@ -6,6 +6,9 @@
  */
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import type { BaseUnit } from '../../catalog/domain/units';
+import type { BenefitReason, CapStatus } from '../../promotions/domain/benefit-engine';
+import type { PayerProfile } from '../../promotions/domain/payer-eligibility';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
 import type {
   CandidatePriceBasis,
   CandidatePurchase,
@@ -15,8 +18,11 @@ import type {
   UnresolvedReason,
 } from './planner.types';
 
-/** Cambia cuando cambia el algoritmo o su contrato: P5-03 lo guarda en cada plan. */
-export const OPTIMIZER_VERSION = 'planner-2026-09-29.1';
+/**
+ * Cambia cuando cambia el algoritmo o su contrato: P5-03 lo guarda en cada plan.
+ * `2026-10-01.1` (P10-02): canastas por visita con el motor de beneficios (ADR 0024).
+ */
+export const OPTIMIZER_VERSION = 'planner-2026-10-01.1';
 
 export interface OptimizerSettings {
   /** ARS por visita (sucursal y fecha). */
@@ -45,7 +51,58 @@ export type LineReasonCode =
   | 'CHEAPER_OPTION_NOT_WORTH_IT'
   | 'EXACT_PRODUCT_REQUIRED'
   | 'PREFERRED_PRODUCT'
-  | 'PROMOTION_APPLIED';
+  | 'PROMOTION_APPLIED'
+  /** P10-02: había una línea más barata en otra visita, pero acá suma al beneficio de la compra. */
+  | 'BASKET_BENEFIT_CHOICE';
+
+/** Condiciones legibles de una promoción: banco, medio, día, mínimo, tope y momento del beneficio. */
+export interface BenefitConditions {
+  readonly type: PromotionType;
+  readonly discountPercentage: string | null;
+  readonly discountAmount: string | null;
+  readonly paymentMethod: PaymentMethod | null;
+  readonly bank: string | null;
+  readonly membershipProgram: string | null;
+  /** ISO 1 = lunes … 7 = domingo; vacío = todos los días. */
+  readonly eligibleWeekdays: readonly number[];
+  readonly minimumSpend: string | null;
+  readonly discountCap: string | null;
+  readonly capPeriod: DiscountCapPeriod | null;
+  readonly timing: BenefitTiming;
+  readonly refundDelayDays: number | null;
+  readonly stackable: boolean;
+}
+
+/** Beneficio de pago aplicado a una visita (una compra). */
+export interface PlanVisitPayment {
+  readonly promotionId: string;
+  readonly name: string;
+  readonly timing: BenefitTiming;
+  readonly refundDelayDays: number | null;
+  /** Lo que entró en la base del beneficio (sin lo no acumulable). */
+  readonly base: string;
+  readonly amount: string;
+  readonly conditions: BenefitConditions;
+  readonly cap: CapStatus | null;
+}
+
+/**
+ * Un beneficio que existe en la visita y no se sumó: condicionado (falta un dato de la
+ * persona), no elegible (con el motivo) o no elegido (se usa otro, un solo pago por compra).
+ */
+export interface PlanBenefitNote {
+  readonly promotionId: string;
+  readonly name: string;
+  readonly layer: 'PRODUCT' | 'PAYMENT';
+  /** Necesidad de la línea en la capa de producto; null en un beneficio de pago. */
+  readonly canonicalProductId: string | null;
+  readonly status: 'CONDITIONAL' | 'NOT_ELIGIBLE' | 'NOT_CHOSEN';
+  readonly reason: BenefitReason | null;
+  /** Importe posible (condicionado o no elegido); null si no corresponde. */
+  readonly amount: string | null;
+  readonly conditions: BenefitConditions;
+  readonly cap: CapStatus | null;
+}
 
 export interface LineAlternative {
   readonly offerId: string;
@@ -96,21 +153,42 @@ export interface PlanVisit {
   /** Ida y vuelta estimada, no una ruta vial. */
   readonly roundTripKm: string | null;
   readonly lineCount: number;
+  /** Líneas con sus promociones de producto, antes del beneficio de pago. */
   readonly subtotal: string;
+  /** P10-02: descuento de pago en caja de esta compra. */
+  readonly paymentDiscount: string;
+  /** Lo que se paga en la caja: `subtotal − paymentDiscount`. */
+  readonly payToday: string;
+  /** Reintegro posterior estimado: no baja lo que se paga hoy. */
+  readonly refundEstimated: string;
+  readonly payment: PlanVisitPayment | null;
+  readonly benefitNotes: readonly PlanBenefitNote[];
 }
 
 export interface PlanTotals {
-  /** Lo que se estima pagar por los productos, con promociones. */
+  /** Lo que se estima pagar por los productos, con promociones de producto. */
   readonly productCost: string;
   /** Los mismos productos sin promociones. */
   readonly regularProductCost: string;
   readonly promotionDiscount: string;
+  /** P10-02: descuentos de pago en caja (confirmados con lo declarado). */
+  readonly paymentDiscount: string;
+  /** `productCost − paymentDiscount`: lo que se paga en las cajas. */
+  readonly payToday: string;
+  /** Reintegros estimados (aplicados con tope conocido): llegan después y no son ahorro. */
+  readonly refundEstimated: string;
+  /** `payToday − refundEstimated`. */
+  readonly costAfterRefund: string;
+  /** Beneficios posibles que dependen de un dato no informado: no sumados en ningún total. */
+  readonly conditionalAmount: string;
   readonly visitCount: number;
   readonly storeCount: number;
   readonly storeVisitPenaltyCost: string;
   readonly distancePenaltyCost: string;
-  /** `productCost + storeVisitPenaltyCost + distancePenaltyCost`: decide la recomendación. */
+  /** `payToday + storeVisitPenaltyCost + distancePenaltyCost`. */
   readonly effectiveCost: string;
+  /** `costAfterRefund + penalidades`: decide la recomendación. Sin reintegros es `effectiveCost`. */
+  readonly effectiveCostAfterRefund: string;
   /** Suma de ida y vuelta de cada visita; null si alguna distancia se desconoce. */
   readonly totalDistanceKm: string | null;
 }
@@ -143,7 +221,10 @@ export interface PlanBaseline {
 export type BaselineUnavailableReason = 'NOTHING_TO_BUY' | 'NO_SINGLE_STORE_COVERS_PLAN';
 
 export interface PlanSavings {
-  /** `base.productCost − plan.productCost`: solo dinero de productos, puede ser negativo. */
+  /**
+   * `base.productCost − plan.payToday`: dinero de productos que no se paga en la caja, con
+   * promociones y descuentos de pago confirmados. **Nunca incluye reintegros**. Puede ser negativo.
+   */
   readonly estimatedSavings: string;
   /** Diferencia de costo efectivo (incluye penalidades): no es dinero ahorrado. */
   readonly effectiveCostDifference: string;
@@ -175,8 +256,15 @@ export type PlanLimitationCode =
   | 'SEARCH_BUDGET_EXCEEDED'
   | 'PARTIAL_PLAN'
   | 'NO_BASELINE'
+  /** Sin evaluación por canasta (cálculo por líneas): mínimos y pagos quedan afuera. */
   | 'MINIMUM_SPEND_NOT_EVALUATED'
-  | 'PAYMENT_PROMOTIONS_EXCLUDED';
+  | 'PAYMENT_PROMOTIONS_EXCLUDED'
+  /** P10-02: hay beneficios que dependen de datos no informados; no se suman. */
+  | 'BENEFITS_CONDITIONAL'
+  /** P10-02: el plan incluye reintegros: hoy se paga más y el reintegro llega después. */
+  | 'REFUND_PENDING'
+  /** P10-02: la canasta con beneficios se buscó con el método aproximado. */
+  | 'BASKET_BENEFITS_APPROXIMATED';
 
 export interface PlanLimitation {
   readonly code: PlanLimitationCode;
@@ -192,6 +280,30 @@ export interface SearchSummary {
   readonly storesConsidered: number;
   /** Fechas útiles por sucursal tras descartar las dominadas (igual o peor en todo). */
   readonly datesPerStore: Readonly<Record<string, readonly CalendarDate[]>>;
+  /**
+   * P10-02: cómo se buscó la canasta con beneficios. `NOT_NEEDED`: ninguna regla cambia el
+   * costo de la suma de líneas; `EXHAUSTIVE`: todas las asignaciones; `LOCAL_SEARCH`: aproximado.
+   * Null sin evaluación de beneficios.
+   */
+  readonly basketSearch: 'NOT_NEEDED' | 'EXHAUSTIVE' | 'LOCAL_SEARCH' | null;
+  readonly basketEvaluations: number;
+  readonly maxBasketEvaluations: number | null;
+}
+
+/** Con qué se evaluaron los beneficios del plan. */
+export interface PlanBenefitsSummary {
+  /** Solo lo declarado: nunca datos de tarjeta. */
+  readonly payer: PayerProfile & { readonly declared: boolean };
+  /** Topes tocados por el plan: límite, lo informado como usado afuera y lo que usa el plan. */
+  readonly caps: readonly {
+    readonly key: string;
+    readonly periodKey: string;
+    readonly limit: string;
+    readonly consumedOutside: string | null;
+    readonly usedHere: string;
+  }[];
+  /** Criterios usados, en castellano, para mostrar tal cual. */
+  readonly criteria: readonly string[];
 }
 
 export interface OptimizedPlan {
@@ -210,4 +322,6 @@ export interface OptimizedPlan {
   readonly unfulfilled: readonly UnfulfilledNeed[];
   readonly coveredByInventory: readonly CoveredByInventory[];
   readonly limitations: readonly PlanLimitation[];
+  /** Null cuando el cálculo no recibió preferencias ni reglas de pago (solo líneas). */
+  readonly benefits: PlanBenefitsSummary | null;
 }

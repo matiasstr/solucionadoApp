@@ -411,7 +411,54 @@ export type PlanLineReasonCode =
   | 'CHEAPER_OPTION_NOT_WORTH_IT'
   | 'EXACT_PRODUCT_REQUIRED'
   | 'PREFERRED_PRODUCT'
-  | 'PROMOTION_APPLIED';
+  | 'PROMOTION_APPLIED'
+  /** P10-02: más cara que otra opción del plan, pero suma al beneficio de pago o al mínimo de la compra. */
+  | 'BASKET_BENEFIT_CHOICE';
+
+/** Condiciones legibles de una promoción (P10-02): nada de la regla queda oculto. */
+export interface PlanBenefitConditionsDto {
+  type: PromotionType;
+  discountPercentage: DecimalString | null;
+  discountAmount: DecimalString | null;
+  paymentMethod: PaymentMethod | null;
+  bank: string | null;
+  membershipProgram: string | null;
+  /** ISO 1 = lunes … 7 = domingo; vacío = todos los días. */
+  eligibleWeekdays: number[];
+  minimumSpend: DecimalString | null;
+  discountCap: DecimalString | null;
+  capPeriod: DiscountCapPeriod | null;
+  timing: BenefitTiming;
+  refundDelayDays: number | null;
+  stackable: boolean;
+}
+
+/** Beneficio de pago aplicado a una visita (una compra). */
+export interface PlanVisitPaymentDto {
+  promotionId: string;
+  name: string;
+  timing: BenefitTiming;
+  refundDelayDays: number | null;
+  /** Lo que entró en la base del beneficio (sin lo no acumulable). */
+  base: DecimalString;
+  amount: DecimalString;
+  conditions: PlanBenefitConditionsDto;
+  cap: BenefitCapStatusDto | null;
+}
+
+/** Beneficio de la visita que no se sumó: condicionado, no elegible o no elegido. */
+export interface PlanBenefitNoteDto {
+  promotionId: string;
+  name: string;
+  layer: 'PRODUCT' | 'PAYMENT';
+  canonicalProductId: string | null;
+  status: 'CONDITIONAL' | 'NOT_ELIGIBLE' | 'NOT_CHOSEN';
+  /** Código del motivo (`BANK_NOT_DECLARED`, `CAP_REMAINING_UNKNOWN`, `MINIMUM_SPEND_NOT_REACHED`, …). */
+  reason: string | null;
+  amount: DecimalString | null;
+  conditions: PlanBenefitConditionsDto;
+  cap: BenefitCapStatusDto | null;
+}
 
 export interface PlanLineAlternativeDto {
   offerId: string;
@@ -456,7 +503,16 @@ export interface PlanScheduleVisitDto {
   distanceMeters: number | null;
   /** Ida y vuelta estimada en línea recta; null si no hay coordenadas. */
   roundTripKm: DecimalString | null;
+  /** Líneas con sus promociones de producto, antes del beneficio de pago. */
   subtotal: DecimalString;
+  /** P10-02: descuento de pago en caja. */
+  paymentDiscount: DecimalString;
+  /** Lo que se paga en la caja. */
+  payToday: DecimalString;
+  /** Reintegro posterior estimado: no baja lo que se paga hoy. */
+  refundEstimated: DecimalString;
+  payment: PlanVisitPaymentDto | null;
+  benefitNotes: PlanBenefitNoteDto[];
   lines: PlanLineDto[];
 }
 
@@ -469,11 +525,24 @@ export interface PlanTotalsDto {
   productCost: DecimalString;
   regularProductCost: DecimalString;
   promotionDiscount: DecimalString;
+  /** P10-02: descuentos de pago en caja confirmados con lo declarado. */
+  paymentDiscount: DecimalString;
+  /** Lo que se paga en las cajas: `productCost − paymentDiscount`. */
+  payToday: DecimalString;
+  /** Reintegros estimados: llegan después y no son ahorro. */
+  refundEstimated: DecimalString;
+  /** `payToday − refundEstimated`. */
+  costAfterRefund: DecimalString;
+  /** Beneficios posibles que dependen de un dato no informado: no sumados. */
+  conditionalAmount: DecimalString;
   visitCount: number;
   storeCount: number;
   storeVisitPenaltyCost: DecimalString;
   distancePenaltyCost: DecimalString;
+  /** `payToday + penalidades`. */
   effectiveCost: DecimalString;
+  /** `costAfterRefund + penalidades`: decide la recomendación. */
+  effectiveCostAfterRefund: DecimalString;
   totalDistanceKm: DecimalString | null;
 }
 
@@ -521,8 +590,10 @@ export interface ShoppingPlanSummaryDto {
   unfulfilledCount: number;
   optimizedCost: DecimalString;
   effectiveCost: DecimalString;
-  /** Null sin base comparable: no hay ahorro que mostrar. */
+  /** Null sin base comparable: no hay ahorro que mostrar. Nunca incluye reintegros. */
   estimatedSavings: DecimalString | null;
+  /** P10-02: reintegros estimados, aparte del ahorro. Null en planes anteriores (no se recalculan). */
+  refundEstimated: DecimalString | null;
 }
 
 export interface ShoppingPlanListDto {
@@ -549,6 +620,19 @@ export interface ShoppingPlanDto extends ShoppingPlanSummaryDto {
   limitations: PlanNoticeDto[];
   warnings: PlanNoticeDto[];
   prices: { oldestObservedAt: string; newestObservedAt: string } | null;
+  /** P10-02: con qué se evaluaron los beneficios. Null en planes anteriores. */
+  benefits: PlanBenefitsSummaryDto | null;
+}
+
+export interface PlanBenefitsSummaryDto {
+  /** Solo lo declarado: nunca datos de tarjeta. */
+  payer: { paymentMethods: PaymentMethod[]; banks: string[]; memberships: string[]; declared: boolean };
+  /** Topes tocados por el plan. */
+  caps: { key: string; periodKey: string; limit: DecimalString; consumedOutside: DecimalString | null; usedHere: DecimalString }[];
+  /** Criterios usados, para mostrar tal cual. */
+  criteria: string[];
+  /** `NOT_NEEDED`: nada cambia la suma de líneas; `EXHAUSTIVE`; `LOCAL_SEARCH`: aproximado. */
+  basketSearch: 'NOT_NEEDED' | 'EXHAUSTIVE' | 'LOCAL_SEARCH' | null;
 }
 
 /** POST /shopping-plans/generate (con cabecera Idempotency-Key). Fechas AAAA-MM-DD opcionales. */

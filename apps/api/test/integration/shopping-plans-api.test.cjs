@@ -18,6 +18,7 @@ const {
   seedDemoCatalog,
   demoCanonicalProductId,
   demoProductId,
+  demoPromotionId,
 } = require('../../dist/seed/seed-demo-catalog');
 
 const url = process.env.DATABASE_URL;
@@ -69,7 +70,7 @@ async function register(profile = {}) {
     .expect(201);
   const token = response.body.accessToken;
   const as = (method) => (path) => request(server)[method](path).set('Authorization', `Bearer ${token}`);
-  const user = { id: response.body.user.id, get: as('get'), post: as('post'), patch: as('patch') };
+  const user = { id: response.body.user.id, get: as('get'), post: as('post'), patch: as('patch'), put: as('put') };
   if (Object.keys(profile).length) await user.patch('/api/users/me').send(profile).expect(200);
   return user;
 }
@@ -228,7 +229,7 @@ describe('lectura y ownership', () => {
     assert.deepEqual(list.body.items.map((entry) => entry.id), [mine.id]);
     assert.deepEqual(Object.keys(list.body.items[0]).sort(), [
       'completedAt', 'coverage', 'effectiveCost', 'endDate', 'estimatedSavings', 'generatedAt', 'id', 'lineCount',
-      'optimizedCost', 'startDate', 'status', 'unfulfilledCount', 'visitCount',
+      'optimizedCost', 'refundEstimated', 'startDate', 'status', 'unfulfilledCount', 'visitCount',
     ]);
     assert.deepEqual((await owner.get(`/api/shopping-plans/${mine.id}`).expect(200)).body, mine);
 
@@ -266,6 +267,90 @@ describe('estados', () => {
     const past = (await generate(user, randomUUID(), { startDate: addDays(TODAY, -10), endDate: addDays(TODAY, -4) }).expect(201)).body;
     assert.equal(past.status, 'EXPIRED');
     await expectError(user.patch(`/api/shopping-plans/${past.id}`).send({ status: 'ACTIVE' }), 400, 'PLAN_EXPIRED');
+  });
+});
+
+describe('beneficios de pago (P10-02)', () => {
+  /** Importes del plan que cierran entre sí: caja, reintegro, visitas y ahorro sin reintegros. */
+  function assertPlanAmounts(plan) {
+    const { totals } = plan;
+    const minus = (a, b) => DecimalValue.parse(a).subtract(DecimalValue.parse(b)).toFixed(2);
+    const visits = plan.schedule.flatMap((day) => day.visits);
+    assert.equal(totals.payToday, minus(totals.productCost, totals.paymentDiscount));
+    assert.equal(totals.costAfterRefund, minus(totals.payToday, totals.refundEstimated));
+    assert.equal(sum(visits.map((visit) => visit.payToday)), totals.payToday);
+    assert.equal(sum(visits.map((visit) => visit.refundEstimated)), totals.refundEstimated);
+    assert.equal(plan.optimizedCost, totals.payToday, 'lo guardado es lo que se paga en las cajas');
+    assert.equal(plan.refundEstimated, totals.refundEstimated);
+    if (plan.savings) assert.equal(plan.savings.estimatedSavings, minus(plan.savings.baselineProductCost, totals.payToday), 'el ahorro no incluye reintegros');
+  }
+
+  test('sin medios declarados: el plan informa criterios, no suma beneficios condicionados', async () => {
+    const user = await withBasket();
+    const plan = (await generate(user).expect(201)).body;
+    assert.ok(plan.benefits, 'los planes nuevos dicen con qué se evaluaron los beneficios');
+    assert.equal(plan.benefits.payer.declared, false);
+    assert.ok(plan.benefits.criteria.length >= 3);
+    assert.ok(['NOT_NEEDED', 'EXHAUSTIVE', 'LOCAL_SEARCH'].includes(plan.benefits.basketSearch));
+    assert.equal(plan.totals.paymentDiscount, '0.00');
+    assert.equal(plan.totals.refundEstimated, '0.00');
+    assertPlanAmounts(plan);
+    const notes = plan.schedule.flatMap((day) => day.visits.flatMap((visit) => visit.benefitNotes));
+    for (const note of notes.filter((entry) => entry.layer === 'PAYMENT')) {
+      assert.notEqual(note.status, 'APPLIED');
+      assert.ok(note.conditions.timing === 'IMMEDIATE' || note.conditions.timing === 'REFUND');
+    }
+  });
+
+  test('con débito del Banco Demo y el tope informado: nunca peor que sin declarar y se guarda cumpliendo los CHECK', async () => {
+    const plain = (await generate(await withBasket()).expect(201)).body;
+    const user = await withBasket({ ...CABALLITO, paymentMethods: ['DEBIT_CARD', 'CREDIT_CARD', 'WALLET'], banks: ['Banco Demo', 'Billetera Demo'] });
+    await user.put(`/api/benefit-usage/${demoPromotionId('vea-banco-demo-20')}`).send({ consumed: '0.00' }).expect(200);
+    const plan = (await generate(user).expect(201)).body;
+    assert.equal(plan.benefits.payer.declared, true);
+    assert.deepEqual(plan.benefits.payer.banks, ['Banco Demo', 'Billetera Demo']);
+    assertPlanAmounts(plan);
+    assert.ok(
+      DecimalValue.parse(plan.totals.effectiveCostAfterRefund).compare(DecimalValue.parse(plain.totals.effectiveCostAfterRefund)) <= 0,
+      'declarar medios de pago nunca empeora el plan',
+    );
+    for (const visit of plan.schedule.flatMap((day) => day.visits)) {
+      if (!visit.payment) continue;
+      assert.ok(visit.payment.conditions.bank, 'un pago aplicado muestra su banco');
+      assert.equal(visit.payment.timing === 'IMMEDIATE' ? visit.paymentDiscount : visit.refundEstimated, visit.payment.amount);
+    }
+    const reread = (await user.get(`/api/shopping-plans/${plan.id}`).expect(200)).body;
+    assert.deepEqual(reread, plan);
+  });
+
+  test('un plan guardado antes de P10-02 (snapshot versión 1) se lee como se emitió, sin recalcular', async () => {
+    const user = await withBasket();
+    const plan = (await generate(user).expect(201)).body;
+    // Lo que guardaba P5-03: sin campos de pago en totales ni visitas y sin resumen de beneficios.
+    await pg.query(
+      `UPDATE "ShoppingPlan" SET "resultSnapshot" = jsonb_set(
+         ("resultSnapshot" - 'benefits')
+           || jsonb_build_object('totals', ("resultSnapshot"->'totals') - 'paymentDiscount' - 'payToday' - 'refundEstimated' - 'costAfterRefund' - 'conditionalAmount' - 'effectiveCostAfterRefund'),
+         '{schemaVersion}', '1')
+       WHERE "id" = $1`,
+      [plan.id],
+    );
+    await pg.query(
+      `UPDATE "ShoppingPlan" SET "resultSnapshot" = jsonb_set("resultSnapshot", '{visits}', (
+         SELECT jsonb_agg(visit - 'paymentDiscount' - 'payToday' - 'refundEstimated' - 'payment' - 'benefitNotes')
+         FROM jsonb_array_elements("resultSnapshot"->'visits') AS visit)) WHERE "id" = $1`,
+      [plan.id],
+    );
+    const old = (await user.get(`/api/shopping-plans/${plan.id}`).expect(200)).body;
+    assert.equal(old.benefits, null);
+    assert.equal(old.refundEstimated, null);
+    assert.equal(old.totals.payToday, old.totals.productCost);
+    assert.equal(old.totals.refundEstimated, '0.00');
+    for (const visit of old.schedule.flatMap((day) => day.visits)) {
+      assert.deepEqual([visit.payToday, visit.payment, visit.benefitNotes], [visit.subtotal, null, []]);
+    }
+    const list = (await user.get('/api/shopping-plans').expect(200)).body;
+    assert.equal(list.items.find((item) => item.id === plan.id).refundEstimated, null);
   });
 });
 

@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02), **fase 9 completa** (P9-01, P9-02) y **P10-01**. Empezar por **P10-02**. Resolver decisiones rutinarias siguiendo los ADRs (0001–0023) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02), **fase 9 completa** (P9-01, P9-02), **P10-01** y la **parte 1 de P10-02** (planificador con beneficios, API). Seguir con **P10-02 parte 2** (pantallas). Resolver decisiones rutinarias siguiendo los ADRs (0001–0024) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
 Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P10-02 que recuperar.
 
-## Estado: 2026-09-30 — Fases 1 a 9 completas y P10-01 completo
+## Estado: 2026-10-01 — Fases 1 a 9 completas, P10-01 completo y P10-02 en curso (parte 1 hecha)
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
 **Próximo paso: P10-02 — Planificación y experiencia completa** (`docs/steps/phase-10.md`): usar el motor de beneficios (ADR 0023) en candidatos, optimizador y comparador (medio, día y topes compartidos entre visitas), mostrar pagar hoy / reintegro / costo final, explicar banco, día, mínimo y tope en preferencias, plan, ofertas y alertas, y la validación final del producto (README, diagrama, endpoints, ADRs, runbook, E2E completo). Instrucciones al final de este archivo.
-Los beneficios de pago ya se evalúan (`POST /benefits/evaluate`) pero el plan, el comparador y las pantallas todavía no los usan; no hay una fuente real de precios ni de promociones; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP), P9-01 (API `/alerts` y `/notifications`), P9-02 (pantallas de alertas) y P10-01 (`/benefits`, `/benefit-usage`, campos nuevos de promociones; migración `20261001120000_payment_benefits`); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits` (aditivas; la última reemplaza un `CHECK` de `Promotion` por uno compatible con las promociones existentes). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+Los beneficios de pago ya se evalúan (`POST /benefits/evaluate`) y desde P10-02 parte 1 **el plan los usa** (API: pagar hoy, reintegro, costo final, notas por visita; ADR 0024), pero **el comparador y las pantallas todavía no**; no hay una fuente real de precios ni de promociones; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP), P9-01 (API `/alerts` y `/notifications`), P9-02 (pantallas de alertas) y P10-01 (`/benefits`, `/benefit-usage`, campos nuevos de promociones; migración `20261001120000_payment_benefits`); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits` (aditivas; la última reemplaza un `CHECK` de `Promotion` por uno compatible con las promociones existentes). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -154,6 +154,23 @@ Los beneficios de pago ya se evalúan (`POST /benefits/evaluate`) pero el plan, 
   - Módulo `benefits/`: `EvaluateBenefitsUseCase` (precios actuales con `GetCurrentPricesUseCase`, promociones con `findActiveBetween`, preferencias y consumo informado), `BenefitUsageService`, controladores `BenefitsController` y `BenefitUsageController`, DTOs con validación anidada (primer uso de `@ValidateNested`).
   - Contratos: `promotion.contracts.ts` y `packages/shared` (`discountAmount`, `benefit`, `stackable`, `capGroup`; tipos de la evaluación y del consumo). Importador (`import.types.ts`, `import-normalizer.ts` con alias `reintegro`/`inmediato`, `promotion-importer.ts` con `capGroup` prefijado por la fuente). Seed DEMO: `coto-banco-reintegro-miercoles`, `vea-banco-demo-20` (mismo tope mensual) y `jumbo-billetera-1500`.
   - Tests: `test/benefit-engine.test.cjs` (12), `test/integration/benefits.test.cjs` (7, después de `alerts` en el runner); helpers de reglas de cinco tests existentes con los campos nuevos; `promotions.test.cjs` con el contrato nuevo.
+
+- **P10-02 parte 1 (sesión 2026-10-01): beneficios de pago en el planificador (API).** P10-02 sigue abierto.
+  - Dominio `shopping-plans/domain/plan-benefits.ts`: `PlanBenefitContext`, `isLineVerifiable`, `costRelevantRules`, `BasketEvaluator` (cada visita = una compra de `evaluateBenefits`), `searchBaskets` (`EXHAUSTIVE` dentro del presupuesto; si no `LOCAL_SEARCH` determinista que siempre evalúa primero el plan por líneas).
+  - `plan-optimizer.ts`: `optimizePlan(input, settings, benefits?)`; visitas con `paymentDiscount`, `payToday`, `refundEstimated`, `payment`, `benefitNotes`; totales con `paymentDiscount`, `payToday`, `refundEstimated`, `costAfterRefund`, `conditionalAmount`, `effectiveCostAfterRefund`; `search.basketSearch`/`basketEvaluations`; `benefits` (lo declarado, topes, `criteria`); motivo `BASKET_BENEFIT_CHOICE`; limitaciones `REFUND_PENDING`, `BENEFITS_CONDITIONAL`, `BASKET_BENEFITS_APPROXIMATED`. `OPTIMIZER_VERSION` `planner-2026-10-01.1`. El ahorro estimado es base − `payToday` (nunca reintegros).
+  - `PlanShoppingUseCase` carga preferencias de pago y `BenefitCapUsage`; `BuildPlanCandidatesUseCase.executeWithPromotions` devuelve también las reglas. Config `PLANNER_MAX_BASKET_EVALUATIONS` (2000, 1 a 50.000).
+  - Snapshots `schemaVersion: 2`; la API lee 1 y 2 (`READABLE_SNAPSHOT_VERSIONS`) y completa los planes viejos sin recalcular (`refundEstimated: null`, `benefits: null`). **`optimizedCost` guarda `payToday`** para que sigan cerrando los `CHECK` de `ShoppingPlan` (sin migración).
+  - Contratos en `shopping-plan.contracts.ts`, `packages/shared` (`PlanVisitPaymentDto`, `PlanBenefitNoteDto`, `PlanBenefitConditionsDto`, `PlanBenefitsSummaryDto`, totales y visitas nuevos), `docs/API.md` (Planes de compra) y ADR 0024.
+  - Tests: `test/shopping-plan-benefits.test.cjs` (12, incluye contraste con enumeración independiente en 150 canastas y los `CHECK` de cada registro), `shopping-plan-persistence.test.cjs` (versión 2, `optimizedCost = payToday`), `environment.test.cjs`, y 3 de integración en `shopping-plans-api.test.cjs` (sin declarar, declarado con tope informado, snapshot versión 1).
+
+## Verificaciones ejecutadas (P10-02 parte 1, 2026-10-01)
+
+| Control | Resultado |
+| --- | --- |
+| `npm.cmd run verify` | Exit 0 (**208/208** unitarios, typecheck y lint, build API + web) |
+| `npm.cmd run test:db` | **162/162** en 15 archivos (3 nuevos de planes con beneficios) |
+
+No ejecutado en la parte 1: `npm.cmd run test:e2e` (la web todavía no muestra los campos nuevos), prueba de tiempos con dataset representativo, deploy.
 
 ## Verificaciones ejecutadas (P10-01, 2026-09-30)
 
@@ -605,10 +622,13 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P8-02** `345ed37` (publicado).
 - **P9-01** `c12c34a` (publicado).
 - **P9-02** `465c9f2` (publicado).
-- **P10-01**: commit `feat(P10-01): ...` del 2026-09-30 (ver `git log`).
+- **P10-01** `3392625` (publicado).
+- **P10-02 parte 1**: commit `feat(P10-02): ...` del 2026-10-01 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
 ## Cómo seguir con P10-02
+
+**Hecho (parte 1):** punto 3 completo (planificador con beneficios, API y contratos) y la parte de snapshots del punto 4. **Falta:** pantallas del plan (pagar hoy / reintegro / costo final, `payment`, `benefitNotes`, `benefits.criteria`), comparador (`GET /canonical-products/:id/prices` con beneficios de pago legibles), preferencias/onboarding con medios y bancos y la pantalla de `/benefit-usage`, condiciones en tarjetas/ofertas/alertas, y el cierre del producto (puntos 5 a 7).
 
 1. Leer `AGENTS.md`, `apps/web/AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-10.md` (P10-02), ADR 0013/0014/0015 (planificador), 0023 (beneficios), `docs/API.md` (beneficios y planes) y `docs/RUNBOOK.md`.
 2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API en 3010 y web en 3100.
@@ -620,4 +640,4 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 9 y P10-01 (beneficios de pago con elegibilidad declarada, reintegros y topes compartidos, ADR 0023) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. El próximo paso es P10-02 (beneficios en el plan, el comparador y las pantallas, y la validación final del producto), descrito en docs/steps/phase-10.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 9, P10-01 (beneficios de pago, ADR 0023) y la parte 1 de P10-02 (planificador con beneficios en la API, ADR 0024) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. Seguí con el resto de P10-02 (comparador y pantallas con pagar hoy / reintegro / costo final, preferencias de pago y topes, y la validación final del producto; ver "Cómo seguir con P10-02"), descrito en docs/steps/phase-10.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.

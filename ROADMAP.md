@@ -68,7 +68,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | COMPLETO |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | COMPLETO |
 | P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | COMPLETO |
-| P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | PENDIENTE |
+| P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | EN CURSO (parte 1: planificador) |
 
 ## Estado de la fase 2 (catálogo y datos) — COMPLETA
 
@@ -172,7 +172,7 @@ Verificado al cerrar la fase: `npm.cmd run verify`, `npm.cmd run test:db` y `npm
 
 Verificado: `npm.cmd run verify` (196/196 unitarios, 12 nuevos del motor: preferencias, compra con tope y redondeo, reintegro, elegibilidad con día y vigencia horaria y mínimo, acumulación, topes semanal y mensual entre visitas, tope compartido por un grupo, tope por compra entre ítems, reproducibilidad, períodos, reglas e importación) y `npm.cmd run test:db` (159/159 en 15 archivos, 7 nuevos de beneficios con DEMO y dos ajustes del contrato de `/promotions`). Prueba manual con el API y el DEMO: sin preferencias todo condicionado; con débito y billetera, $1.500 en caja y el reintegro de Coto condicionado por el tope; con $2.000 informados, reintegro de $5.734,45 en 30 días sobre lo que no tenía 2x1.
 
-**Siguiente: P10-02** (beneficios en el plan, comparador y pantallas; validación final del producto).
+**P10-02 — EN CURSO.** Parte 1 hecha (2026-10-01): cada visita del plan se cobra como una compra con el motor de beneficios (`plan-benefits.ts`): búsqueda exhaustiva de canastas dentro de `PLANNER_MAX_BASKET_EVALUATIONS` o búsqueda local determinista identificada; totales pagar hoy / reintegro / costo final, ahorro sin reintegros, `payment` y `benefitNotes` por visita, criterios usados; snapshots versión 2 con lectura de los viejos sin recalcular. Decisiones en [ADR 0024](docs/architecture-decisions/0024-plan-payment-benefits.md). Falta: comparador y pantallas (plan, preferencias de pago, topes informados, condiciones en tarjetas/ofertas/alertas) y la validación final del producto.
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

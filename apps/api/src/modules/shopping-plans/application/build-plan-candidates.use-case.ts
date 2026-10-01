@@ -7,6 +7,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { toQuantityString } from '../../catalog/infrastructure/decimal-mapper';
 import { ProductRepository } from '../../catalog/infrastructure/product.repository';
 import { ProductPriceRepository } from '../../prices/infrastructure/product-price.repository';
+import type { PromotionRule } from '../../promotions/domain/promotion.types';
 import { PromotionRepository } from '../../promotions/infrastructure/promotion.repository';
 import { argentineToday } from '../../routines/domain/routine-rules';
 import { StoreScopeResolver } from '../../stores/application/resolve-store-scope.use-case';
@@ -32,6 +33,11 @@ export interface PlanCandidatesQuery {
   readonly endDate?: string;
   /** Momento de referencia: frescura de precios, antigüedad de la despensa y "hoy". */
   readonly now?: Date;
+}
+
+export interface PlanCandidatesWithPromotions {
+  readonly candidates: PlanCandidates;
+  readonly promotions: readonly PromotionRule[];
 }
 
 interface ResolvedLocation {
@@ -63,6 +69,14 @@ export class BuildPlanCandidatesUseCase {
   ) {}
 
   async execute(userId: string, query: PlanCandidatesQuery = {}): Promise<PlanCandidates> {
+    return (await this.executeWithPromotions(userId, query)).candidates;
+  }
+
+  /**
+   * Candidatos y las promociones vigentes que los alcanzan (P10-02): el planificador las vuelve
+   * a evaluar por canasta, con las preferencias de pago de la persona.
+   */
+  async executeWithPromotions(userId: string, query: PlanCandidatesQuery = {}): Promise<PlanCandidatesWithPromotions> {
     const now = query.now ?? new Date();
     const window = this.resolveWindow(query, now);
     const limits: CandidateLimits = {
@@ -179,7 +193,7 @@ export class BuildPlanCandidatesUseCase {
       maxAgeDays,
     });
 
-    return {
+    const result: PlanCandidates = {
       schemaVersion: PLAN_CANDIDATES_SCHEMA_VERSION,
       generatedAt: now.toISOString(),
       window,
@@ -190,6 +204,7 @@ export class BuildPlanCandidatesUseCase {
       skippedItems: needs.skippedItems,
       candidates,
     };
+    return { candidates: result, promotions };
   }
 
   private resolveWindow(query: PlanCandidatesQuery, now: Date): PlanWindow {

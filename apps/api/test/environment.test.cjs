@@ -30,7 +30,7 @@ test('environment accepts and normalizes an explicit port and multiple exact ori
       secureCookies: true,
     },
     prices: { maxAgeDays: 7, sourcePrecedence: [] },
-    planner: { maxHorizonDays: 28, maxCandidateDates: 7, maxCandidateStores: 8, maxOffersPerStore: 2, maxCombinations: 100000 },
+    planner: { maxHorizonDays: 28, maxCandidateDates: 7, maxCandidateStores: 8, maxOffersPerStore: 2, maxCombinations: 100000, maxBasketEvaluations: 2000 },
     alerts: { cooldownHours: 24 },
   });
 });
@@ -55,6 +55,7 @@ test('los límites del planificador se configuran por entorno y rechazan valores
     PLANNER_MAX_CANDIDATE_STORES: '4',
     PLANNER_MAX_OFFERS_PER_STORE: '1',
     PLANNER_MAX_COMBINATIONS: '5000',
+    PLANNER_MAX_BASKET_EVALUATIONS: '300',
   });
   assert.deepEqual(config.planner, {
     maxHorizonDays: 14,
@@ -62,12 +63,14 @@ test('los límites del planificador se configuran por entorno y rechazan valores
     maxCandidateStores: 4,
     maxOffersPerStore: 1,
     maxCombinations: 5000,
+    maxBasketEvaluations: 300,
   });
   for (const input of [
     { PLANNER_MAX_HORIZON_DAYS: '0' }, { PLANNER_MAX_HORIZON_DAYS: '63' },
     { PLANNER_MAX_CANDIDATE_DATES: '32' }, { PLANNER_MAX_CANDIDATE_STORES: '21' },
     { PLANNER_MAX_OFFERS_PER_STORE: '0' }, { PLANNER_MAX_CANDIDATE_STORES: '2.5' },
     { PLANNER_MAX_COMBINATIONS: '0' }, { PLANNER_MAX_COMBINATIONS: '3000000' },
+    { PLANNER_MAX_BASKET_EVALUATIONS: '0' }, { PLANNER_MAX_BASKET_EVALUATIONS: '60000' },
   ]) {
     assert.throws(() => validateEnvironment({ ...validDb, ...input }), /Configuración inválida: PLANNER_/);
   }

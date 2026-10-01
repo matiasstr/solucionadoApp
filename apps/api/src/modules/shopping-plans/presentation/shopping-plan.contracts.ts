@@ -8,16 +8,21 @@ import { toAmountString, toQuantityString } from '../../catalog/infrastructure/d
 import type { BaseUnit, SaleMode } from '../../catalog/domain/units';
 import { effectiveStatus } from '../domain/plan-status';
 import type { PlanStatus } from '../domain/plan-status';
-import { PLAN_SNAPSHOT_SCHEMA_VERSION } from '../domain/plan-snapshot';
+import { READABLE_SNAPSHOT_VERSIONS } from '../domain/plan-snapshot';
 import type { PlanInputSnapshot, PlanItemSnapshot, PlanResultSnapshot, StoredBaselineMethod } from '../domain/plan-snapshot';
 import type {
   CoveredByInventory,
   LineAlternative,
   LineReasonCode,
   OptimizationMethod,
+  PlanBenefitNote,
+  PlanBenefitsSummary,
   PlanCoverage,
   PlanLimitation,
   PlanTotals,
+  PlanVisit,
+  PlanVisitPayment,
+  SearchSummary,
   UnfulfilledNeed,
 } from '../domain/optimized-plan.types';
 import type { MatchType, PlanLocationScope, PlanWarning } from '../domain/planner.types';
@@ -38,6 +43,11 @@ export interface ShoppingPlanSummaryDto {
   effectiveCost: string;
   /** Null si no hubo base comparable: sin comparación no hay ahorro que mostrar. */
   estimatedSavings: string | null;
+  /**
+   * P10-02: reintegros estimados del plan (aparte del ahorro). Null en planes anteriores a la
+   * evaluación de beneficios: no se recalculan.
+   */
+  refundEstimated: string | null;
 }
 
 export interface ShoppingPlanListDto {
@@ -79,7 +89,15 @@ export interface ScheduleVisitDto {
   chainName: string;
   distanceMeters: number | null;
   roundTripKm: string | null;
+  /** Líneas con sus promociones de producto, antes del beneficio de pago. */
   subtotal: string;
+  /** P10-02: descuento de pago en caja, lo que se paga en la caja y el reintegro posterior. */
+  paymentDiscount: string;
+  payToday: string;
+  refundEstimated: string;
+  payment: PlanVisitPayment | null;
+  /** Beneficios de la visita que no se sumaron: condicionados, no elegibles o no elegidos. */
+  benefitNotes: PlanBenefitNote[];
   lines: PlanLineDto[];
 }
 
@@ -119,6 +137,11 @@ export interface ShoppingPlanDto extends ShoppingPlanSummaryDto {
   warnings: PlanWarning[];
   /** Rango de fechas de los precios usados como estimación. */
   prices: { oldestObservedAt: string; newestObservedAt: string } | null;
+  /**
+   * P10-02: cómo se evaluaron los beneficios de pago (preferencias declaradas, topes y criterios)
+   * y cómo se buscó la canasta. Null en planes anteriores: se muestran como se emitieron.
+   */
+  benefits: (PlanBenefitsSummary & { basketSearch: SearchSummary['basketSearch'] }) | null;
 }
 
 export const planInclude = {
@@ -135,10 +158,39 @@ export const fromCalendarDate = (value: string): Date => new Date(`${value}T00:0
 /** Los snapshots se validan al leer: una versión desconocida no se interpreta a ciegas. */
 function snapshot<T extends { schemaVersion: number }>(value: Prisma.JsonValue, name: string): T {
   const parsed = value as T | null;
-  if (!parsed || typeof parsed !== 'object' || parsed.schemaVersion !== PLAN_SNAPSHOT_SCHEMA_VERSION) {
+  if (!parsed || typeof parsed !== 'object' || !READABLE_SNAPSHOT_VERSIONS.includes(parsed.schemaVersion)) {
     throw new Error(`Snapshot ${name} con versión no soportada.`);
   }
   return parsed;
+}
+
+/**
+ * Totales tal como se emitieron. Un plan de versión 1 no evaluó pagos: lo que pagaba hoy era el
+ * costo de productos y no tenía reintegros; se completa así, sin recalcular nada.
+ */
+function totalsOf(result: PlanResultSnapshot): PlanTotals {
+  const totals = result.totals as Partial<PlanTotals> & Pick<PlanTotals, 'productCost' | 'effectiveCost'>;
+  return {
+    ...(totals as PlanTotals),
+    paymentDiscount: totals.paymentDiscount ?? '0.00',
+    payToday: totals.payToday ?? totals.productCost,
+    refundEstimated: totals.refundEstimated ?? '0.00',
+    costAfterRefund: totals.costAfterRefund ?? totals.productCost,
+    conditionalAmount: totals.conditionalAmount ?? '0.00',
+    effectiveCostAfterRefund: totals.effectiveCostAfterRefund ?? totals.effectiveCost,
+  };
+}
+
+/** Visita de un snapshot: en versión 1 no había pago, se paga el subtotal. */
+function visitOf(visit: PlanVisit): Pick<ScheduleVisitDto, 'paymentDiscount' | 'payToday' | 'refundEstimated' | 'payment' | 'benefitNotes'> {
+  const partial = visit as Partial<PlanVisit> & Pick<PlanVisit, 'subtotal'>;
+  return {
+    paymentDiscount: partial.paymentDiscount ?? '0.00',
+    payToday: partial.payToday ?? partial.subtotal,
+    refundEstimated: partial.refundEstimated ?? '0.00',
+    payment: partial.payment ?? null,
+    benefitNotes: [...(partial.benefitNotes ?? [])],
+  };
 }
 
 export function toPlanSummaryDto(row: PlanSummaryRow, today: string): ShoppingPlanSummaryDto {
@@ -158,6 +210,7 @@ export function toPlanSummaryDto(row: PlanSummaryRow, today: string): ShoppingPl
     optimizedCost: toAmountString(row.optimizedCost, 2),
     effectiveCost: toAmountString(row.effectiveCost, 2),
     estimatedSavings: row.baselineMethod === 'NONE' ? null : toAmountString(row.estimatedSavings, 2),
+    refundEstimated: result.schemaVersion >= 2 ? totalsOf(result).refundEstimated : null,
   };
 }
 
@@ -210,6 +263,7 @@ export function toPlanDto(row: PlanRow, today: string): ShoppingPlanDto {
       distanceMeters: visit?.distanceMeters ?? null,
       roundTripKm: visit?.roundTripKm ?? null,
       subtotal: visit?.subtotal ?? '0.00',
+      ...(visit ? visitOf(visit) : { paymentDiscount: '0.00', payToday: '0.00', refundEstimated: '0.00', payment: null, benefitNotes: [] }),
       lines: [],
     };
     entry.lines.push(line);
@@ -229,7 +283,7 @@ export function toPlanDto(row: PlanRow, today: string): ShoppingPlanDto {
       distancePenaltyPerKm: input.settings.distancePenaltyPerKm,
       maxStores: input.settings.maxStores,
     },
-    totals: result.totals,
+    totals: totalsOf(result),
     savings: result.savings && result.baseline
       ? {
           estimatedSavings: result.savings.estimatedSavings,
@@ -259,5 +313,6 @@ export function toPlanDto(row: PlanRow, today: string): ShoppingPlanDto {
     prices: observed.length
       ? { oldestObservedAt: observed[0] as string, newestObservedAt: observed[observed.length - 1] as string }
       : null,
+    benefits: result.benefits ? { ...result.benefits, basketSearch: result.search.basketSearch ?? null } : null,
   };
 }

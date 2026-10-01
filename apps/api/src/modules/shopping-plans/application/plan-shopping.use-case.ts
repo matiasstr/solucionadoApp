@@ -6,6 +6,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { toAmountString } from '../../catalog/infrastructure/decimal-mapper';
 import { optimizePlan } from '../domain/plan-optimizer';
 import type { OptimizedPlan, OptimizerSettings } from '../domain/optimized-plan.types';
+import type { PlanBenefitContext } from '../domain/plan-benefits';
 import type { PlanCandidates } from '../domain/planner.types';
 import { BuildPlanCandidatesUseCase } from './build-plan-candidates.use-case';
 import type { PlanCandidatesQuery } from './build-plan-candidates.use-case';
@@ -19,7 +20,9 @@ export interface ShoppingPlanComputation {
 /**
  * Calcula el plan de un usuario (P5-02): candidatos de P5-01 más las
  * penalidades y el máximo de sucursales de sus preferencias, optimizados por el
- * dominio puro. No guarda nada: la persistencia y los endpoints son P5-03.
+ * dominio puro. Desde P10-02 cada visita se cobra como una compra con los medios de
+ * pago declarados y lo informado como usado de cada tope (ADR 0023 y 0024). No guarda nada:
+ * la persistencia y los endpoints son P5-03.
  */
 @Injectable()
 export class PlanShoppingUseCase {
@@ -30,11 +33,21 @@ export class PlanShoppingUseCase {
   ) {}
 
   async execute(userId: string, query: PlanCandidatesQuery = {}): Promise<ShoppingPlanComputation> {
-    const candidates = await this.candidates.execute(userId, query);
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { storeVisitPenalty: true, distancePenaltyPerKm: true, maxStoresPerShoppingPlan: true },
-    });
+    const { candidates, promotions } = await this.candidates.executeWithPromotions(userId, query);
+    const [user, usage] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          storeVisitPenalty: true,
+          distancePenaltyPerKm: true,
+          maxStoresPerShoppingPlan: true,
+          paymentMethods: true,
+          banks: true,
+          membershipPrograms: true,
+        },
+      }),
+      this.prisma.benefitCapUsage.findMany({ where: { userId }, select: { capKey: true, periodKey: true, consumed: true } }),
+    ]);
     if (!user) throw new PublicHttpException(401, 'UNAUTHORIZED', 'Necesitás iniciar sesión.');
     const settings: OptimizerSettings = {
       storeVisitPenalty: toAmountString(user.storeVisitPenalty, 2),
@@ -42,6 +55,12 @@ export class PlanShoppingUseCase {
       maxStores: user.maxStoresPerShoppingPlan,
       maxCombinations: this.config.planner.maxCombinations,
     };
-    return { candidates, plan: optimizePlan(candidates, settings) };
+    const benefits: PlanBenefitContext = {
+      rules: promotions,
+      payer: { paymentMethods: user.paymentMethods, banks: user.banks, memberships: user.membershipPrograms },
+      capUsage: usage.map((entry) => ({ capKey: entry.capKey, periodKey: entry.periodKey, consumed: toAmountString(entry.consumed, 2) })),
+      maxEvaluations: this.config.planner.maxBasketEvaluations,
+    };
+    return { candidates, plan: optimizePlan(candidates, settings, benefits) };
   }
 }

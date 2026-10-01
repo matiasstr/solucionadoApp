@@ -133,6 +133,13 @@ class Environment {
   @Max(2000000)
   PLANNER_MAX_COMBINATIONS = 100000;
 
+  // Canastas con beneficios de pago (P10-02, ADR 0024): evaluaciones del motor antes del método aproximado.
+  @Transform(toInt)
+  @IsInt()
+  @Min(1)
+  @Max(50000)
+  PLANNER_MAX_BASKET_EVALUATIONS = 2000;
+
   // Alertas (P9-01, ADR 0022): horas mínimas entre dos avisos de la misma regla. 0 = sin espera.
   @Transform(toInt)
   @IsInt()
@@ -181,6 +188,8 @@ export interface ApiConfig {
     readonly maxOffersPerStore: number;
     /** Combinaciones que evalúa la búsqueda exacta antes de pasar al método aproximado. */
     readonly maxCombinations: number;
+    /** Canastas con beneficios de pago que cobra el motor antes del método aproximado. */
+    readonly maxBasketEvaluations: number;
   };
   readonly alerts: {
     /** Horas mínimas entre dos avisos de la misma regla. */
@@ -220,7 +229,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
     'AUTH_RATE_LIMIT_PER_MINUTE', 'TRUST_PROXY',
     'PRICE_MAX_AGE_DAYS', 'PRICE_SOURCE_PRECEDENCE',
     'PLANNER_MAX_HORIZON_DAYS', 'PLANNER_MAX_CANDIDATE_DATES', 'PLANNER_MAX_CANDIDATE_STORES',
-    'PLANNER_MAX_OFFERS_PER_STORE', 'PLANNER_MAX_COMBINATIONS', 'ALERT_COOLDOWN_HOURS',
+    'PLANNER_MAX_OFFERS_PER_STORE', 'PLANNER_MAX_COMBINATIONS', 'PLANNER_MAX_BASKET_EVALUATIONS', 'ALERT_COOLDOWN_HOURS',
   ]) {
     if (raw[key] !== undefined) input[key] = raw[key];
   }
@@ -272,6 +281,7 @@ export function validateEnvironment(raw: Record<string, unknown>): ApiConfig {
       maxCandidateStores: env.PLANNER_MAX_CANDIDATE_STORES,
       maxOffersPerStore: env.PLANNER_MAX_OFFERS_PER_STORE,
       maxCombinations: env.PLANNER_MAX_COMBINATIONS,
+      maxBasketEvaluations: env.PLANNER_MAX_BASKET_EVALUATIONS,
     }),
     alerts: Object.freeze({ cooldownHours: env.ALERT_COOLDOWN_HOURS }),
   });

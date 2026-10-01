@@ -228,6 +228,13 @@ P5-03 (`ShoppingPlansService`, [ADR 0015](docs/architecture-decisions/0015-saved
 - **Generar es idempotente**: la cabecera `Idempotency-Key` es obligatoria y un reintento devuelve el mismo plan (`200`) en vez de crear otro. Generar no descuenta la despensa.
 - **Estados**: borrador, en uso, hecho y vencido (informado por fecha). Un solo plan en uso por período; marcarlo como hecho no confirma ningún ahorro.
 
+P10-02 ([ADR 0024](docs/architecture-decisions/0024-plan-payment-benefits.md)):
+
+- **Cada visita es una compra** cobrada con el motor de beneficios (ADR 0023), con los medios de pago, bancos y membresías declarados y lo informado como usado de cada tope. Un descuento bancario, una compra mínima o un tope compartido entre visitas cambian qué conviene llevar en cada compra.
+- **Pagar hoy, reintegro y costo final** por visita y en total. La recomendación se decide por el costo después de los reintegros confirmados más las penalidades; el **ahorro estimado nunca incluye reintegros**. Lo condicionado (falta un dato de la persona) se muestra y no se suma.
+- **Canastas exactas acotadas** dentro de `PLANNER_MAX_BASKET_EVALUATIONS` (2.000); si no entran, búsqueda local determinista identificada (`BASKET_BENEFITS_APPROXIMATED`) que nunca es peor que el plan por líneas.
+- Planes viejos (snapshot versión 1) se muestran como se emitieron, sin recalcular.
+
 ## Deploy
 
 La web está publicada en **https://tusofertas.vercel.app** y la API en **https://tusofertas-api.vercel.app** (Vercel, región `gru1`), con la base en Supabase (PostgreSQL + PostGIS) por la integración del Marketplace. La web llama a la API por el mismo origen (`API_ORIGIN`). Las migraciones se aplican en el build de la API; producción **no** tiene dataset DEMO, así que el catálogo está vacío. En Vercel la API usa `TRUST_PROXY=vercel` para que el rate limit cuente por cliente. Comandos de deploy y detalles en [CONTINUAR.md](CONTINUAR.md#deploy-vercel--web--api--supabase-adr-0010) y [ADR 0010](docs/architecture-decisions/0010-api-deploy-vercel-supabase.md).

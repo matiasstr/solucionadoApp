@@ -83,12 +83,12 @@ test('registro del plan: columnas que cumplen los CHECK y líneas con snapshot a
   assert.equal(record.startDate, '2026-09-28');
   assert.equal(record.endDate, '2026-10-04');
   assert.equal(record.baselineMethod, 'SINGLE_STORE_REGULAR_PRICES');
-  assert.equal(record.optimizedCost, plan.totals.productCost);
+  assert.equal(record.optimizedCost, plan.totals.payToday);
   // Los CHECK de la tabla: efectivo = productos + penalidades; ahorro = base − optimizado.
   assert.ok(amount(record.effectiveCost).equals(amount(record.optimizedCost).add(amount(record.storeVisitPenaltyCost)).add(amount(record.distancePenaltyCost))));
   assert.ok(amount(record.estimatedSavings).equals(amount(record.estimatedRegularCost).subtract(amount(record.optimizedCost))));
-  assert.equal(record.inputSnapshot.schemaVersion, 1);
-  assert.equal(record.resultSnapshot.schemaVersion, 1);
+  assert.equal(record.inputSnapshot.schemaVersion, 2);
+  assert.equal(record.resultSnapshot.schemaVersion, 2);
   assert.deepEqual(record.inputSnapshot.candidates.needs.map((entry) => entry.canonicalProductId), ['c-pollo', 'c-aceite']);
 
   const pollo = record.items.find((item) => item.canonicalProductId === 'c-pollo');
@@ -98,7 +98,7 @@ test('registro del plan: columnas que cumplen los CHECK y líneas con snapshot a
   assert.deepEqual([aceite.packageCount, aceite.quantity, aceite.neededQuantity], [4, '3.6', '3'], 'envases enteros con excedente');
   assert.deepEqual(
     [aceite.snapshot.schemaVersion, aceite.snapshot.productName, aceite.snapshot.brand, aceite.snapshot.priceBasis.observedAt],
-    [1, 'Aceite 900 ml', 'Del Sur', '2026-09-27T12:00:00.000Z'],
+    [2, 'Aceite 900 ml', 'Del Sur', '2026-09-27T12:00:00.000Z'],
   );
   for (const item of record.items) {
     assert.ok(amount(item.quantity).compare(amount(item.neededQuantity)) >= 0, 'nunca se compra menos de lo necesario');

@@ -439,7 +439,7 @@ Las columnas que no admiten vacío (`maxTravelDistanceKm`, penalizaciones, lista
 
 ## Planes de compra (privados)
 
-Mismas reglas que rutinas y despensa: `Authorization: Bearer`, `Cache-Control: no-store`, y un plan ajeno responde `404` igual que uno inexistente. Un plan guardado es un **snapshot**: nombres, presentación, precio observado, fuente, fecha y promoción viajan con cada línea, así un precio nuevo o una rutina editada no cambian un plan ya emitido. Los importes son **estimaciones** con los últimos precios observados. Decisiones en [ADR 0013](architecture-decisions/0013-planner-needs-candidates.md) (necesidades y candidatos), [ADR 0014](architecture-decisions/0014-planner-optimizer.md) (optimizador y ahorro) y [ADR 0015](architecture-decisions/0015-saved-plans.md) (persistencia y estados).
+Mismas reglas que rutinas y despensa: `Authorization: Bearer`, `Cache-Control: no-store`, y un plan ajeno responde `404` igual que uno inexistente. Un plan guardado es un **snapshot**: nombres, presentación, precio observado, fuente, fecha y promoción viajan con cada línea, así un precio nuevo o una rutina editada no cambian un plan ya emitido. Los importes son **estimaciones** con los últimos precios observados. Decisiones en [ADR 0013](architecture-decisions/0013-planner-needs-candidates.md) (necesidades y candidatos), [ADR 0014](architecture-decisions/0014-planner-optimizer.md) (optimizador y ahorro) y [ADR 0015](architecture-decisions/0015-saved-plans.md) (persistencia y estados). Desde P10-02 cada visita se cobra como una compra con los medios de pago declarados y los topes informados ([ADR 0024](architecture-decisions/0024-plan-payment-benefits.md)).
 
 | Método y ruta | Cuerpo | Resultado |
 | --- | --- | --- |
@@ -468,27 +468,29 @@ Mismas reglas que rutinas y despensa: `Authorization: Bearer`, `Cache-Control: n
   "unfulfilledCount": 0,
   "optimizedCost": "8485.82",
   "effectiveCost": "8485.82",
-  "estimatedSavings": "214.50"
+  "estimatedSavings": "214.50",
+  "refundEstimated": "0.00"
 }
 ```
 
-`coverage` es `COMPLETE`, `PARTIAL` (hay faltantes) o `EMPTY` (nada que comprar). `estimatedSavings` es `null` cuando no hubo base comparable (ninguna sucursal tenía todo): sin comparación no hay ahorro que mostrar.
+`coverage` es `COMPLETE`, `PARTIAL` (hay faltantes) o `EMPTY` (nada que comprar). `estimatedSavings` es `null` cuando no hubo base comparable (ninguna sucursal tenía todo): sin comparación no hay ahorro que mostrar. `optimizedCost` es lo que se paga en las cajas (con descuentos de pago en caja, sin reintegros). `refundEstimated` (P10-02) es el reintegro estimado, **aparte** del ahorro; `null` en planes generados antes de P10-02, que no se recalculan.
 
 `ShoppingPlanDto` agrega:
 
 | Campo | Contenido |
 | --- | --- |
-| `method` | `EXACT_BOUNDED` (óptimo entre los candidatos evaluados), `HEURISTIC` (se superó el presupuesto de búsqueda) o `NO_CANDIDATES` |
+| `method` | `EXACT_BOUNDED` (óptimo entre los candidatos evaluados), `HEURISTIC` (se superó el presupuesto de búsqueda de visitas o de canastas) o `NO_CANDIDATES` |
 | `optimizerVersion`, `baselineMethod` | Versión del algoritmo y base usada (`SINGLE_STORE_REGULAR_PRICES` o `NONE`) |
 | `location` | `{ origin: COORDINATES \| LOCALITY \| NONE, radiusKm, city, province }` usada al generar |
 | `settings` | Penalidad por visita, por km y máximo de sucursales usados |
-| `totals` | `productCost`, `regularProductCost`, `promotionDiscount`, `visitCount`, `storeCount`, `storeVisitPenaltyCost`, `distancePenaltyCost`, `effectiveCost` y `totalDistanceKm` (`null` si alguna distancia se desconoce) |
-| `savings` | `{ estimatedSavings, effectiveCostDifference, baselineStoreName, baselineProductCost }` o `null`. `estimatedSavings` es solo dinero de productos frente a comprar todo en una sucursal a precio regular, y puede ser negativo; `effectiveCostDifference` incluye penalidades y no es dinero |
-| `schedule` | `[{ date, visits: [{ storeId, storeName, chainName, distanceMeters, roundTripKm, subtotal, lines }] }]`, por fecha y sucursal |
+| `totals` | `productCost` (con promociones del producto), `regularProductCost`, `promotionDiscount`, **`paymentDiscount`** (descuentos de pago en caja), **`payToday`** (`productCost − paymentDiscount`: lo que se paga en las cajas), **`refundEstimated`** (reintegros posteriores), **`costAfterRefund`**, **`conditionalAmount`** (beneficios posibles que dependen de un dato no informado: no sumados), `visitCount`, `storeCount`, `storeVisitPenaltyCost`, `distancePenaltyCost`, `effectiveCost` (`payToday` + penalidades), `effectiveCostAfterRefund` (lo que decide la recomendación) y `totalDistanceKm` (`null` si alguna distancia se desconoce) |
+| `savings` | `{ estimatedSavings, effectiveCostDifference, baselineStoreName, baselineProductCost }` o `null`. `estimatedSavings` es `baselineProductCost − payToday`: dinero que no se paga frente a comprar todo en una sucursal a precio regular; **nunca incluye reintegros** y puede ser negativo. `effectiveCostDifference` incluye penalidades y no es dinero |
+| `schedule` | `[{ date, visits: [{ storeId, storeName, chainName, distanceMeters, roundTripKm, subtotal, paymentDiscount, payToday, refundEstimated, payment, benefitNotes, lines }] }]`, por fecha y sucursal. Cada visita es **una compra**: `payment` es el beneficio de pago aplicado (`promotionId`, `name`, `timing` `IMMEDIATE`/`REFUND`, `refundDelayDays`, `base`, `amount`, `conditions`, `cap`) o `null`; `benefitNotes` lista lo que no se sumó con `status` `CONDITIONAL` (falta un dato: `BANK_NOT_DECLARED`, `CAP_REMAINING_UNKNOWN`, …, con el importe posible), `NOT_ELIGIBLE` (`BANK_NOT_ELIGIBLE`, `MINIMUM_SPEND_NOT_REACHED`, `WEEKDAY_NOT_ELIGIBLE`, `CAP_EXHAUSTED`, …) o `NOT_CHOSEN` (un solo pago por compra). `conditions` trae todo lo de la regla: tipo, porcentaje o monto, medio, banco, membresía, días (`eligibleWeekdays`, ISO 1 = lunes), `minimumSpend`, `discountCap`, `capPeriod`, `timing`, `refundDelayDays` y `stackable` |
+| `benefits` | P10-02. `{ payer: { paymentMethods, banks, memberships, declared }, caps: [{ key, periodKey, limit, consumedOutside, usedHere }], criteria: string[], basketSearch }` o `null` en planes anteriores. `criteria` son los criterios usados, para mostrar tal cual; `basketSearch` es `NOT_NEEDED` (ninguna regla de pago aplicable cambia la suma de líneas), `EXHAUSTIVE` (todas las asignaciones de los candidatos) o `LOCAL_SEARCH` (aproximado, con la limitación `BASKET_BENEFITS_APPROXIMATED`) |
 | `needs` | Cómo se calculó cada necesidad: `grossQuantity`, `netQuantity`, `inventorySubtracted` y `sources` (rutina, ocurrencias, cantidad) |
 | `unfulfilled` | Necesidades sin cubrir con `reason` (`NO_LOCATION`, `NO_PRICE_IN_SCOPE`, `ONLY_STALE_PRICES`, `PREFERRED_PRODUCT_UNAVAILABLE`, `MAX_STORES_LIMIT`, …) |
 | `coveredByInventory` | Lo que la despensa ya cubre |
-| `limitations`, `warnings` | `[{ code, message }]` para mostrar tal cual: precios estimados, distancia en línea recta, recorte de candidatos, promociones no aplicadas, ubicación aproximada o faltante |
+| `limitations`, `warnings` | `[{ code, message }]` para mostrar tal cual: precios estimados, distancia en línea recta, recorte de candidatos, ubicación aproximada o faltante y, desde P10-02, `REFUND_PENDING` (hay reintegros: hoy se paga más), `BENEFITS_CONDITIONAL` (beneficios que dependen de datos no informados) y `BASKET_BENEFITS_APPROXIMATED`. `MINIMUM_SPEND_NOT_EVALUATED` y `PAYMENT_PROMOTIONS_EXCLUDED` solo aparecen en planes anteriores |
 | `prices` | `{ oldestObservedAt, newestObservedAt }` de los precios usados, o `null` |
 
 Cada línea (`PlanLineDto`):
@@ -521,7 +523,9 @@ Cada línea (`PlanLineDto`):
 }
 ```
 
-`price`, `regularPrice` y `discount` son **totales de la línea**. `quantity` es lo que se compra (envases enteros: puede superar la necesidad y `surplus` lo muestra; venta por peso: `packageCount` `null` y `quantityIsEstimate` `true`). `reasonCodes`: `CHEAPEST_EVALUATED`, `CHEAPER_OPTION_NOT_WORTH_IT` (había algo más barato en otra visita que no convenía sumar), `EXACT_PRODUCT_REQUIRED`, `PREFERRED_PRODUCT`, `PROMOTION_APPLIED`. `alternatives.difference` es alternativa − elegida.
+`price`, `regularPrice` y `discount` son **totales de la línea**. `quantity` es lo que se compra (envases enteros: puede superar la necesidad y `surplus` lo muestra; venta por peso: `packageCount` `null` y `quantityIsEstimate` `true`). `reasonCodes`: `CHEAPEST_EVALUATED`, `CHEAPER_OPTION_NOT_WORTH_IT` (había algo más barato en otra visita que no convenía sumar), `EXACT_PRODUCT_REQUIRED`, `PREFERRED_PRODUCT`, `PROMOTION_APPLIED` y `BASKET_BENEFIT_CHOICE` (P10-02: más cara que otra opción del plan, pero llevarla en esta compra suma al beneficio de pago o alcanza su mínimo). `alternatives.difference` es alternativa − elegida. Con beneficios de pago, `price`/`regularPrice`/`discount` son los del motor (promoción del producto); el pago se informa por visita, no por línea.
+
+**Planes viejos.** Los snapshots `schemaVersion: 1` (antes de P10-02) se leen tal cual: `payToday` = `productCost`, sin reintegros, `payment: null`, `benefitNotes: []` y `benefits: null`. Nada se recalcula.
 
 ## Resumen (privado)
 

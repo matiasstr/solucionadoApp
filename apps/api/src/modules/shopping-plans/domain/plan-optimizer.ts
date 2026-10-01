@@ -18,13 +18,21 @@
  * El orden es lexicográfico: primero cubrir la mayor cantidad de necesidades,
  * después el menor costo efectivo, menos visitas, menos km y, por último, el id.
  * Importes internos en enteros de 1e-5 ARS: nunca `number` binario para dinero.
+ *
+ * P10-02 (ADR 0024): con un contexto de beneficios (reglas, preferencias declaradas y topes
+ * informados) cada visita se cobra como una compra con el motor de ADR 0023. Si ninguna regla
+ * cambia el costo de la suma de líneas, el resultado es el de arriba; si alguna lo cambia, la
+ * canasta se busca en `plan-benefits.ts` y los importes salen del motor.
  */
 import { DecimalValue } from '../../catalog/domain/decimal';
+import type { BenefitEngineResult, BenefitEvaluation, PurchaseResult } from '../../promotions/domain/benefit-engine';
+import type { PaymentMethod, PromotionRule } from '../../promotions/domain/promotion.types';
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import { compareText } from './needs';
 import { OPTIMIZER_VERSION } from './optimized-plan.types';
 import type {
   BaselineUnavailableReason,
+  BenefitConditions,
   CoveredByInventory,
   LineAlternative,
   LineReasonCode,
@@ -32,13 +40,18 @@ import type {
   OptimizedPlan,
   OptimizerSettings,
   PlanBaseline,
+  PlanBenefitNote,
+  PlanBenefitsSummary,
   PlanCoverage,
   PlanLimitation,
   PlanLine,
   PlanTotals,
   PlanVisit,
+  SearchSummary,
   UnfulfilledNeed,
 } from './optimized-plan.types';
+import { BasketEvaluator, costRelevantRules, purchaseIdOf, searchBaskets } from './plan-benefits';
+import type { BasketStore, PlanBenefitContext } from './plan-benefits';
 import type {
   CandidateDateOption,
   CandidateOffer,
@@ -352,9 +365,28 @@ function optionsOf(entry: ResolvedNeed): Choice[] {
   return [...bestByOffer.values()].sort(compareChoices);
 }
 
-function buildLine(entry: ResolvedNeed, choice: Choice): PlanLine {
+/** Cada oferta en cada fecha evaluada: el espacio completo de la canasta con beneficios. */
+function allChoicesOf(entry: ResolvedNeed, storeIds: ReadonlySet<string>, dates: ReadonlySet<CalendarDate>): Choice[] {
+  return entry.candidates.offers
+    .filter((offer) => storeIds.has(offer.storeId))
+    .flatMap((offer) =>
+      offer.dateOptions.filter((option) => dates.has(option.date)).map((option) => ({ offer, option, total: units(option.total) })),
+    )
+    .sort(compareChoices);
+}
+
+/** Importes de una línea cobrada por el motor (P10-02) en lugar de `priceLine`. */
+interface PricedLine {
+  readonly regularTotal: string;
+  readonly total: string;
+  readonly discount: string;
+  readonly promotion: { readonly id: string; readonly name: string } | null;
+}
+
+function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | null, basketChoice: boolean): PlanLine {
   const { need } = entry;
   const { offer, option } = choice;
+  const total = priced ? units(priced.total) : choice.total;
   const alternatives: LineAlternative[] = optionsOf(entry)
     .filter((candidate) => !(candidate.offer.id === offer.id && candidate.option.date === option.date))
     .slice(0, MAX_ALTERNATIVES)
@@ -364,12 +396,17 @@ function buildLine(entry: ResolvedNeed, choice: Choice): PlanLine {
       storeName: candidate.offer.storeName,
       date: candidate.option.date,
       total: candidate.option.total,
-      difference: moneyOf(candidate.total - choice.total),
+      difference: moneyOf(candidate.total - total),
     }));
   const cheaper = alternatives.find((alternative) => DecimalValue.parse(alternative.difference).isNegative());
-  const promotion = option.appliedPromotionId
+  const linePromotion = option.appliedPromotionId
     ? option.promotions.find((check) => check.promotionId === option.appliedPromotionId) ?? null
     : null;
+  const promotion = priced
+    ? priced.promotion
+    : linePromotion
+      ? { id: linePromotion.promotionId, name: linePromotion.name }
+      : null;
 
   const codes: LineReasonCode[] = [cheaper ? 'CHEAPER_OPTION_NOT_WORTH_IT' : 'CHEAPEST_EVALUATED'];
   const sentences = [
@@ -377,6 +414,10 @@ function buildLine(entry: ResolvedNeed, choice: Choice): PlanLine {
       ? `En ${cheaper.storeName} el ${formatDate(cheaper.date)} cuesta ${formatArs(DecimalValue.parse(cheaper.difference))} menos, pero sumar esa visita no conviene o supera tu máximo de sucursales.`
       : 'Es la opción más barata entre las sucursales y fechas evaluadas.',
   ];
+  if (basketChoice) {
+    codes.push('BASKET_BENEFIT_CHOICE');
+    sentences.push('Hay una opción más barata en otra compra del plan, pero llevarlo en esta suma al beneficio de pago o al mínimo de esta compra.');
+  }
   if (need.constraints.requiredProductId === offer.productId) {
     codes.push('EXACT_PRODUCT_REQUIRED');
     sentences.push('Es la presentación que pediste, sin reemplazos.');
@@ -405,28 +446,82 @@ function buildLine(entry: ResolvedNeed, choice: Choice): PlanLine {
     matchType: offer.matchType,
     purchase: offer.purchase,
     priceBasis: offer.priceBasis,
-    regularTotal: offer.regularTotal,
-    total: option.total,
-    discount: option.discount,
-    promotion: promotion ? { id: promotion.promotionId, name: promotion.name } : null,
+    regularTotal: priced ? priced.regularTotal : offer.regularTotal,
+    total: priced ? priced.total : option.total,
+    discount: priced ? priced.discount : option.discount,
+    promotion,
     reasonCodes: codes,
     reason: sentences.join(' '),
     alternatives,
   };
 }
 
-function buildVisits(lines: readonly PlanLine[], stores: readonly StoreEntry[]): PlanVisit[] {
+/** Condiciones de una regla tal como se muestran: nada de la regla queda oculto. */
+export function conditionsOf(rule: PromotionRule): BenefitConditions {
+  return {
+    type: rule.type,
+    discountPercentage: rule.discountPercentage,
+    discountAmount: rule.discountAmount,
+    paymentMethod: rule.paymentMethod,
+    bank: rule.bank,
+    membershipProgram: rule.membershipProgram,
+    eligibleWeekdays: [...rule.eligibleWeekdays],
+    minimumSpend: rule.minimumSpend,
+    discountCap: rule.discountCap,
+    capPeriod: rule.capPeriod,
+    timing: rule.benefitTiming,
+    refundDelayDays: rule.refundDelayDays,
+    stackable: rule.isStackable,
+  };
+}
+
+/** Lo que el motor dijo de una compra: el pago aplicado y lo que no se sumó, con su motivo. */
+interface PurchaseBenefits {
+  readonly result: PurchaseResult;
+  readonly evaluations: readonly BenefitEvaluation[];
+}
+
+function buildVisits(
+  lines: readonly PlanLine[],
+  stores: readonly StoreEntry[],
+  purchases: ReadonlyMap<string, PurchaseBenefits> | null,
+  rulesById: ReadonlyMap<string, PromotionRule>,
+): PlanVisit[] {
   const byId = new Map(stores.map((store) => [store.summary.id, store]));
   const grouped = new Map<string, PlanLine[]>();
   for (const line of lines) {
-    const key = `${line.date}|${line.storeId}`;
+    const key = purchaseIdOf(line.date, line.storeId);
     grouped.set(key, [...(grouped.get(key) ?? []), line]);
   }
   return [...grouped.entries()]
     .sort(([a], [b]) => compareText(a, b))
-    .map(([, visitLines]) => {
+    .map(([key, visitLines]) => {
       const first = visitLines[0] as PlanLine;
       const store = byId.get(first.storeId) as StoreEntry;
+      const subtotal = visitLines.reduce((sum, line) => sum + units(line.total), 0n);
+      const benefits = purchases?.get(key) ?? null;
+      const applied = benefits?.evaluations.find((evaluation) => evaluation.layer === 'PAYMENT' && evaluation.status === 'APPLIED') ?? null;
+      const payment = benefits?.result.payment ?? null;
+      const rule = payment ? rulesById.get(payment.promotionId) : undefined;
+      const notes: PlanBenefitNote[] = [];
+      for (const evaluation of benefits?.evaluations ?? []) {
+        const noteRule = rulesById.get(evaluation.promotionId);
+        if (!noteRule || evaluation.status === 'APPLIED') continue;
+        // De la capa de producto solo importa lo condicionado: el resto ya explica la línea.
+        if (evaluation.layer === 'PRODUCT' && evaluation.status !== 'CONDITIONAL') continue;
+        notes.push({
+          promotionId: evaluation.promotionId,
+          name: evaluation.name,
+          layer: evaluation.layer,
+          canonicalProductId: evaluation.layer === 'PRODUCT' ? evaluation.lineId : null,
+          status: evaluation.status,
+          reason: evaluation.reason,
+          amount: evaluation.amount,
+          conditions: conditionsOf(noteRule),
+          cap: evaluation.cap,
+        });
+      }
+      const paymentDiscount = benefits ? units(benefits.result.paymentDiscount) : 0n;
       return {
         storeId: first.storeId,
         storeName: first.storeName,
@@ -435,19 +530,45 @@ function buildVisits(lines: readonly PlanLine[], stores: readonly StoreEntry[]):
         distanceMeters: store.summary.distanceMeters,
         roundTripKm: store.roundTripKm ? store.roundTripKm.toFixed(KM_SCALE) : null,
         lineCount: visitLines.length,
-        subtotal: moneyOf(visitLines.reduce((sum, line) => sum + units(line.total), 0n)),
+        subtotal: moneyOf(subtotal),
+        paymentDiscount: moneyOf(paymentDiscount),
+        payToday: moneyOf(subtotal - paymentDiscount),
+        refundEstimated: benefits ? benefits.result.refundEstimated : '0.00',
+        payment: payment && rule
+          ? {
+              promotionId: payment.promotionId,
+              name: payment.name,
+              timing: payment.timing,
+              refundDelayDays: payment.refundDelayDays,
+              base: payment.base,
+              amount: payment.amount,
+              conditions: conditionsOf(rule),
+              cap: applied?.cap ?? null,
+            }
+          : null,
+        benefitNotes: notes,
       };
     });
 }
 
-function buildTotals(lines: readonly PlanLine[], visits: readonly PlanVisit[], stores: readonly StoreEntry[], settings: OptimizerSettings): PlanTotals {
+function buildTotals(
+  lines: readonly PlanLine[],
+  visits: readonly PlanVisit[],
+  stores: readonly StoreEntry[],
+  settings: OptimizerSettings,
+  conditionalAmount: string,
+): PlanTotals {
   const byId = new Map(stores.map((store) => [store.summary.id, store]));
   const product = lines.reduce((sum, line) => sum + units(line.total), 0n);
   const regular = lines.reduce((sum, line) => sum + units(line.regularTotal), 0n);
+  const payment = visits.reduce((sum, visit) => sum + units(visit.paymentDiscount), 0n);
+  const refund = visits.reduce((sum, visit) => sum + units(visit.refundEstimated), 0n);
   const visitPenalty = units(settings.storeVisitPenalty) * BigInt(visits.length);
   const distancePenalty = visits.reduce((sum, visit) => sum + (byId.get(visit.storeId)?.distancePenalty ?? 0n), 0n);
   // Cada componente se redondea una vez a centavos y el efectivo es su suma: cierra con el CHECK de la tabla.
   const productCost = decimalOf(product).round(MONEY_SCALE);
+  const payToday = decimalOf(product - payment).round(MONEY_SCALE);
+  const costAfterRefund = decimalOf(product - payment - refund).round(MONEY_SCALE);
   const visitCost = decimalOf(visitPenalty).round(MONEY_SCALE);
   const distanceCost = decimalOf(distancePenalty).round(MONEY_SCALE);
   const allKnown = visits.every((visit) => visit.roundTripKm !== null);
@@ -456,11 +577,17 @@ function buildTotals(lines: readonly PlanLine[], visits: readonly PlanVisit[], s
     productCost: productCost.toFixed(MONEY_SCALE),
     regularProductCost: moneyOf(regular),
     promotionDiscount: moneyOf(regular - product),
+    paymentDiscount: moneyOf(payment),
+    payToday: payToday.toFixed(MONEY_SCALE),
+    refundEstimated: moneyOf(refund),
+    costAfterRefund: costAfterRefund.toFixed(MONEY_SCALE),
+    conditionalAmount,
     visitCount: visits.length,
     storeCount: new Set(visits.map((visit) => visit.storeId)).size,
     storeVisitPenaltyCost: visitCost.toFixed(MONEY_SCALE),
     distancePenaltyCost: distanceCost.toFixed(MONEY_SCALE),
-    effectiveCost: productCost.add(visitCost).add(distanceCost).toFixed(MONEY_SCALE),
+    effectiveCost: payToday.add(visitCost).add(distanceCost).toFixed(MONEY_SCALE),
+    effectiveCostAfterRefund: costAfterRefund.add(visitCost).add(distanceCost).toFixed(MONEY_SCALE),
     totalDistanceKm: visits.length && allKnown ? km.toFixed(KM_SCALE) : null,
   };
 }
@@ -518,13 +645,21 @@ function buildBaseline(
   };
 }
 
+interface SearchOutcome {
+  readonly method: OptimizationMethod;
+  /** El presupuesto obligó a achicar la búsqueda de visitas o de canastas. */
+  readonly budgetExceeded: boolean;
+  readonly basketSearch: SearchSummary['basketSearch'];
+}
+
 function buildLimitations(
   input: PlanCandidates,
-  method: OptimizationMethod,
+  outcome: SearchOutcome,
   lines: readonly PlanLine[],
   visits: readonly PlanVisit[],
   coverage: PlanCoverage,
   baseline: PlanBaseline | null,
+  totals: PlanTotals,
   chosen: readonly Choice[],
 ): PlanLimitation[] {
   const limitations: PlanLimitation[] = [];
@@ -545,25 +680,80 @@ function buildLimitations(
   if (trimmed) {
     add('CANDIDATES_TRIMMED', 'Se evaluó un conjunto acotado de sucursales, ofertas y fechas: puede haber opciones fuera de él.');
   }
-  if (method === 'HEURISTIC') {
+  if (outcome.budgetExceeded) {
     add('SEARCH_BUDGET_EXCEEDED', 'Había demasiadas combinaciones para revisarlas todas: el plan es una buena opción, no necesariamente la mejor.');
+  }
+  if (outcome.basketSearch === 'LOCAL_SEARCH') {
+    add('BASKET_BENEFITS_APPROXIMATED', 'Los beneficios que dependen del total de cada compra se evaluaron sobre las combinaciones más prometedoras: puede existir una mejor.');
   }
   if (coverage === 'PARTIAL') add('PARTIAL_PLAN', 'Hay productos que no pudimos incluir: figuran como faltantes.');
   if (!baseline && lines.length) {
     add('NO_BASELINE', 'Ninguna sucursal tiene todos los productos del plan: no hay con qué comparar y no mostramos ahorro.');
   }
-  const skipped = new Set(chosen.flatMap((choice) => choice.option.promotions.map((check) => check.skipReason)));
-  if (skipped.has('MINIMUM_SPEND_UNKNOWN')) {
-    add('MINIMUM_SPEND_NOT_EVALUATED', 'Las promociones con mínimo de compra no se aplicaron: no están incluidas en los importes.');
+  if (outcome.basketSearch === null) {
+    // Sin evaluación por canasta: lo que depende de la compra entera o de la persona no se aplicó.
+    const skipped = new Set(chosen.flatMap((choice) => choice.option.promotions.map((check) => check.skipReason)));
+    if (skipped.has('MINIMUM_SPEND_UNKNOWN')) {
+      add('MINIMUM_SPEND_NOT_EVALUATED', 'Las promociones con mínimo de compra no se aplicaron: no están incluidas en los importes.');
+    }
+    if (skipped.has('PAYMENT_CONDITIONED') || skipped.has('MEMBERSHIP_CONDITIONED')) {
+      add('PAYMENT_PROMOTIONS_EXCLUDED', 'Las promociones con banco, medio de pago o membresía no se aplicaron.');
+    }
+    return limitations;
   }
-  if (skipped.has('PAYMENT_CONDITIONED') || skipped.has('MEMBERSHIP_CONDITIONED')) {
-    add('PAYMENT_PROMOTIONS_EXCLUDED', 'Las promociones con banco, medio de pago o membresía no se aplicaron.');
+  if (DecimalValue.parse(totals.refundEstimated).isPositive()) {
+    add(
+      'REFUND_PENDING',
+      `Incluye reintegros estimados por ${formatArs(DecimalValue.parse(totals.refundEstimated))}: en las cajas pagás ${formatArs(DecimalValue.parse(totals.payToday))} y el reintegro llega después. No se cuenta como ahorro.`,
+    );
+  }
+  if (DecimalValue.parse(totals.conditionalAmount).isPositive()) {
+    add(
+      'BENEFITS_CONDITIONAL',
+      `Hay beneficios que dependen de datos que no informaste (banco, medio de pago, membresía o lo usado de un tope): podrías ahorrar hasta ${formatArs(DecimalValue.parse(totals.conditionalAmount))} más, pero no está sumado.`,
+    );
   }
   return limitations;
 }
 
-export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings): OptimizedPlan {
+const PAYMENT_METHOD_LABELS: Readonly<Record<PaymentMethod, string>> = {
+  CASH: 'efectivo',
+  DEBIT_CARD: 'débito',
+  CREDIT_CARD: 'crédito',
+  TRANSFER: 'transferencia',
+  WALLET: 'billetera virtual',
+};
+
+function buildBenefitsSummary(context: PlanBenefitContext, engine: BenefitEngineResult | null): PlanBenefitsSummary {
+  const { payer } = context;
+  const declared = payer.paymentMethods.length + payer.banks.length + payer.memberships.length > 0;
+  const caps = engine?.caps ?? [];
+  const parts = [
+    payer.paymentMethods.length ? `medios de pago: ${payer.paymentMethods.map((method) => PAYMENT_METHOD_LABELS[method]).join(', ')}` : null,
+    payer.banks.length ? `bancos y billeteras: ${payer.banks.join(', ')}` : null,
+    payer.memberships.length ? `membresías: ${payer.memberships.join(', ')}` : null,
+  ].filter((part): part is string => part !== null);
+  const criteria = [
+    declared
+      ? `Usamos lo que declaraste en Preferencias (${parts.join('; ')}). Lo que no declaraste queda como condicionado y no se suma.`
+      : 'No declaraste medios de pago, bancos ni membresías: los beneficios que dependen de eso figuran como condicionados y no se suman.',
+    'Cada visita es una compra: se aplica un solo beneficio de pago, sobre los productos sin otra promoción (salvo que las dos sean acumulables).',
+    'El plan elige las compras por lo que pagás después de los reintegros confirmados, más las penalidades de visitas y distancia. El ahorro estimado no incluye reintegros.',
+  ];
+  if (caps.some((cap) => !cap.periodKey.startsWith('purchase:'))) {
+    criteria.push('Los topes por semana, mes o campaña se cuentan entre todas las compras del plan, en orden de fecha.');
+  }
+  if (caps.some((cap) => cap.consumedOutside === null)) {
+    criteria.push('Sin lo que ya usaste de un tope en el período, ese beneficio queda condicionado: podés informarlo en Preferencias.');
+  }
+  return { payer: { ...payer, declared }, caps, criteria };
+}
+
+export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings, benefits?: PlanBenefitContext): OptimizedPlan {
   assertSettings(settings);
+  if (benefits && (!Number.isInteger(benefits.maxEvaluations) || benefits.maxEvaluations < 1)) {
+    throw new RangeError('maxEvaluations debe ser un entero positivo.');
+  }
   const needsById = new Map(input.needs.map((need) => [need.canonicalProductId, need]));
   const resolved: ResolvedNeed[] = input.candidates.needs
     .filter((candidates) => candidates.offers.length > 0)
@@ -591,6 +781,70 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings)
     }
   }
 
+  // Canasta por visita con el motor de beneficios (P10-02).
+  let assignment: readonly (Choice | null)[] = resolved.map((_, index) => best?.choices[index] ?? null);
+  let engine: BenefitEngineResult | null = null;
+  let outcome: SearchOutcome = { method, budgetExceeded: method === 'HEURISTIC', basketSearch: null };
+  let basketEvaluations = 0;
+  if (benefits && best) {
+    const stores: BasketStore[] = search.stores.map((store) => ({
+      id: store.summary.id,
+      chainId: store.summary.chainId,
+      visitCost: store.visitCost,
+      kmUnits: store.roundTripKm ? units(store.roundTripKm) : 0n,
+    }));
+    const needIds = resolved.map((entry) => entry.need.canonicalProductId);
+    if (!costRelevantRules(benefits.rules, benefits.payer).length) {
+      // Ninguna regla cambia la suma de líneas: el plan de arriba es el de la canasta.
+      engine = new BasketEvaluator(stores, benefits).evaluate(assignment, needIds).result;
+      basketEvaluations = 1;
+      outcome = { ...outcome, basketSearch: 'NOT_NEEDED' };
+    } else {
+      const storeIds = new Set(stores.map((store) => store.id));
+      const dates = new Set(input.candidates.dates.evaluated);
+      const found = searchBaskets({
+        needIds,
+        options: resolved.map((entry) => allChoicesOf(entry, storeIds, dates)),
+        stores,
+        dates: input.candidates.dates.evaluated,
+        maxStores: search.maxStores,
+        seed: assignment,
+        context: benefits,
+      });
+      assignment = found.best.choices as readonly (Choice | null)[];
+      engine = found.best.result;
+      basketEvaluations = found.evaluations;
+      outcome = found.method === 'EXHAUSTIVE'
+        ? { method: 'EXACT_BOUNDED', budgetExceeded: false, basketSearch: 'EXHAUSTIVE' }
+        : { method: 'HEURISTIC', budgetExceeded: method === 'HEURISTIC' || found.budgetExceeded, basketSearch: 'LOCAL_SEARCH' };
+    }
+  } else if (benefits) {
+    outcome = { ...outcome, basketSearch: 'NOT_NEEDED' };
+  }
+
+  const rulesById = new Map((benefits?.rules ?? []).map((rule) => [rule.id, rule]));
+  const purchases = engine
+    ? new Map(
+        engine.purchases.map((result) => [
+          result.purchaseId,
+          { result, evaluations: (engine as BenefitEngineResult).evaluations.filter((evaluation) => evaluation.purchaseId === result.purchaseId) },
+        ]),
+      )
+    : null;
+  const pricedLine = (choice: Choice, canonicalProductId: string): PricedLine | null => {
+    const purchase = purchases?.get(purchaseIdOf(choice.option.date, choice.offer.storeId));
+    const line = purchase?.result.lines.find((entry) => entry.lineId === canonicalProductId);
+    if (!line) return null;
+    const rule = line.productPromotionId ? rulesById.get(line.productPromotionId) : undefined;
+    return {
+      regularTotal: line.regularTotal,
+      total: line.total,
+      discount: line.productDiscount,
+      promotion: line.productPromotionId ? { id: line.productPromotionId, name: rule?.name ?? line.productPromotionId } : null,
+    };
+  };
+  const planVisits = new Set(assignment.flatMap((choice) => (choice ? [purchaseIdOf(choice.option.date, choice.offer.storeId)] : [])));
+
   const chosen: Choice[] = [];
   const lines: PlanLine[] = [];
   const unfulfilled: UnfulfilledNeed[] = [];
@@ -607,17 +861,23 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings)
     const need = needsById.get(candidates.canonicalProductId);
     if (!need) continue;
     const index = resolvedIndex.get(candidates.canonicalProductId);
-    const choice = index === undefined ? null : best?.choices[index] ?? null;
+    const choice = index === undefined ? null : assignment[index] ?? null;
     if (choice && index !== undefined) {
+      const entry = resolved[index] as ResolvedNeed;
+      // Más cara que otra opción de las mismas visitas del plan: la eligió la canasta, no la línea.
+      const basketChoice = outcome.basketSearch !== null && outcome.basketSearch !== 'NOT_NEEDED' &&
+        entry.candidates.offers.some((offer) =>
+          offer.dateOptions.some((option) => planVisits.has(purchaseIdOf(option.date, offer.storeId)) && units(option.total) < choice.total),
+        );
       chosen.push(choice);
-      lines.push(buildLine(resolved[index] as ResolvedNeed, choice));
+      lines.push(buildLine(entry, choice, pricedLine(choice, need.canonicalProductId), basketChoice));
     } else {
       unfulfill(need, candidates.unresolvedReason ?? 'MAX_STORES_LIMIT');
     }
   }
 
-  const visits = buildVisits(lines, search.stores);
-  const totals = buildTotals(lines, visits, search.stores, settings);
+  const visits = buildVisits(lines, search.stores, purchases, rulesById);
+  const totals = buildTotals(lines, visits, search.stores, settings, engine?.totals.conditionalAmount ?? '0.00');
   const toBuy = input.needs.filter((need) => need.status !== 'COVERED_BY_INVENTORY');
   const coverage: PlanCoverage = !toBuy.length ? 'EMPTY' : unfulfilled.length ? 'PARTIAL' : 'COMPLETE';
   const baseline = lines.length ? buildBaseline(lines, resolved, search.stores, settings) : null;
@@ -642,12 +902,15 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings)
     settings,
     locationOrigin: input.scope.origin,
     search: {
-      method,
+      method: outcome.method,
       exactCombinations,
       evaluatedCombinations: search.evaluated,
       maxCombinations: settings.maxCombinations,
       storesConsidered: search.stores.length,
       datesPerStore: Object.fromEntries(search.stores.map((store) => [store.summary.id, [...store.dates]])),
+      basketSearch: outcome.basketSearch,
+      basketEvaluations,
+      maxBasketEvaluations: benefits?.maxEvaluations ?? null,
     },
     lines,
     visits,
@@ -656,7 +919,8 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings)
     baselineUnavailableReason,
     savings: baseline
       ? {
-          estimatedSavings: DecimalValue.parse(baseline.productCost).subtract(DecimalValue.parse(totals.productCost)).toFixed(MONEY_SCALE),
+          // Solo lo que no se paga en la caja: los reintegros no son ahorro (ADR 0024).
+          estimatedSavings: DecimalValue.parse(baseline.productCost).subtract(DecimalValue.parse(totals.payToday)).toFixed(MONEY_SCALE),
           effectiveCostDifference: DecimalValue.parse(baseline.effectiveCost)
             .subtract(DecimalValue.parse(totals.effectiveCost))
             .toFixed(MONEY_SCALE),
@@ -664,6 +928,7 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings)
       : null,
     unfulfilled,
     coveredByInventory,
-    limitations: buildLimitations(input, method, lines, visits, coverage, baseline, chosen),
+    limitations: buildLimitations(input, outcome, lines, visits, coverage, baseline, totals, chosen),
+    benefits: benefits ? buildBenefitsSummary(benefits, engine) : null,
   };
 }
