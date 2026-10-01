@@ -139,12 +139,65 @@ export interface AnalysisInput {
 }
 
 /**
+ * Resumen de los cierres diarios de la ventana base: todo lo que la clasificación necesita.
+ * Se calcula acá desde las observaciones o directamente en SQL (`findCurrentWithWindowStats`)
+ * cuando hay demasiadas series para traerlas a memoria; las dos vías clasifican igual.
+ */
+export interface WindowStats {
+  readonly daysWithData: number;
+  /** Observaciones de los días con cierre (un día puede tener varias). */
+  readonly observations: number;
+  /** Suma exacta de los cierres, precio por unidad base. */
+  readonly sum: string;
+  readonly lowest: string;
+  /** Último día en que se vio el mínimo. */
+  readonly lowestDate: CalendarDate;
+  readonly highest: string;
+}
+
+/** Los 30 días anteriores al día del precio actual. */
+export function baseWindowOf(currentDate: CalendarDate): { readonly from: CalendarDate; readonly to: CalendarDate } {
+  return { from: shiftDate(currentDate, -ANALYSIS_WINDOW_DAYS), to: shiftDate(currentDate, -1) };
+}
+
+/** Cierres de la ventana (del más viejo al más nuevo) resumidos; null si no hay ninguno. */
+export function summarizeCloses(closes: readonly DailyClose[]): WindowStats | null {
+  if (!closes.length) return null;
+  const prices = closes.map((close) => DecimalValue.parse(close.unitPrice));
+  const sum = prices.reduce((total, value) => total.add(value), DecimalValue.zero(UNIT_PRICE_SCALE));
+  let lowestIndex = 0;
+  let highest = prices[0] as DecimalValue;
+  for (const [index, value] of prices.entries()) {
+    // `<=`: ante empate queda el día más reciente con ese mínimo.
+    if (value.compare(prices[lowestIndex] as DecimalValue) <= 0) lowestIndex = index;
+    if (value.compare(highest) > 0) highest = value;
+  }
+  return {
+    daysWithData: closes.length,
+    observations: closes.reduce((total, close) => total + close.observations, 0),
+    sum: sum.toFixed(UNIT_PRICE_SCALE),
+    lowest: (prices[lowestIndex] as DecimalValue).toFixed(UNIT_PRICE_SCALE),
+    lowestDate: (closes[lowestIndex] as DailyClose).date,
+    highest: highest.toFixed(UNIT_PRICE_SCALE),
+  };
+}
+
+export interface ClassificationInput {
+  /** El precio actual de la serie (su última observación). */
+  readonly latest: Pick<SeriesObservation, 'price' | 'unitPrice' | 'observedAt'> | null;
+  /** Resumen de la ventana base de **ese** precio actual; null si no hubo cierres. */
+  readonly stats: WindowStats | null;
+  readonly now: Date;
+  readonly maxAgeDays: number;
+}
+
+/**
  * Precedencia estable de la clasificación: sin precio → `INSUFFICIENT_DATA`;
  * precio viejo → `STALE`; menos de 7 días con dato → `INSUFFICIENT_DATA`;
  * por debajo del mínimo de la ventana → `HISTORIC_LOW` (igualarlo no alcanza);
  * `< 85 %` del promedio → `GOOD_DEAL`; `> 115 %` → `EXPENSIVE`; si no, `NORMAL`.
  */
-export function analyzeSeries(input: AnalysisInput): PriceAnalysis {
+export function classifyCurrentPrice(input: ClassificationInput): PriceAnalysis {
   const empty: PriceAnalysis = {
     classification: 'INSUFFICIENT_DATA',
     current: null,
@@ -168,34 +221,22 @@ export function analyzeSeries(input: AnalysisInput): PriceAnalysis {
     isStale: ageDays > input.maxAgeDays,
   };
 
-  const from = shiftDate(currentDate, -ANALYSIS_WINDOW_DAYS);
-  const to = shiftDate(currentDate, -1);
-  const base = dailyCloses(input.observations).filter((close) => close.date >= from && close.date <= to);
+  const { stats } = input;
   const baseWindow = {
-    from,
-    to,
+    ...baseWindowOf(currentDate),
     days: ANALYSIS_WINDOW_DAYS,
-    daysWithData: base.length,
-    observations: base.reduce((total, close) => total + close.observations, 0),
+    daysWithData: stats?.daysWithData ?? 0,
+    observations: stats?.observations ?? 0,
   };
-  if (!base.length) return { ...empty, current, baseWindow, classification: current.isStale ? 'STALE' : 'INSUFFICIENT_DATA' };
+  if (!stats) return { ...empty, current, baseWindow, classification: current.isStale ? 'STALE' : 'INSUFFICIENT_DATA' };
 
-  const prices = base.map((close) => DecimalValue.parse(close.unitPrice));
-  const sum = prices.reduce((total, value) => total.add(value), DecimalValue.zero(UNIT_PRICE_SCALE));
-  const average = sum.divide(DecimalValue.parse(String(prices.length)), UNIT_PRICE_SCALE);
-  let lowestIndex = 0;
-  let highest = prices[0] as DecimalValue;
-  for (const [index, value] of prices.entries()) {
-    // `<=`: ante empate queda el día más reciente con ese mínimo.
-    if (value.compare(prices[lowestIndex] as DecimalValue) <= 0) lowestIndex = index;
-    if (value.compare(highest) > 0) highest = value;
-  }
-  const lowest = prices[lowestIndex] as DecimalValue;
+  const average = DecimalValue.parse(stats.sum).divide(DecimalValue.parse(String(stats.daysWithData)), UNIT_PRICE_SCALE);
+  const lowest = DecimalValue.parse(stats.lowest);
   const currentUnit = DecimalValue.parse(current.unitPrice);
 
   let classification: PriceClassification;
   if (current.isStale) classification = 'STALE';
-  else if (base.length < MIN_DAYS_WITH_DATA) classification = 'INSUFFICIENT_DATA';
+  else if (stats.daysWithData < MIN_DAYS_WITH_DATA) classification = 'INSUFFICIENT_DATA';
   else if (currentUnit.compare(lowest) < 0) classification = 'HISTORIC_LOW';
   // Comparaciones exactas: actual × 1 contra promedio × umbral, sin redondear el umbral.
   else if (currentUnit.compare(average.multiply(DecimalValue.parse(GOOD_DEAL_RATIO))) < 0) classification = 'GOOD_DEAL';
@@ -208,8 +249,16 @@ export function analyzeSeries(input: AnalysisInput): PriceAnalysis {
     baseWindow,
     average: average.toFixed(UNIT_PRICE_SCALE),
     lowest: lowest.toFixed(UNIT_PRICE_SCALE),
-    lowestDate: (base[lowestIndex] as DailyClose).date,
-    highest: highest.toFixed(UNIT_PRICE_SCALE),
+    lowestDate: stats.lowestDate,
+    highest: DecimalValue.parse(stats.highest).toFixed(UNIT_PRICE_SCALE),
     ratioToAverage: average.isZero() ? null : currentUnit.divide(average, RATIO_SCALE).toFixed(RATIO_SCALE),
   };
+}
+
+/** Análisis de una serie desde sus observaciones (ADR 0016): cierres diarios, resumen y clasificación. */
+export function analyzeSeries(input: AnalysisInput): PriceAnalysis {
+  if (!input.latest) return classifyCurrentPrice({ latest: null, stats: null, now: input.now, maxAgeDays: input.maxAgeDays });
+  const { from, to } = baseWindowOf(argentineDate(input.latest.observedAt));
+  const base = dailyCloses(input.observations).filter((close) => close.date >= from && close.date <= to);
+  return classifyCurrentPrice({ latest: input.latest, stats: summarizeCloses(base), now: input.now, maxAgeDays: input.maxAgeDays });
 }

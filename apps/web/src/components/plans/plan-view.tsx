@@ -1,9 +1,12 @@
 'use client';
 
 import type {
+  PlanBenefitNoteDto,
+  PlanBenefitsSummaryDto,
   PlanLineDto,
   PlanNoticeDto,
   PlanScheduleDayDto,
+  PlanScheduleVisitDto,
   ShoppingPlanDto,
   ShoppingPlanStatus,
   ShoppingPlanSummaryDto,
@@ -13,6 +16,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../lib/api';
 import { useProfile, useRoutines } from '../../lib/account/queries';
+import {
+  formatBenefitReason,
+  formatCapPeriodKey,
+  formatConditions,
+  isFixableInPreferences,
+} from '../../lib/benefits/format';
 import { formatArs, formatDate, formatQuantity } from '../../lib/format';
 import { useGeneratePlan, usePlan, usePlans, useUpdatePlanStatus } from '../../lib/plans/queries';
 import { DemoNotice, EmptyState, ErrorState, LoadingState } from '../common/states';
@@ -214,6 +223,8 @@ function PlanDetail({ plan, focusOnMount, onFocused }: { plan: ShoppingPlanDto; 
 
       <Notices title="Tené en cuenta" notices={[...plan.warnings, ...plan.limitations]} />
 
+      {plan.benefits && plan.lineCount > 0 && <BenefitCriteria benefits={plan.benefits} schedule={plan.schedule} />}
+
       {plan.needs.length > 0 && (
         <details className="plan-block plan-how">
           <summary>Cómo calculamos cuánto comprar</summary>
@@ -237,13 +248,27 @@ function PlanTotals({ plan }: { plan: ShoppingPlanDto }) {
   const { totals, savings } = plan;
   const penalties = Number(totals.storeVisitPenaltyCost) + Number(totals.distancePenaltyCost);
   const saved = savings ? Number(savings.estimatedSavings) : 0;
+  const hasRefund = isPositive(totals.refundEstimated);
+  const hasPayment = isPositive(totals.paymentDiscount);
   return (
     <div className="plan-totals surface">
       <dl className="plan-figures">
         <div>
-          <dt>Productos</dt>
-          <dd className="plan-figure-main">{formatArs(totals.productCost)}</dd>
+          <dt>{hasPayment || hasRefund ? 'Pagás en las cajas' : 'Productos'}</dt>
+          <dd className="plan-figure-main">{formatArs(totals.payToday)}</dd>
         </div>
+        {hasRefund && (
+          <div className="plan-refund">
+            <dt>Reintegro estimado</dt>
+            <dd className="plan-figure-main">{formatArs(totals.refundEstimated)}</dd>
+          </div>
+        )}
+        {hasRefund && (
+          <div>
+            <dt>Costo después del reintegro</dt>
+            <dd>{formatArs(totals.costAfterRefund)}</dd>
+          </div>
+        )}
         {savings && saved > 0 && (
           <div className="plan-savings">
             <dt>Ahorro estimado</dt>
@@ -261,10 +286,17 @@ function PlanTotals({ plan }: { plan: ShoppingPlanDto }) {
           </div>
         )}
       </dl>
+      {hasRefund && (
+        <p className="muted plan-savings-note">
+          El reintegro lo devuelve el banco o la billetera después de la compra: no baja lo que pagás en la caja y no lo
+          contamos como ahorro.
+        </p>
+      )}
       {savings && saved > 0 && (
         <p className="muted plan-savings-note">
           Frente a comprar todo en {savings.baselineStoreName} a precio regular ({formatArs(savings.baselineProductCost)}).
           {isPositive(totals.promotionDiscount) && <> Incluye {formatArs(totals.promotionDiscount)} de promociones.</>}
+          {hasPayment && <> Incluye {formatArs(totals.paymentDiscount)} de descuentos por medio de pago en la caja.</>}
           {' '}Es una estimación con los últimos precios observados, no un ahorro confirmado.
         </p>
       )}
@@ -272,11 +304,18 @@ function PlanTotals({ plan }: { plan: ShoppingPlanDto }) {
         <p className="muted plan-savings-note">
           {saved === 0
             ? `Comprar todo en ${savings.baselineStoreName} a precio regular cuesta lo mismo en productos.`
-            : `Cuesta ${formatArs(String(-saved))} más en productos que comprar todo en ${savings.baselineStoreName}, a cambio de menos visitas o menos distancia.`}
+            : `Cuesta ${formatArs(String(-saved))} más en productos que comprar todo en ${savings.baselineStoreName}, a cambio de menos visitas, menos distancia o un reintegro.`}
         </p>
       )}
       {!savings && plan.lineCount > 0 && (
         <p className="muted plan-savings-note">No mostramos ahorro: ninguna sucursal tiene todo lo del plan para comparar.</p>
+      )}
+      {isPositive(totals.conditionalAmount) && (
+        <p className="plan-conditional-note">
+          Podrías ahorrar hasta {formatArs(totals.conditionalAmount)} más con beneficios que dependen de datos que no
+          informaste. No está sumado.{' '}
+          <Link className="text-link" href="/preferencias#medios-de-pago">Completar en Preferencias</Link>
+        </p>
       )}
       {penalties > 0 && (
         <p className="muted plan-savings-note">
@@ -332,14 +371,161 @@ function ScheduleDay({ day }: { day: PlanScheduleDayDto }) {
                 {visit.roundTripKm && <> · {kmFormat.format(Number(visit.roundTripKm))} km ida y vuelta</>}
               </p>
             </div>
-            <p className="plan-visit-subtotal">{formatArs(visit.subtotal)}</p>
+            <p className="plan-visit-subtotal">{formatArs(visit.payToday)}</p>
           </div>
           <ul className="plan-lines">
             {visit.lines.map((line) => <PlanLine key={line.id} line={line} />)}
           </ul>
+          <VisitPayment visit={visit} />
         </div>
       ))}
     </div>
+  );
+}
+
+const NOTE_STATUS_LABEL: Record<PlanBenefitNoteDto['status'], string> = {
+  CONDITIONAL: 'Depende de un dato tuyo',
+  NOT_ELIGIBLE: 'No corresponde',
+  NOT_CHOSEN: 'No elegido',
+};
+
+/** Pago de la visita: subtotal, beneficio aplicado con sus condiciones y lo que no se sumó. */
+function VisitPayment({ visit }: { visit: PlanScheduleVisitDto }) {
+  const { payment, benefitNotes } = visit;
+  const conditional = benefitNotes.filter((note) => note.status === 'CONDITIONAL');
+  const others = benefitNotes.filter((note) => note.status !== 'CONDITIONAL');
+  if (!payment && !benefitNotes.length) return null;
+  return (
+    <div className="plan-payment">
+      {payment && (
+        <dl className="plan-payment-figures">
+          <div>
+            <dt>Productos</dt>
+            <dd>{formatArs(visit.subtotal)}</dd>
+          </div>
+          {payment.timing === 'IMMEDIATE' && (
+            <div>
+              <dt>Descuento en la caja</dt>
+              <dd>− {formatArs(visit.paymentDiscount)}</dd>
+            </div>
+          )}
+          <div className="plan-payment-total">
+            <dt>Pagás en la caja</dt>
+            <dd>{formatArs(visit.payToday)}</dd>
+          </div>
+          {payment.timing === 'REFUND' && (
+            <div>
+              <dt>Reintegro estimado{payment.refundDelayDays ? ` (en ${payment.refundDelayDays} días)` : ''}</dt>
+              <dd>{formatArs(visit.refundEstimated)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {payment && (
+        <div className="payment-applied">
+          <p>
+            <span className="benefit-badge">PAGO</span> <strong>{payment.name}</strong>
+          </p>
+          <p className="benefit-conditions">
+            {formatConditions(payment.conditions)}
+            {payment.cap && payment.cap.remaining !== null && !payment.cap.periodKey.startsWith('purchase:') && (
+              <> · saldo del tope ({formatCapPeriodKey(payment.cap.periodKey).toLowerCase()}) antes de esta compra: {formatArs(payment.cap.remaining)}</>
+            )}
+          </p>
+        </div>
+      )}
+      {conditional.length > 0 && (
+        <ul className="plan-benefit-notes">
+          {conditional.map((note) => <BenefitNote key={`${note.promotionId}-${note.canonicalProductId ?? ''}`} note={note} />)}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <details className="plan-alternatives">
+          <summary>Otros beneficios en esta compra ({others.length})</summary>
+          <ul className="plan-benefit-notes">
+            {others.map((note) => <BenefitNote key={`${note.promotionId}-${note.canonicalProductId ?? ''}`} note={note} />)}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function BenefitNote({ note }: { note: PlanBenefitNoteDto }) {
+  const reason = formatBenefitReason(note.reason);
+  return (
+    <li className={`plan-benefit-note is-${note.status.toLowerCase()}`}>
+      <p>
+        <strong>{NOTE_STATUS_LABEL[note.status]}:</strong> {note.name}
+        {note.amount && isPositive(note.amount) && <> (hasta {formatArs(note.amount)})</>}
+      </p>
+      <p className="muted">{formatConditions(note.conditions)}</p>
+      {reason && (
+        <p className="muted">
+          {reason}
+          {isFixableInPreferences(note.reason) && (
+            <> <Link className="text-link" href="/preferencias#medios-de-pago">Informarlo</Link></>
+          )}
+        </p>
+      )}
+    </li>
+  );
+}
+
+/** Con qué se evaluaron los beneficios: lo declarado, los topes y los criterios, tal como los manda la API. */
+function BenefitCriteria({ benefits, schedule }: { benefits: PlanBenefitsSummaryDto; schedule: PlanScheduleDayDto[] }) {
+  // Cada tope se nombra con las promociones del plan que lo usan; uno por compra, con su visita.
+  const visits = schedule.flatMap((day) => day.visits.map((visit) => ({ date: day.date, visit })));
+  const namesByCap = new Map<string, Set<string>>();
+  for (const { visit } of visits) {
+    const sources = [
+      ...(visit.payment?.cap ? [{ key: visit.payment.cap.key, name: visit.payment.name }] : []),
+      ...visit.benefitNotes.flatMap((note) => (note.cap ? [{ key: note.cap.key, name: note.name }] : [])),
+    ];
+    for (const source of sources) namesByCap.set(source.key, (namesByCap.get(source.key) ?? new Set()).add(source.name));
+  }
+  const purchaseLabel = (periodKey: string): string => {
+    const [date, storeId] = periodKey.slice('purchase:'.length).split('|');
+    const found = visits.find((entry) => entry.date === date && entry.visit.storeId === storeId);
+    return found ? `la compra del ${shortFormat.format(calendar(found.date))} en ${found.visit.storeName}` : 'esa compra';
+  };
+  return (
+    <details className="plan-block plan-benefit-criteria">
+      <summary>Cómo tuvimos en cuenta tus medios de pago</summary>
+      <ul className="plan-notes">
+        {benefits.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}
+      </ul>
+      {benefits.caps.length > 0 && (
+        <>
+          <h4 className="plan-day-title">Topes que usa este plan</h4>
+          <ul className="plan-notes">
+            {benefits.caps.map((cap) => {
+              const names = [...(namesByCap.get(cap.key) ?? [])].join(' · ') || 'Beneficio con tope';
+              if (cap.periodKey.startsWith('purchase:')) {
+                return (
+                  <li key={`${cap.key}-${cap.periodKey}`}>
+                    <strong>{names}</strong>: tope de {formatArs(cap.limit)} por compra; en {purchaseLabel(cap.periodKey)} usa{' '}
+                    {formatArs(cap.usedHere)}.
+                  </li>
+                );
+              }
+              return (
+                <li key={`${cap.key}-${cap.periodKey}`}>
+                  <strong>{names}</strong> ({formatCapPeriodKey(cap.periodKey).toLowerCase()}): tope de {formatArs(cap.limit)}; este plan
+                  usa {formatArs(cap.usedHere)}
+                  {cap.consumedOutside === null
+                    ? ' y no informaste cuánto usaste fuera de la app.'
+                    : ` y ya usaste ${formatArs(cap.consumedOutside)} fuera de la app.`}
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+      <p className="muted">
+        <Link className="text-link" href="/preferencias#medios-de-pago">Cambiar medios de pago y topes usados</Link>
+      </p>
+    </details>
   );
 }
 
@@ -415,7 +601,9 @@ function PlanHistory({ plans, selectedId }: { plans: ShoppingPlanSummaryDto[]; s
             >
               <span>Plan {period(entry)}</span>
               <span className="muted">
-                {STATUS_LABEL[entry.status]} · {formatArs(entry.optimizedCost)} · generado el{' '}
+                {STATUS_LABEL[entry.status]} · {formatArs(entry.optimizedCost)}
+                {entry.refundEstimated && isPositive(entry.refundEstimated) && <> + reintegro de {formatArs(entry.refundEstimated)}</>}
+                {' '}· generado el{' '}
                 {timestampFormat.format(new Date(entry.generatedAt))}
               </span>
             </Link>

@@ -44,6 +44,8 @@ const INTEGRATION_FILES = [
   'test/integration/shopping-plans-api.test.cjs',
   'test/integration/shopping-plans.test.cjs',
   'test/integration/price-history.test.cjs',
+  // P10-02: el análisis del precio actual en SQL contra el cálculo en memoria (sucursal propia en Mendoza).
+  'test/integration/price-analysis-sql.test.cjs',
   'test/integration/dashboard.test.cjs',
   // Crea sucursales y presentaciones propias en Rosario y precios con fuente `alertas-test`.
   'test/integration/alerts.test.cjs',

@@ -6,9 +6,10 @@
  */
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import type { BaseUnit } from '../../catalog/domain/units';
+import type { BenefitConditions } from '../../promotions/domain/benefit-conditions';
 import type { BenefitReason, CapStatus } from '../../promotions/domain/benefit-engine';
 import type { PayerProfile } from '../../promotions/domain/payer-eligibility';
-import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
+import type { BenefitTiming } from '../../promotions/domain/promotion.types';
 import type {
   CandidatePriceBasis,
   CandidatePurchase,
@@ -55,23 +56,7 @@ export type LineReasonCode =
   /** P10-02: había una línea más barata en otra visita, pero acá suma al beneficio de la compra. */
   | 'BASKET_BENEFIT_CHOICE';
 
-/** Condiciones legibles de una promoción: banco, medio, día, mínimo, tope y momento del beneficio. */
-export interface BenefitConditions {
-  readonly type: PromotionType;
-  readonly discountPercentage: string | null;
-  readonly discountAmount: string | null;
-  readonly paymentMethod: PaymentMethod | null;
-  readonly bank: string | null;
-  readonly membershipProgram: string | null;
-  /** ISO 1 = lunes … 7 = domingo; vacío = todos los días. */
-  readonly eligibleWeekdays: readonly number[];
-  readonly minimumSpend: string | null;
-  readonly discountCap: string | null;
-  readonly capPeriod: DiscountCapPeriod | null;
-  readonly timing: BenefitTiming;
-  readonly refundDelayDays: number | null;
-  readonly stackable: boolean;
-}
+export type { BenefitConditions };
 
 /** Beneficio de pago aplicado a una visita (una compra). */
 export interface PlanVisitPayment {

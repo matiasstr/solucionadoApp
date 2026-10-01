@@ -8,6 +8,7 @@
 import type { BaseUnit } from '../../catalog/domain/units';
 import type { CanonicalProductDto, DecimalString, ProductDto } from '../../catalog/presentation/catalog.contracts';
 import type { PriceFreshnessDto, PriceScopeDto, PriceSortBy } from '../../prices/presentation/price.contracts';
+import type { BenefitConditions } from '../../promotions/domain/benefit-conditions';
 import type { PromotionType } from '../../promotions/domain/promotion.types';
 import type { StoreScopeOrigin } from '../../stores/application/resolve-store-scope.use-case';
 import type { StoreDto } from '../../stores/presentation/store.contracts';
@@ -29,6 +30,20 @@ export interface OfferPromotionDto {
   terms: string | null;
 }
 
+/**
+ * P10-02: beneficio vigente en la sucursal que depende de cómo paga la persona (banco, medio o
+ * membresía). No se aplica al precio de la oferta: el comparador compara precios equivalentes y
+ * el beneficio se muestra con todas sus condiciones; el plan lo calcula por compra (ADR 0024).
+ */
+export interface OfferPaymentBenefitDto {
+  id: string;
+  name: string;
+  /** Vale el día de la consulta (día de la semana argentino); si no, `conditions.eligibleWeekdays` dice cuándo. */
+  availableToday: boolean;
+  conditions: BenefitConditions;
+  terms: string | null;
+}
+
 /** Precio de un producto en una sucursal, con su procedencia y su promoción. */
 export interface OfferDto {
   store: StoreDto;
@@ -41,6 +56,8 @@ export interface OfferDto {
   freshness: PriceFreshnessDto;
   /** Null cuando ninguna promoción automática alcanza a esta oferta. */
   promotion: OfferPromotionDto | null;
+  /** P10-02: beneficios de pago o de socios de la sucursal que alcanzan al producto, sin aplicar. */
+  paymentBenefits: OfferPaymentBenefitDto[];
 }
 
 export interface ProductSearchItemDto extends ProductDto {

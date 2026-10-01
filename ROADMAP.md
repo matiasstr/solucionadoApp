@@ -68,7 +68,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | COMPLETO |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | COMPLETO |
 | P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | COMPLETO |
-| P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | EN CURSO (parte 1: planificador) |
+| P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | COMPLETO |
 
 ## Estado de la fase 2 (catálogo y datos) — COMPLETA
 
@@ -166,13 +166,48 @@ Verificado: `npm.cmd run verify` (184/184 unitarios, 8 nuevos: reglas, presentac
 
 Verificado al cerrar la fase: `npm.cmd run verify`, `npm.cmd run test:db` y `npm.cmd run test:e2e` (49/49 en Edge, 4 nuevos de alertas: del buscador al formulario con el foco; regla → precio que cruza el umbral → job real con el worker → aviso → leído → recarga, con contador y resumen; alerta borrada antes de la revisión no avisa; otra cuenta no ve nada; se ajustaron dos E2E existentes por el nuevo link de las tarjetas). Capturas en `.cache/verification/p9-02` y revisión visual en escritorio y móvil.
 
-## Estado de la fase 10 (beneficios y experiencia completa) — EN CURSO
+## Estado de la fase 10 (beneficios y experiencia completa) — COMPLETA
 
 **P10-01 — COMPLETO.** Migración `20261001120000_payment_benefits`: `Promotion.discountAmount`, `benefitTiming` (`IMMEDIATE`/`REFUND`), `refundDelayDays`, `capGroup` (con `CHECK`: porcentaje **o** monto, reintegro solo de pago con plazo 1 a 180, grupo con tope) y tabla `BenefitCapUsage` (consumo de topes informado). Elegibilidad en tres estados según las preferencias declaradas (`payer-eligibility.ts`: elegible, no elegible, desconocido = condicionado). Motor puro por compra (`benefit-engine.ts`): una promoción del producto por línea, un beneficio de pago por compra sobre la base elegible, acumulación solo si ambas son acumulables, compra mínima, porcentaje o monto, topes por compra/semana/mes/campaña compartidos entre ítems, visitas y promociones del grupo, lo informado fuera de la app o saldo desconocido, redondeo HALF_UP; explica cada promoción (`APPLIED`, `NOT_CHOSEN`, `CONDITIONAL`, `NOT_ELIGIBLE`) y separa pagar hoy, reintegro y costo final. API `POST /benefits/evaluate` y `GET/PUT/DELETE /benefit-usage`; `GET /promotions` con `discountAmount`, `benefit`, `stackable` y `capGroup`. Importador y seed DEMO con tres promociones de pago nuevas. Decisiones en [ADR 0023](docs/architecture-decisions/0023-payment-benefits-engine.md).
 
 Verificado: `npm.cmd run verify` (196/196 unitarios, 12 nuevos del motor: preferencias, compra con tope y redondeo, reintegro, elegibilidad con día y vigencia horaria y mínimo, acumulación, topes semanal y mensual entre visitas, tope compartido por un grupo, tope por compra entre ítems, reproducibilidad, períodos, reglas e importación) y `npm.cmd run test:db` (159/159 en 15 archivos, 7 nuevos de beneficios con DEMO y dos ajustes del contrato de `/promotions`). Prueba manual con el API y el DEMO: sin preferencias todo condicionado; con débito y billetera, $1.500 en caja y el reintegro de Coto condicionado por el tope; con $2.000 informados, reintegro de $5.734,45 en 30 días sobre lo que no tenía 2x1.
 
-**P10-02 — EN CURSO.** Parte 1 hecha (2026-10-01): cada visita del plan se cobra como una compra con el motor de beneficios (`plan-benefits.ts`): búsqueda exhaustiva de canastas dentro de `PLANNER_MAX_BASKET_EVALUATIONS` o búsqueda local determinista identificada; totales pagar hoy / reintegro / costo final, ahorro sin reintegros, `payment` y `benefitNotes` por visita, criterios usados; snapshots versión 2 con lectura de los viejos sin recalcular. Decisiones en [ADR 0024](docs/architecture-decisions/0024-plan-payment-benefits.md). Falta: comparador y pantallas (plan, preferencias de pago, topes informados, condiciones en tarjetas/ofertas/alertas) y la validación final del producto.
+**P10-02 — COMPLETO** (2026-10-01; parte 1 `755329a`).
+
+Planificador:
+- Cada visita del plan se cobra como una compra con el motor de beneficios (`plan-benefits.ts`), con los medios declarados y los topes informados.
+- Búsqueda exhaustiva de canastas dentro de `PLANNER_MAX_BASKET_EVALUATIONS`, o búsqueda local determinista identificada.
+- Totales: pagar hoy, reintegro estimado y costo después del reintegro; el ahorro nunca incluye reintegros.
+- Por visita: `payment` y `benefitNotes` con todas las condiciones. Una línea elegida por la canasta lo explica con `BASKET_BENEFIT_CHOICE`.
+- Criterios usados en el plan; snapshots versión 2, con los planes viejos leídos tal cual.
+
+Comparador y pantallas:
+- El comparador y el buscador informan `paymentBenefits` por oferta, sin cambiar precios ni orden.
+- Plan con pagar hoy, reintegro y costo final, el pago de cada compra y lo condicionado.
+- Preferencias y onboarding con medios de pago, bancos y programas de socios, y "Topes de beneficios ya usados" (`/benefit-usage`).
+- Alertas que aclaran que su precio no incluye bancos.
+
+Validación final con ~259.000 precios:
+- El resumen y las alertas truncaban la ventana en 50.000 observaciones y analizaban sin historia las series restantes. Ahora la ventana se resume en SQL con la misma clasificación del dominio.
+- El precio actual con sucursales conocidas se busca por índice.
+- Benchmark reproducible (`apps/api/scripts/bench-api.cjs`, RUNBOOK). Generar el plan bajó de ~830 a ~493 ms y el resumen de ~889 a ~295 ms.
+
+Decisiones en [ADR 0024](docs/architecture-decisions/0024-plan-payment-benefits.md) y [ADR 0025](docs/architecture-decisions/0025-price-queries-at-scale.md). README final con catálogo de endpoints, diagrama, limitaciones y qué falta. Verificaciones en CONTINUAR.md.
+
+**Las diez fases funcionales están completas y demostradas con datos DEMO y simulados.**
+
+## Después de las diez fases (trabajo separado, sin paso asignado)
+
+No son parte de ninguna fase y no se marcan hechos por tener adaptadores o Dockerfiles:
+
+1. **Redesplegar producción** (web + API en Vercel). Hoy tiene hasta P8-01; el build de la API aplica las migraciones aditivas `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits`. Verificar `/api/health/ready` y un recorrido manual.
+2. **Desplegar worker y Redis persistente** (RUNBOOK, "En la nube"). Sin ellos no corren importaciones programadas, planes semanales ni alertas en producción.
+3. **Fuente real de precios y promociones** (por ejemplo SEPA): ADR de acceso y licencia, adaptador `PriceProvider`, pruebas con datos reales y programación.
+4. **Deuda de diseño** (logo y tipografía, abajo).
+5. Opcionales:
+   - avisos por email o push;
+   - tabla de cierres diarios precalculados si el resumen tiene que bajar de ~300 ms con más datos (ADR 0025);
+   - aislar mejor `jobs.test.cjs`, que falló de forma intermitente 2 de 7 veces en esta sesión con otros servidores corriendo y pasó al repetirse.
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

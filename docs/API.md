@@ -100,7 +100,8 @@ Todo precio viaja con su procedencia:
         "unitPricePer100g": "121.278000",
         "source": "demo-seed",
         "freshness": { "observedAt": "2026-09-22T12:00:00.000Z", "ageDays": 0, "maxAgeDays": 7, "isStale": false },
-        "promotion": null
+        "promotion": null,
+        "paymentBenefits": []
       }
     }
   ],
@@ -109,7 +110,7 @@ Todo precio viaja con su procedencia:
 }
 ```
 
-`bestOffer` es la oferta **más barata por unidad base** dentro del alcance consultado, con la misma forma que las ofertas de la comparación (incluida `promotion`). Es `null` cuando el producto no tiene precio observado en esas sucursales: el listado lo dice en vez de mostrar un precio de otra zona. El orden de la página sigue siendo alfabético (la paginación es por cursor); para ordenar por precio se compara un canónico.
+`bestOffer` es la oferta **más barata por unidad base** dentro del alcance consultado, con la misma forma que las ofertas de la comparación (incluidas `promotion` y `paymentBenefits`). Es `null` cuando el producto no tiene precio observado en esas sucursales: el listado lo dice en vez de mostrar un precio de otra zona. El orden de la página sigue siendo alfabético (la paginación es por cursor); para ordenar por precio se compara un canónico.
 
 `quantity` es el contenido total: un pack de 6 × 2,25 L tiene `quantity: "13.5"`, `unit: "L"` y `packageCount: 6`; no se multiplica de nuevo. Para `saleMode: "VARIABLE_WEIGHT"`, `quantity` es la base de cotización (1 KG).
 
@@ -248,7 +249,30 @@ El orden por envase (`PRICE`) y por unidad base (`UNIT_PRICE`) **puede diferir**
         "promotionalUnitPrice": "1051.610000",
         "eligibleWeekdays": [],
         "terms": null
-      }
+      },
+      "paymentBenefits": [
+        {
+          "id": "…",
+          "name": "25% con tarjeta de crédito del Banco Demo (DEMO)",
+          "availableToday": true,
+          "conditions": {
+            "type": "BANK_DISCOUNT",
+            "discountPercentage": "25.00",
+            "discountAmount": null,
+            "paymentMethod": "CREDIT_CARD",
+            "bank": "Banco Demo",
+            "membershipProgram": null,
+            "eligibleWeekdays": [],
+            "minimumSpend": null,
+            "discountCap": "5000.00",
+            "capPeriod": "PURCHASE",
+            "timing": "IMMEDIATE",
+            "refundDelayDays": null,
+            "stackable": false
+          },
+          "terms": "Tope de $5.000 por compra. Condiciones ficticias."
+        }
+      ]
     }
   ]
 }
@@ -260,6 +284,13 @@ Sobre `promotion`:
 - `minimumQuantity` son las unidades que hay que llevar (2 en un 2×1 o en una segunda unidad con descuento). `regularTotal`, `total` y `discount` corresponden a esa cantidad.
 - `price` y `unitPrice` siguen siendo el precio **sin** promoción: la comparación no se pierde.
 - El orden usa el precio regular; el beneficio se muestra al lado porque depende de cuántas unidades se compren.
+
+Sobre `paymentBenefits` (P10-02):
+
+- Son los beneficios **que dependen de cómo paga la persona** (banco, medio de pago o membresía) vigentes en esa sucursal para ese producto: los del día primero (`availableToday`) y después por id. Si no valen hoy, `conditions.eligibleWeekdays` dice cuándo.
+- **No cambian `price`, `unitPrice` ni el orden**: la comparación sigue siendo entre precios equivalentes. Si un beneficio corresponde, y cuánto, depende de la canasta entera (mínimo, tope, un solo pago por compra); eso lo calcula el plan por compra con lo declarado (ver "Planes de compra") o `POST /benefits/evaluate`.
+- `conditions` trae todas las condiciones de la regla (las mismas que `payment` y `benefitNotes` en el plan): porcentaje o monto, medio, banco, membresía, días, compra mínima, tope y período, en caja o reintegro con plazo, y si se acumula.
+- El endpoint es público: no sabe qué medios tiene quien consulta, así que nunca dice "te corresponde".
 
 ## Comercios
 
@@ -434,6 +465,8 @@ En un PATCH las reglas se evalúan sobre el resultado: no se puede quitar el pre
 | `city` + `province` | Juntas; `null` en las dos las borra |
 | `latitude` + `longitude` | Juntas; opcionales |
 | `onboardingCompleted` | Solo `true`: fija `onboardingCompletedAt` con la hora del servidor y conserva la primera fecha si se repite. `false`/`null` son `400` ([ADR 0012](architecture-decisions/0012-onboarding-private-pages.md)) |
+| `paymentMethods` | Lista sin repetidos de `CASH`, `DEBIT_CARD`, `CREDIT_CARD`, `TRANSFER`, `WALLET`. Vacía = no declaró ninguno: los beneficios que dependen del medio quedan **condicionados** (ADR 0023) |
+| `banks`, `membershipPrograms` | Hasta 20 nombres sin repetir, de 1 a 120 caracteres; se comparan sin mayúsculas, tildes ni espacios. Nunca se piden números de tarjeta ni credenciales |
 
 Las columnas que no admiten vacío (`maxTravelDistanceKm`, penalizaciones, listas) rechazan `null` con `400`.
 
@@ -630,4 +663,4 @@ Un aviso es un snapshot: un precio nuevo no lo cambia. `data` trae el motivo, el
 
 ## Qué todavía no expone la API
 
-Importadores de fuentes reales, avisos fuera de la app (email o push) y el uso de los beneficios de pago dentro del plan y el comparador (P10-02). Los jobs se operan por comando, no por HTTP ([RUNBOOK](RUNBOOK.md)). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Importadores de fuentes reales (solo hay un proveedor simulado y archivos JSON Lines), avisos fuera de la app (email o push) y una vista HTTP de las colas de jobs. Los jobs se operan por comando, no por HTTP ([RUNBOOK](RUNBOOK.md)). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

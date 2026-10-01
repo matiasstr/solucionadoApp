@@ -104,6 +104,7 @@ export class GetCanonicalPricesUseCase {
         distanceMeters: scope.distances.get(store.id) ?? null,
         freshness: { now, maxAgeDays },
         promotion: this.offerPromotions.resolve(product, price.price, store, rules, now),
+        paymentBenefits: this.offerPromotions.paymentBenefits(product, store, rules, now),
       });
       if (!includeStale && offer.freshness.isStale) continue;
       offers.push({

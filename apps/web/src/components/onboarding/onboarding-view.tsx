@@ -27,13 +27,17 @@ import {
   RadiusChoice,
   StoresChoice,
 } from '../preferences/preference-fields';
+import { PaymentFields, paymentFromProfile, paymentRequest } from '../preferences/payment-fields';
 import { DEFAULT_ROUTINE_NAME } from '../routines/routines-view';
 import { RoutineItemEditor } from '../routines/routine-item-editor';
 
 const STEPS = ['Tu zona', 'Distancia y sucursales', 'Productos habituales', 'Listo'] as const;
 type Step = 1 | 2 | 3 | 4;
 
-const PROFILE_FIELDS = ['city', 'province', 'latitude', 'longitude', 'maxTravelDistanceKm', 'maxStoresPerShoppingPlan'];
+const PROFILE_FIELDS = [
+  'city', 'province', 'latitude', 'longitude', 'maxTravelDistanceKm', 'maxStoresPerShoppingPlan',
+  'paymentMethods', 'banks', 'membershipPrograms',
+];
 
 /**
  * Paso guardado por cuenta para retomar el onboarding en otra visita. Es solo un número
@@ -202,6 +206,7 @@ function TravelStep({ profile, onBack, onNext }: { profile: UserProfile; onBack(
   const update = useUpdateProfile();
   const [radius, setRadius] = useState(() => normalizeKm(profile.maxTravelDistanceKm));
   const [stores, setStores] = useState(profile.maxStoresPerShoppingPlan);
+  const [payment, setPayment] = useState(() => paymentFromProfile(profile));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -213,7 +218,7 @@ function TravelStep({ profile, onBack, onNext }: { profile: UserProfile; onBack(
         event.preventDefault();
         setFormError(null);
         try {
-          await update.mutateAsync({ maxTravelDistanceKm: radius, maxStoresPerShoppingPlan: stores });
+          await update.mutateAsync({ maxTravelDistanceKm: radius, maxStoresPerShoppingPlan: stores, ...paymentRequest(payment) });
           onNext();
         } catch (error) {
           const mapped = apiFieldErrors(error, PROFILE_FIELDS);
@@ -225,6 +230,14 @@ function TravelStep({ profile, onBack, onNext }: { profile: UserProfile; onBack(
       <FormAlert message={formError} />
       <RadiusChoice value={radius} onChange={(value) => { setRadius(value); setErrors({}); }} error={errors.maxTravelDistanceKm} />
       <StoresChoice value={stores} onChange={(value) => { setStores(value); setErrors({}); }} error={errors.maxStoresPerShoppingPlan} />
+      <details className="onboarding-payment">
+        <summary>Medios de pago (opcional)</summary>
+        <p className="field-hint">
+          Para saber qué descuentos y reintegros de bancos te corresponden. No pedimos números de tarjeta. Podés completarlo
+          después en Preferencias.
+        </p>
+        <PaymentFields value={payment} onChange={(value) => { setPayment(value); setErrors({}); }} errors={errors} />
+      </details>
       <StepActions pending={update.isPending} onBack={onBack} onSkip={onNext} />
     </form>
   );

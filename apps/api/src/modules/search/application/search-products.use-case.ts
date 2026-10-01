@@ -92,6 +92,7 @@ export class SearchProductsUseCase {
                 distanceMeters: scope.distances.get(store.id) ?? null,
                 freshness: { now, maxAgeDays: this.config.prices.maxAgeDays },
                 promotion: this.offerPromotions.resolve(product, price.price, store, rules, now),
+                paymentBenefits: this.offerPromotions.paymentBenefits(product, store, rules, now),
               })
             : null,
       };

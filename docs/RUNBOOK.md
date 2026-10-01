@@ -1,6 +1,6 @@
-# Runbook de jobs
+# Runbook de operación
 
-Operación del worker, las colas y las importaciones (P8-01 y P8-02). Decisiones en [ADR 0020](architecture-decisions/0020-jobs-bullmq-worker.md) y [ADR 0021](architecture-decisions/0021-job-scheduling-operations.md). Comandos para PowerShell desde la raíz del repo; en otra terminal, `npm` en vez de `npm.cmd`.
+Operación del worker, las colas y las importaciones (P8-01 y P8-02), y cómo medir tiempos de respuesta con un dataset grande (P10-02, al final). Decisiones en [ADR 0020](architecture-decisions/0020-jobs-bullmq-worker.md) y [ADR 0021](architecture-decisions/0021-job-scheduling-operations.md). Comandos para PowerShell desde la raíz del repo; en otra terminal, `npm` en vez de `npm.cmd`.
 
 ## Qué corre dónde
 
@@ -93,3 +93,25 @@ Reintentar nunca duplica: los precios son idempotentes (lo ya escrito cuenta com
 3. Worker como **servicio** Cloud Run con instancias mínimas ≥ 1, CPU siempre asignada, `WORKER_HEALTH_PORT=$PORT` y `WORKER_HEALTH_HOST=0.0.0.0` (con CPU solo durante pedidos BullMQ no renueva bloqueos). O como **Cloud Run Job** con `node dist/worker.js --until-idle`, disparado por Cloud Scheduler cada N minutos: procesa lo pendiente y termina.
 4. Secretos (`DATABASE_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET`) desde el gestor de secretos, nunca en la imagen. El worker hoy también valida la configuración del API porque arma los mismos módulos.
 5. Programar con `jobs -- schedule` una sola vez contra ese Redis. Mientras no haya una fuente real habilitada (con su ADR de licencia), no programar importaciones en producción.
+
+## Tiempos de respuesta (benchmark local)
+
+Para medir la API con más datos que el seed DEMO sin tocar la base de desarrollo (P10-02, [ADR 0025](architecture-decisions/0025-price-queries-at-scale.md)):
+
+1. Crear una base aparte en el PostgreSQL de Compose (`CREATE DATABASE tusofertas_bench;` con el usuario de desarrollo) y, **solo en esa terminal**, apuntar `DATABASE_URL` a ella: `$env:DATABASE_URL = '<la URL de .env con /tusofertas_bench al final>'`. Las variables del proceso tienen precedencia sobre los `.env`.
+2. Desde `apps/api`, con el build hecho (`npm.cmd run build`):
+   ```powershell
+   npx.cmd prisma migrate deploy
+   node --env-file-if-exists=../../.env dist/seed/main.js
+   node --env-file-if-exists=../../.env dist/modules/imports/cli.js --provider=mock --stores=60 --products=140 --days=30 --promotions --batch-size=1000
+   ```
+   La importación simulada agrega unas 252.000 observaciones en ~26 s.
+3. Levantar la API contra esa base en otro puerto y medir desde otra terminal:
+   ```powershell
+   $env:PORT = '3020'; node --env-file-if-exists=../../.env --env-file-if-exists=.env dist/main.js
+   $env:BENCH_BASE_URL = 'http://127.0.0.1:3020'; node scripts/bench-api.cjs --runs=20
+   ```
+   El script solo acepta una URL local: crea una cuenta `bench-…@example.com` con zona en Caballito, débito y crédito del Banco Demo y una rutina con todos los productos genéricos, y genera planes.
+4. Detener la API y borrar la base (`DROP DATABASE tusofertas_bench;`).
+
+Resultados del 2026-10-01 (p50 de 20 pedidos en serie, ~259.000 observaciones, 63 sucursales a 5 km): búsqueda cerca 29 ms; búsqueda sin ubicación 97 ms; comparación 59 ms; historial 12 ms; generar plan de 18 productos 493 ms (~380 ms de candidatos y ~70 ms del optimizador con beneficios); listado de planes 8 ms; resumen 295 ms. Son números de una máquina de desarrollo con datos sintéticos: sirven para comparar entre versiones, no prueban escala de producción.

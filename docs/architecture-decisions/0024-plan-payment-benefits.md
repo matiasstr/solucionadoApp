@@ -39,6 +39,16 @@ Las columnas de `ShoppingPlan` guardan `optimizedCost = payToday`, así siguen c
 
 **Explicación.** Cada visita trae `payment` (beneficio aplicado con `conditions` completas: banco, medio, membresía, días, mínimo, tope y período, momento y plazo, acumulable) y `benefitNotes` (condicionados, no elegibles con motivo, no elegidos). El plan trae `benefits` (lo declarado, los topes tocados con lo informado y lo usado en el plan, `criteria` en castellano y `basketSearch`). Una línea más cara que otra opción del plan elegida por la canasta lleva `BASKET_BENEFIT_CHOICE`. Limitaciones nuevas: `REFUND_PENDING`, `BENEFITS_CONDITIONAL`, `BASKET_BENEFITS_APPROXIMATED`.
 
+**Por qué se eligió una línea.** Si en las visitas del plan hay una opción más barata en góndola, la línea lo dice con `BASKET_BENEFIT_CHOICE` y nombra el beneficio de su compra ("comprándolo acá entra en … y el costo final del plan es menor"). "Sumar esa visita no conviene" (`CHEAPER_OPTION_NOT_WORTH_IT`) queda solo para opciones en visitas que el plan no hace.
+
+**Comparador.** `GET /products` y `GET /canonical-products/:id/prices` agregan `paymentBenefits` a cada oferta. Son los beneficios que dependen de banco, medio o membresía, vigentes en la sucursal para el producto, con `availableToday` y las mismas `conditions` que el plan. **No cambian el precio ni el orden**: el comparador sigue comparando precios equivalentes (los endpoints son públicos y no saben cómo paga quien mira). Calcular si corresponde y cuánto es tarea del plan, por compra, o de `POST /benefits/evaluate`.
+
+**Pantallas.**
+- **Plan**: "Pagás en las cajas", "Reintegro estimado" y "Costo después del reintegro" por separado. El ahorro aclara que incluye descuentos en caja y no reintegros. Cada compra muestra su pago con todas las condiciones y lo que no se sumó (condicionado con enlace a Preferencias, no corresponde, no elegido). Los criterios y topes van en "Cómo tuvimos en cuenta tus medios de pago".
+- **Preferencias y onboarding** (opcional en el paso 2): medios de pago, bancos y programas declarados, sin datos de tarjeta, y "Topes de beneficios ya usados" (`/benefit-usage`) por tope compartido y período.
+- **Comparador y buscador**: el beneficio con su condición, aclarando "no incluido en el precio".
+- **Alertas**: aclaran que el precio de un aviso no incluye descuentos de bancos.
+
 **Snapshots.** `schemaVersion: 2` en entradas, resultado y líneas, y `OPTIMIZER_VERSION` `planner-2026-10-01.1`. La API lee las versiones 1 y 2. Un plan de versión 1 se muestra como se emitió (`payToday = productCost`, sin reintegro, `benefits: null`, `refundEstimated: null` en el resumen); no se recalcula.
 
 ## Alternativas consideradas
@@ -50,5 +60,7 @@ Las columnas de `ShoppingPlan` guardan `optimizedCost = payToday`, así siguen c
 - **Agregar una columna `payToday` a `ShoppingPlan`**: no hace falta; `optimizedCost` pasa a significar lo pagado en caja, que sin pagos es lo mismo que antes.
 
 ## Consecuencias
+
+Validación final y tiempos con un dataset mayor en [ADR 0025](0025-price-queries-at-scale.md).
 
 El plan compara escenarios equivalentes (misma canasta, mismas preferencias, mismos topes) y explica qué beneficio usa, cuál depende de un dato que falta y por qué otro no corresponde. Los tests contrastan la búsqueda exhaustiva con una enumeración independiente en 150 canastas chicas con topes, y el método aproximado contra el óptimo y el plan por líneas. Con más sucursales o fechas candidatas el plan puede ser aproximado: está identificado en `method`, `basketSearch` y las limitaciones.

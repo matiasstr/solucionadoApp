@@ -148,7 +148,8 @@ function AlertForm({ product }: { product: ProductDetailDto }) {
         {create.isPending ? 'Creando…' : 'Crear alerta'}
       </button>
       <p className="field-hint">
-        Usamos precios recientes de las sucursales de tu zona, sin promociones. El aviso aparece en tu bandeja de Tus Ofertas:
+        Usamos precios recientes de las sucursales de tu zona, sin promociones ni descuentos de bancos, billeteras o socios
+        (esos dependen de cómo pagás y los calcula tu plan). El aviso aparece en tu bandeja de Tus Ofertas:
         no enviamos emails ni mensajes al celular.
       </p>
       <p role="status" className="alert-created">

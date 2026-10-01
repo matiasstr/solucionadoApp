@@ -5,6 +5,7 @@ import { Brand } from '@tusofertas/ui';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '../../lib/api';
+import { conditionParts } from '../../lib/benefits/format';
 import { parseFilters, toSearchHref, toSearchParams } from '../../lib/catalog/filters';
 import type { SearchFilters } from '../../lib/catalog/filters';
 import { useCanonicalPrices, useProduct, useStores } from '../../lib/catalog/queries';
@@ -184,6 +185,12 @@ function OfferGroup({
     <section className="offer-group">
       <h2>{title}</h2>
       <p className="offer-group-note">{description}</p>
+      {offers.some((offer) => offer.paymentBenefits.length > 0) && (
+        <p className="offer-group-note">
+          Los beneficios de banco, billetera o socios no están incluidos en el precio: dependen de cómo pagás. Tu plan
+          semanal los calcula por compra con lo que declaraste en Preferencias.
+        </p>
+      )}
       {offers.length === 0 ? (
         <p className="product-card-empty">{emptyMessage}</p>
       ) : (
@@ -231,6 +238,21 @@ function OfferRow({ offer }: { offer: CanonicalOfferDto }) {
           </p>
         )}
       </div>
+      {offer.paymentBenefits.length > 0 && (
+        <ul className="offer-benefits" aria-label="Beneficios según cómo pagás, no incluidos en el precio">
+          {offer.paymentBenefits.map((benefit) => {
+            const [headline, ...rest] = conditionParts(benefit.conditions);
+            return (
+              <li key={benefit.id} title={benefit.name}>
+                <span className="benefit-badge">{benefit.conditions.membershipProgram && !benefit.conditions.bank ? 'SOCIOS' : 'PAGO'}</span>
+                <strong>{headline}</strong>
+                {rest.length > 0 && <> · {rest.join(' · ')}</>}
+                {!benefit.availableToday && <em> · hoy no aplica</em>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </li>
   );
 }

@@ -25,14 +25,14 @@
  * canasta se busca en `plan-benefits.ts` y los importes salen del motor.
  */
 import { DecimalValue } from '../../catalog/domain/decimal';
+import { conditionsOf } from '../../promotions/domain/benefit-conditions';
 import type { BenefitEngineResult, BenefitEvaluation, PurchaseResult } from '../../promotions/domain/benefit-engine';
-import type { PaymentMethod, PromotionRule } from '../../promotions/domain/promotion.types';
+import type { BenefitTiming, PaymentMethod, PromotionRule } from '../../promotions/domain/promotion.types';
 import type { CalendarDate } from '../../routines/domain/routine-rules';
 import { compareText } from './needs';
 import { OPTIMIZER_VERSION } from './optimized-plan.types';
 import type {
   BaselineUnavailableReason,
-  BenefitConditions,
   CoveredByInventory,
   LineAlternative,
   LineReasonCode,
@@ -383,12 +383,18 @@ interface PricedLine {
   readonly promotion: { readonly id: string; readonly name: string } | null;
 }
 
-function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | null, basketChoice: boolean): PlanLine {
+/** Lo que la canasta con beneficios (P10-02) sabe de una línea: las visitas del plan y el pago de la suya. */
+interface LineBasket {
+  readonly planVisits: ReadonlySet<string>;
+  readonly payment: { readonly name: string; readonly timing: BenefitTiming } | null;
+}
+
+function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | null, basket: LineBasket | null): PlanLine {
   const { need } = entry;
   const { offer, option } = choice;
   const total = priced ? units(priced.total) : choice.total;
-  const alternatives: LineAlternative[] = optionsOf(entry)
-    .filter((candidate) => !(candidate.offer.id === offer.id && candidate.option.date === option.date))
+  const ranked = optionsOf(entry).filter((candidate) => !(candidate.offer.id === offer.id && candidate.option.date === option.date));
+  const alternatives: LineAlternative[] = ranked
     .slice(0, MAX_ALTERNATIVES)
     .map((candidate) => ({
       offerId: candidate.offer.id,
@@ -398,7 +404,18 @@ function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | nul
       total: candidate.option.total,
       difference: moneyOf(candidate.total - total),
     }));
-  const cheaper = alternatives.find((alternative) => DecimalValue.parse(alternative.difference).isNegative());
+  const inPlan = (candidate: Choice): boolean => basket?.planVisits.has(purchaseIdOf(candidate.option.date, candidate.offer.storeId)) ?? false;
+  // Más barata en góndola dentro de las mismas visitas del plan: solo pasa si la eligió la canasta.
+  const cheaperInPlan = basket
+    ? entry.candidates.offers
+        .flatMap((candidate) => candidate.dateOptions.map((dateOption) => ({ offer: candidate, option: dateOption, total: units(dateOption.total) })))
+        .filter((candidate) => inPlan(candidate) && candidate.total < choice.total)
+        .sort(compareChoices)[0] ?? null
+    : null;
+  // Más barata en una visita que el plan no hace (y más que la de adentro, si la hay).
+  const cheaperOutside = ranked.find(
+    (candidate) => candidate.total < total && !inPlan(candidate) && (!cheaperInPlan || candidate.total < cheaperInPlan.total),
+  );
   const linePromotion = option.appliedPromotionId
     ? option.promotions.find((check) => check.promotionId === option.appliedPromotionId) ?? null
     : null;
@@ -408,15 +425,28 @@ function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | nul
       ? { id: linePromotion.promotionId, name: linePromotion.name }
       : null;
 
-  const codes: LineReasonCode[] = [cheaper ? 'CHEAPER_OPTION_NOT_WORTH_IT' : 'CHEAPEST_EVALUATED'];
-  const sentences = [
-    cheaper
-      ? `En ${cheaper.storeName} el ${formatDate(cheaper.date)} cuesta ${formatArs(DecimalValue.parse(cheaper.difference))} menos, pero sumar esa visita no conviene o supera tu máximo de sucursales.`
-      : 'Es la opción más barata entre las sucursales y fechas evaluadas.',
-  ];
-  if (basketChoice) {
+  const codes: LineReasonCode[] = [];
+  const sentences: string[] = [];
+  if (cheaperInPlan) {
     codes.push('BASKET_BENEFIT_CHOICE');
-    sentences.push('Hay una opción más barata en otra compra del plan, pero llevarlo en esta suma al beneficio de pago o al mínimo de esta compra.');
+    const place = `${cheaperInPlan.offer.storeName} el ${formatDate(cheaperInPlan.option.date)}`;
+    const what = cheaperInPlan.offer.productId === offer.productId ? `En ${place}` : `${cheaperInPlan.offer.productName} en ${place}`;
+    const where = `${what} cuesta ${formatArs(decimalOf(choice.total - cheaperInPlan.total))} menos`;
+    sentences.push(
+      basket?.payment
+        ? `${where}, pero comprándolo acá entra en "${basket.payment.name}" (${basket.payment.timing === 'REFUND' ? 'reintegro' : 'descuento en la caja'}) y el costo final del plan es menor.`
+        : `${where}, pero contando los beneficios de pago y sus topes el costo final del plan es menor así.`,
+    );
+  }
+  if (cheaperOutside) {
+    codes.push('CHEAPER_OPTION_NOT_WORTH_IT');
+    sentences.push(
+      `En ${cheaperOutside.offer.storeName} el ${formatDate(cheaperOutside.option.date)} cuesta ${formatArs(decimalOf(total - cheaperOutside.total))} menos, pero sumar esa visita no conviene o supera tu máximo de sucursales.`,
+    );
+  }
+  if (!codes.length) {
+    codes.push('CHEAPEST_EVALUATED');
+    sentences.push('Es la opción más barata entre las sucursales y fechas evaluadas.');
   }
   if (need.constraints.requiredProductId === offer.productId) {
     codes.push('EXACT_PRODUCT_REQUIRED');
@@ -453,25 +483,6 @@ function buildLine(entry: ResolvedNeed, choice: Choice, priced: PricedLine | nul
     reasonCodes: codes,
     reason: sentences.join(' '),
     alternatives,
-  };
-}
-
-/** Condiciones de una regla tal como se muestran: nada de la regla queda oculto. */
-export function conditionsOf(rule: PromotionRule): BenefitConditions {
-  return {
-    type: rule.type,
-    discountPercentage: rule.discountPercentage,
-    discountAmount: rule.discountAmount,
-    paymentMethod: rule.paymentMethod,
-    bank: rule.bank,
-    membershipProgram: rule.membershipProgram,
-    eligibleWeekdays: [...rule.eligibleWeekdays],
-    minimumSpend: rule.minimumSpend,
-    discountCap: rule.discountCap,
-    capPeriod: rule.capPeriod,
-    timing: rule.benefitTiming,
-    refundDelayDays: rule.refundDelayDays,
-    stackable: rule.isStackable,
   };
 }
 
@@ -864,13 +875,13 @@ export function optimizePlan(input: PlanCandidates, settings: OptimizerSettings,
     const choice = index === undefined ? null : assignment[index] ?? null;
     if (choice && index !== undefined) {
       const entry = resolved[index] as ResolvedNeed;
-      // Más cara que otra opción de las mismas visitas del plan: la eligió la canasta, no la línea.
-      const basketChoice = outcome.basketSearch !== null && outcome.basketSearch !== 'NOT_NEEDED' &&
-        entry.candidates.offers.some((offer) =>
-          offer.dateOptions.some((option) => planVisits.has(purchaseIdOf(option.date, offer.storeId)) && units(option.total) < choice.total),
-        );
+      // Con canasta buscada, una opción más barata en las mismas visitas la descartó el beneficio, no la línea.
+      const payment = purchases?.get(purchaseIdOf(choice.option.date, choice.offer.storeId))?.result.payment ?? null;
+      const basket: LineBasket | null = outcome.basketSearch === 'EXHAUSTIVE' || outcome.basketSearch === 'LOCAL_SEARCH'
+        ? { planVisits, payment: payment ? { name: payment.name, timing: payment.timing } : null }
+        : null;
       chosen.push(choice);
-      lines.push(buildLine(entry, choice, pricedLine(choice, need.canonicalProductId), basketChoice));
+      lines.push(buildLine(entry, choice, pricedLine(choice, need.canonicalProductId), basket));
     } else {
       unfulfill(need, candidates.unresolvedReason ?? 'MAX_STORES_LIMIT');
     }

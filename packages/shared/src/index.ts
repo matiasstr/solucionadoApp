@@ -255,6 +255,18 @@ export interface OfferDto {
   freshness: PriceFreshnessDto;
   /** Null cuando ninguna promoción automática alcanza a esta oferta. */
   promotion: OfferPromotionDto | null;
+  /** P10-02: beneficios de pago o de socios que alcanzan al producto en la sucursal, sin aplicar al precio. */
+  paymentBenefits: OfferPaymentBenefitDto[];
+}
+
+/** Beneficio que depende de cómo paga la persona: se muestra con sus condiciones, no cambia el precio. */
+export interface OfferPaymentBenefitDto {
+  id: string;
+  name: string;
+  /** Vale el día de la consulta; si no, `conditions.eligibleWeekdays` dice cuándo. */
+  availableToday: boolean;
+  conditions: BenefitConditionsDto;
+  terms: string | null;
 }
 
 export interface ProductSearchItemDto extends ProductDto {
@@ -359,6 +371,10 @@ export interface UpdateProfileRequest {
   maxStoresPerShoppingPlan?: number | null;
   /** Solo `true`: la fecha la pone el servidor y conserva la primera (ADR 0012). */
   onboardingCompleted?: true;
+  /** P10-01: lo que la persona declara; nunca datos de tarjeta. Hasta 20 bancos y 20 membresías. */
+  paymentMethods?: PaymentMethod[];
+  banks?: string[];
+  membershipPrograms?: string[];
 }
 
 export interface CreateRoutineRequest {
@@ -416,7 +432,7 @@ export type PlanLineReasonCode =
   | 'BASKET_BENEFIT_CHOICE';
 
 /** Condiciones legibles de una promoción (P10-02): nada de la regla queda oculto. */
-export interface PlanBenefitConditionsDto {
+export interface BenefitConditionsDto {
   type: PromotionType;
   discountPercentage: DecimalString | null;
   discountAmount: DecimalString | null;
@@ -442,7 +458,7 @@ export interface PlanVisitPaymentDto {
   /** Lo que entró en la base del beneficio (sin lo no acumulable). */
   base: DecimalString;
   amount: DecimalString;
-  conditions: PlanBenefitConditionsDto;
+  conditions: BenefitConditionsDto;
   cap: BenefitCapStatusDto | null;
 }
 
@@ -456,7 +472,7 @@ export interface PlanBenefitNoteDto {
   /** Código del motivo (`BANK_NOT_DECLARED`, `CAP_REMAINING_UNKNOWN`, `MINIMUM_SPEND_NOT_REACHED`, …). */
   reason: string | null;
   amount: DecimalString | null;
-  conditions: PlanBenefitConditionsDto;
+  conditions: BenefitConditionsDto;
   cap: BenefitCapStatusDto | null;
 }
 
@@ -927,4 +943,20 @@ export interface BenefitUsageEntryDto {
   periodKey: string;
   consumed: DecimalString;
   updatedAt: string;
+}
+
+export interface BenefitUsageListDto {
+  items: BenefitUsageEntryDto[];
+}
+
+/** PUT /benefit-usage/:promotionId: lo ya usado del tope fuera de la app en el período de `date` (hoy por defecto). */
+export interface InformBenefitUsageRequest {
+  consumed: DecimalString;
+  date?: string;
+}
+
+export interface InformedBenefitUsageDto extends BenefitUsageEntryDto {
+  promotion: { id: string; name: string; capGroup: string | null };
+  limit: DecimalString;
+  remaining: DecimalString;
 }

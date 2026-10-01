@@ -1,5 +1,6 @@
 import type { ProductSearchItemDto } from '@tusofertas/shared';
 import Link from 'next/link';
+import { formatBenefitValue, formatPayer, formatWeekdays } from '../../lib/benefits/format';
 import {
   formatArs,
   formatDistance,
@@ -40,6 +41,18 @@ export function ProductCard({ product, href }: { product: ProductSearchItemDto; 
               <p className="promotion-chip">
                 <span>{formatPromotionType(offer.promotion.type)}</span>
                 {formatMinimumQuantity(offer.promotion.minimumQuantity)}: {formatArs(offer.promotion.total)}
+              </p>
+            )}
+            {offer.paymentBenefits[0] && (
+              <p className="payment-hint">
+                {[
+                  formatBenefitValue(offer.paymentBenefits[0].conditions),
+                  formatPayer(offer.paymentBenefits[0].conditions),
+                  formatWeekdays(offer.paymentBenefits[0].conditions.eligibleWeekdays),
+                ].filter(Boolean).join(' ')}
+                {offer.paymentBenefits[0].conditions.timing === 'REFUND' ? ' (reintegro)' : ''}
+                {offer.paymentBenefits.length > 1 && ` y ${offer.paymentBenefits.length - 1} más`}
+                {' '}· no incluido en el precio
               </p>
             )}
             <p className="product-store">

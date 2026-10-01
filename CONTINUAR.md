@@ -2,16 +2,16 @@
 
 ## Traspaso — leer esto primero (Claude o Codex)
 
-Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02), **fase 9 completa** (P9-01, P9-02), **P10-01** y la **parte 1 de P10-02** (planificador con beneficios, API). Seguir con **P10-02 parte 2** (pantallas). Resolver decisiones rutinarias siguiendo los ADRs (0001–0024) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
+Este archivo es la fuente del estado de trabajo; no depender del historial de chat. `AGENTS.md` contiene las reglas, `CLAUDE.md` el arranque para Claude, `apps/web/AGENTS.md` las reglas de Next 16 (leer las guías de `node_modules/next/dist/docs/` antes de tocar la web) y `docs/steps/` las instrucciones de cada paso. **No rehacer lo terminado**: fases 1 a 4 completas (P0-01, P1-01 a P1-04, P2-01 a P2-03, P3-01, P3-02, P4-01, P4-02) , **fase 5 completa** (P5-01 a P5-03), **fase 6 completa** (P6-01, P6-02), **fase 7 completa** (P7-01, P7-02), **fase 8 completa** (P8-01, P8-02), **fase 9 completa** (P9-01, P9-02), **fase 10 completa** (P10-01, P10-02): **las diez fases están terminadas**. Lo que sigue es trabajo separado, sin paso asignado (redespliegue, worker, fuente real y diseño; ver "Cómo seguir"). Resolver decisiones rutinarias siguiendo los ADRs (0001–0025) y el formato de respuestas de `docs/API.md`, sin confirmaciones innecesarias. Al cerrar cada paso actualizar **CONTINUAR.md, CLAUDE.md y ROADMAP.md** (y README si cambia la operación), luego commit y push.
 
-Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-09-30, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial de P10-02 que recuperar.
+Los resultados de abajo son el registro de las sesiones del 2026-09-18 al 2026-10-01, no una garantía del estado de servicios en una fecha posterior. No hay implementación parcial que recuperar.
 
-## Estado: 2026-10-01 — Fases 1 a 9 completas, P10-01 completo y P10-02 en curso (parte 1 hecha)
+## Estado: 2026-10-01 — Las diez fases completas (P10-02 cerrado)
 
 Raíz: `C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp`. Remoto: `git@github.com:matiasstr/solucionadoApp.git`. Rama: `main`.
 
-**Próximo paso: P10-02 — Planificación y experiencia completa** (`docs/steps/phase-10.md`): usar el motor de beneficios (ADR 0023) en candidatos, optimizador y comparador (medio, día y topes compartidos entre visitas), mostrar pagar hoy / reintegro / costo final, explicar banco, día, mínimo y tope en preferencias, plan, ofertas y alertas, y la validación final del producto (README, diagrama, endpoints, ADRs, runbook, E2E completo). Instrucciones al final de este archivo.
-Los beneficios de pago ya se evalúan (`POST /benefits/evaluate`) y desde P10-02 parte 1 **el plan los usa** (API: pagar hoy, reintegro, costo final, notas por visita; ADR 0024), pero **el comparador y las pantallas todavía no**; no hay una fuente real de precios ni de promociones; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP), P9-01 (API `/alerts` y `/notifications`), P9-02 (pantallas de alertas) y P10-01 (`/benefits`, `/benefit-usage`, campos nuevos de promociones; migración `20261001120000_payment_benefits`); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits` (aditivas; la última reemplaza un `CHECK` de `Promotion` por uno compatible con las promociones existentes). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
+**Próximo paso: trabajo separado, sin paso asignado** (ROADMAP, "Después de las diez fases"): redesplegar producción, desplegar worker y Redis, conectar una fuente real y la deuda de diseño. Detalle en "Cómo seguir" al final de este archivo.
+Los beneficios de pago se usan en el plan (pagar hoy, reintegro, costo final; ADR 0024), el comparador (`paymentBenefits`) y las pantallas; el resumen y las alertas analizan todas las series sin tope oculto (ADR 0025). No hay una fuente real de precios ni de promociones; el worker de jobs no está desplegado (preparado con imágenes y runbook), así que en producción las alertas no se evaluarían. **Producción tiene todo hasta P8-01** (último deploy: 2026-09-30, commit `337320b`): le faltan P8-02 (sin cambios HTTP), P9-01 (API `/alerts` y `/notifications`), P9-02 (pantallas de alertas), P10-01 (`/benefits`, `/benefit-usage`, campos nuevos de promociones; migración `20261001120000_payment_benefits`) y P10-02 (plan versión 2, `paymentBenefits` en ofertas, pantallas; sin migración nueva); el próximo deploy de la API aplica las migraciones `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits` (aditivas; la última reemplaza un `CHECK` de `Promotion` por uno compatible con las promociones existentes). Ver "Deploy". Deuda de diseño pendiente (logo y tipografía): ver ROADMAP, sección "Deuda de diseño".
 
 ## Qué ya existe
 
@@ -155,22 +155,62 @@ Los beneficios de pago ya se evalúan (`POST /benefits/evaluate`) y desde P10-02
   - Contratos: `promotion.contracts.ts` y `packages/shared` (`discountAmount`, `benefit`, `stackable`, `capGroup`; tipos de la evaluación y del consumo). Importador (`import.types.ts`, `import-normalizer.ts` con alias `reintegro`/`inmediato`, `promotion-importer.ts` con `capGroup` prefijado por la fuente). Seed DEMO: `coto-banco-reintegro-miercoles`, `vea-banco-demo-20` (mismo tope mensual) y `jumbo-billetera-1500`.
   - Tests: `test/benefit-engine.test.cjs` (12), `test/integration/benefits.test.cjs` (7, después de `alerts` en el runner); helpers de reglas de cinco tests existentes con los campos nuevos; `promotions.test.cjs` con el contrato nuevo.
 
-- **P10-02 parte 1 (sesión 2026-10-01): beneficios de pago en el planificador (API).** P10-02 sigue abierto.
+- **P10-02 (sesión 2026-10-01): beneficios en el plan, el comparador y las pantallas; validación final.** Cierra la fase 10 y las diez fases. Parte 1 (API del plan) en `755329a`.
   - Dominio `shopping-plans/domain/plan-benefits.ts`: `PlanBenefitContext`, `isLineVerifiable`, `costRelevantRules`, `BasketEvaluator` (cada visita = una compra de `evaluateBenefits`), `searchBaskets` (`EXHAUSTIVE` dentro del presupuesto; si no `LOCAL_SEARCH` determinista que siempre evalúa primero el plan por líneas).
-  - `plan-optimizer.ts`: `optimizePlan(input, settings, benefits?)`; visitas con `paymentDiscount`, `payToday`, `refundEstimated`, `payment`, `benefitNotes`; totales con `paymentDiscount`, `payToday`, `refundEstimated`, `costAfterRefund`, `conditionalAmount`, `effectiveCostAfterRefund`; `search.basketSearch`/`basketEvaluations`; `benefits` (lo declarado, topes, `criteria`); motivo `BASKET_BENEFIT_CHOICE`; limitaciones `REFUND_PENDING`, `BENEFITS_CONDITIONAL`, `BASKET_BENEFITS_APPROXIMATED`. `OPTIMIZER_VERSION` `planner-2026-10-01.1`. El ahorro estimado es base − `payToday` (nunca reintegros).
+  - `plan-optimizer.ts`: `optimizePlan(input, settings, benefits?)`.
+    - Visitas con `paymentDiscount`, `payToday`, `refundEstimated`, `payment` y `benefitNotes`.
+    - Totales con `paymentDiscount`, `payToday`, `refundEstimated`, `costAfterRefund`, `conditionalAmount` y `effectiveCostAfterRefund`.
+    - `search.basketSearch`/`basketEvaluations` y `benefits` (lo declarado, topes, `criteria`).
+    - Motivo `BASKET_BENEFIT_CHOICE`, que nombra el beneficio de la compra. `CHEAPER_OPTION_NOT_WORTH_IT` queda solo para visitas que el plan no hace.
+    - Limitaciones `REFUND_PENDING`, `BENEFITS_CONDITIONAL` y `BASKET_BENEFITS_APPROXIMATED`. `OPTIMIZER_VERSION` `planner-2026-10-01.1`.
+    - El ahorro estimado es base − `payToday` (nunca reintegros). `conditionsOf` vive en `promotions/domain/benefit-conditions.ts` (compartido con el comparador).
   - `PlanShoppingUseCase` carga preferencias de pago y `BenefitCapUsage`; `BuildPlanCandidatesUseCase.executeWithPromotions` devuelve también las reglas. Config `PLANNER_MAX_BASKET_EVALUATIONS` (2000, 1 a 50.000).
-  - Snapshots `schemaVersion: 2`; la API lee 1 y 2 (`READABLE_SNAPSHOT_VERSIONS`) y completa los planes viejos sin recalcular (`refundEstimated: null`, `benefits: null`). **`optimizedCost` guarda `payToday`** para que sigan cerrando los `CHECK` de `ShoppingPlan` (sin migración).
-  - Contratos en `shopping-plan.contracts.ts`, `packages/shared` (`PlanVisitPaymentDto`, `PlanBenefitNoteDto`, `PlanBenefitConditionsDto`, `PlanBenefitsSummaryDto`, totales y visitas nuevos), `docs/API.md` (Planes de compra) y ADR 0024.
-  - Tests: `test/shopping-plan-benefits.test.cjs` (12, incluye contraste con enumeración independiente en 150 canastas y los `CHECK` de cada registro), `shopping-plan-persistence.test.cjs` (versión 2, `optimizedCost = payToday`), `environment.test.cjs`, y 3 de integración en `shopping-plans-api.test.cjs` (sin declarar, declarado con tope informado, snapshot versión 1).
+  - Snapshots `schemaVersion: 2`. La API lee 1 y 2 (`READABLE_SNAPSHOT_VERSIONS`) y completa los planes viejos sin recalcular (`refundEstimated: null`, `benefits: null`). **`optimizedCost` guarda `payToday`** para que sigan cerrando los `CHECK` de `ShoppingPlan` (sin migración).
+  - Comparador: `OfferPromotionResolver.paymentBenefits` agrega `paymentBenefits` a cada oferta de `GET /products` y `GET /canonical-products/:id/prices`: beneficios de banco, medio o membresía vigentes, con `availableToday` y `conditions`. No cambian precio ni orden.
+  - Web:
+    - `lib/benefits/format.ts` (condiciones legibles, motivos, períodos de tope) y `lib/benefits/queries.ts` (promociones condicionadas, `/benefit-usage`).
+    - `components/preferences/payment-fields.tsx` (medios, bancos y programas con sugerencias), `components/preferences/cap-usage.tsx` ("Topes de beneficios ya usados").
+    - Plan (`plan-view.tsx`): pagar hoy / reintegro / costo final, pago por compra, notas y criterios con topes nombrados.
+    - Comparador (`product-view.tsx`, lista `.offer-benefits`) y tarjeta (`product-card.tsx`, también corrige el link "Avisame si baja" que se salía de la tarjeta).
+    - Onboarding (medios opcionales en el paso 2) y textos de alertas. `HttpMethod` admite `PUT`.
+  - Validación a escala (ADR 0025):
+    - `ProductPriceRepository.findCurrentWithWindowStats` (ventana de 30 días resumida en SQL) + `classifyCurrentPrice`/`summarizeCloses` en `price-analysis.ts`. `CurrentPriceAnalysis` ya no trunca en 50.000 observaciones.
+    - `findCurrentByProducts` con sucursales usa `LATERAL … LIMIT 1` por índice.
+    - `apps/api/scripts/bench-api.cjs` y la sección de tiempos del RUNBOOK.
+  - Contratos en `packages/shared` (`BenefitConditionsDto`, `PlanVisitPaymentDto`, `PlanBenefitNoteDto`, `PlanBenefitsSummaryDto`, `OfferPaymentBenefitDto`, `InformBenefitUsageRequest`, `InformedBenefitUsageDto`, `UpdateProfileRequest` con medios), `docs/API.md`, ADR 0024 y 0025, README final (catálogo de endpoints, diagrama, limitaciones), ARCHITECTURE y RUNBOOK.
+  - Tests:
+    - `test/shopping-plan-benefits.test.cjs` (12, con enumeración independiente en 150 canastas y los `CHECK` de cada registro), `shopping-plan-persistence.test.cjs` y `environment.test.cjs`.
+    - Integración: 3 en `shopping-plans-api.test.cjs`, `search-api.test.cjs` (`paymentBenefits`) y `test/integration/price-analysis-sql.test.cjs` (2, SQL contra memoria serie por serie; en el runner después de `price-history`).
+    - E2E `apps/web/e2e/journey.e2e.cjs` (6, en `test:e2e`).
 
-## Verificaciones ejecutadas (P10-02 parte 1, 2026-10-01)
+## Verificaciones ejecutadas (P10-02, 2026-10-01)
 
 | Control | Resultado |
 | --- | --- |
-| `npm.cmd run verify` | Exit 0 (**208/208** unitarios, typecheck y lint, build API + web) |
-| `npm.cmd run test:db` | **162/162** en 15 archivos (3 nuevos de planes con beneficios) |
+| `npm.cmd run verify` | Exit 0 (**208/208** unitarios, typecheck y lint de API y web, build API + web) |
+| `npm.cmd run test:db` | **164/164** en 16 archivos. Recrea la base `_test`, aplica las migraciones dos veces y verifica que no haya drift (migraciones en base nueva). Incluye 3 nuevos de planes, `paymentBenefits` y 2 de equivalencia SQL |
+| `npm.cmd run test:e2e` | **55/55** en Edge contra API 3010 y web 3100 (`E2E_BASE_URL=http://127.0.0.1:3100`); 6 nuevos del recorrido completo |
+| Benchmark (`scripts/bench-api.cjs`, base aparte `tusofertas_bench` con ~259.000 precios, borrada al terminar) | p50 final: búsqueda cerca 29 ms, sin ubicación 97 ms, comparación 59 ms, historial 12 ms, generar plan 493 ms, listado 8 ms, resumen 295 ms. Antes de ADR 0025: comparación 136, plan 830 y resumen 889 ms (y truncado) |
+| Revisión visual | Plan con reintegro de Coto los miércoles y 25% de Carrefour en caja (Pagás $7.266,37, reintegro $743,83, costo final $6.522,54, ahorro $1.433,95 sin reintegro); comparador con líneas de beneficio; buscador; móvil 390 px sin desbordes (capturas en `.cache/verification/p10-02`) |
 
-No ejecutado en la parte 1: `npm.cmd run test:e2e` (la web todavía no muestra los campos nuevos), prueba de tiempos con dataset representativo, deploy.
+Seguridad y accesibilidad: no hay endpoints nuevos. Los cubren los tests existentes:
+- dueño de planes y consumo de topes;
+- CSRF en `/auth`;
+- errores y logs sin credenciales.
+
+Los campos nuevos no exponen datos sensibles: solo lo declarado, nunca tarjetas. La lista de bancos cargados tiene un nombre accesible distinto del campo (lo detectó el E2E).
+
+`jobs.test.cjs` falló de forma intermitente 2 veces en 7 corridas (casos distintos: "falla permanente" y "reintento") mientras corrían otros servidores y el benchmark. Pasó al repetir y en las corridas finales; ese código no cambió en P10-02. Ver ROADMAP, "Después de las diez fases".
+
+No ejecutado: deploy (producción sigue en P8-01) ni pruebas de carga concurrente.
+
+## Decisiones y notas (P10-02)
+
+- **Cada visita es una compra** para el motor; la recomendación usa el costo después del reintegro confirmado y el ahorro usa lo pagado en caja (ADR 0024).
+- **El comparador no aplica beneficios de pago**: los informa sin tocar precio ni orden. Es público y no sabe cómo paga quien mira; la canasta la calcula el plan.
+- **`optimizedCost` = `payToday`**: mantiene los `CHECK` sin migración.
+- **Análisis del precio actual en SQL** con la misma clasificación del dominio. El tope de 50.000 observaciones dejaba series sin historia con datos grandes (ADR 0025).
+- La base de desarrollo se resembró (`db:seed`) y quedaron cuentas `e2e-recorrido-*@example.com` con alertas de arroz a $1.500/kg y topes informados.
 
 ## Verificaciones ejecutadas (P10-01, 2026-09-30)
 
@@ -623,21 +663,21 @@ El usuario pidió **commit y push al completar cada paso**, sin confirmaciones o
 - **P9-01** `c12c34a` (publicado).
 - **P9-02** `465c9f2` (publicado).
 - **P10-01** `3392625` (publicado).
-- **P10-02 parte 1**: commit `feat(P10-02): ...` del 2026-10-01 (ver `git log`).
+- **P10-02** parte 1 `755329a` (publicado); cierre del paso: commit `feat(P10-02): ...` del 2026-10-01 (ver `git log`).
 - `apps/web/next-env.d.ts` aparece modificado cada vez que corre `next dev`/`build`: es generado y versionado a pedido del propio archivo; commitearlo si cambia.
 
-## Cómo seguir con P10-02
+## Cómo seguir (después de las diez fases)
 
-**Hecho (parte 1):** punto 3 completo (planificador con beneficios, API y contratos) y la parte de snapshots del punto 4. **Falta:** pantallas del plan (pagar hoy / reintegro / costo final, `payment`, `benefitNotes`, `benefits.criteria`), comparador (`GET /canonical-products/:id/prices` con beneficios de pago legibles), preferencias/onboarding con medios y bancos y la pantalla de `/benefit-usage`, condiciones en tarjetas/ofertas/alertas, y el cierre del producto (puntos 5 a 7).
+Las diez fases están completas. Lo que queda es trabajo separado (ROADMAP, "Después de las diez fases"); cada punto merece su propia sesión con verificación:
 
-1. Leer `AGENTS.md`, `apps/web/AGENTS.md`, `ROADMAP.md`, `docs/steps/phase-10.md` (P10-02), ADR 0013/0014/0015 (planificador), 0023 (beneficios), `docs/API.md` (beneficios y planes) y `docs/RUNBOOK.md`.
-2. `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API en 3010 y web en 3100.
-3. Planificador: candidatos y optimizador con medio de pago, día y **topes compartidos entre visitas** (una visita es una compra para `evaluateBenefits`); un descuento que depende del total de la canasta exige evaluar la canasta, no cada ítem. Mantener la búsqueda exacta acotada y el método aproximado explícito; revalidar límites con promociones de pago.
-4. Plan, comparador y ofertas: distinguir **pagar hoy**, **reintegro estimado** y **costo después del reintegro**; comparar solo escenarios equivalentes; no sumar reintegros a ahorro registrado. Snapshots de planes nuevos con los beneficios usados; los viejos no se recalculan.
-5. Preferencias/onboarding: medios de pago, bancos y membresías declarados con su efecto explicado; pantalla para informar lo usado de un tope (`/benefit-usage`). Tarjetas, plan, ofertas y alertas muestran banco, día, mínimo y tope legibles.
-6. Cierre del producto: README final, diagrama de arquitectura, catálogo de endpoints, ADRs, runbook y limitaciones (DEMO, conectores reales pendientes, worker y deploy pendientes). E2E registro → rutina → inventario → comparación → plan → historial → alerta. Typecheck/lint/test/build completos y migraciones en una base nueva; ownership, CSRF, secretos, accesibilidad móvil y tiempos con un dataset representativo (sin afirmar escala de producción con el seed chico).
-7. `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e`; actualizar README/ROADMAP/CONTINUAR/CLAUDE.md; commit y push. Fin de las diez fases.
+1. **Redesplegar producción** con los comandos de "Deploy" de este archivo. El build de la API aplica tres migraciones aditivas: `20260930120000_import_run_progress_time`, `20260930180000_price_alerts_notifications` y `20261001120000_payment_benefits`. Verificar `/api/health/ready`, registro, plan y alertas. Producción no tiene dataset DEMO: sin datos el catálogo está vacío.
+2. **Desplegar worker y Redis persistente** (RUNBOOK, "En la nube"), y programar `CHECK_PRICE_ALERTS` y `GENERATE_WEEKLY_PLANS` contra ese Redis.
+3. **Fuente real de precios**: ADR de acceso y licencia (SEPA u otra), adaptador `PriceProvider` y pruebas con datos reales antes de programar importaciones.
+4. **Deuda de diseño** (logo y tipografía): ROADMAP, "Deuda de diseño".
+5. Opcionales: avisos por email o push; cierres diarios precalculados si el resumen debe bajar de ~300 ms con más datos; aislar `jobs.test.cjs`.
+
+Antes de tocar código: `git status --short --branch`, `git log -4 --oneline`, `docker compose up -d`, `npm.cmd run db:deploy`, `npm.cmd run db:seed`; API en 3010 y web en 3100 si 3000/3001 están ocupados. Al cerrar: `npm.cmd run verify`, `npm.cmd run test:db`, `npm.cmd run test:e2e` (con los servidores corriendo; detenerlos antes de `verify`), actualizar README/ROADMAP/CONTINUAR/CLAUDE.md, commit y push.
 
 ## Prompt listo para pegar (Claude o Codex)
 
-> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las fases 1 a 9, P10-01 (beneficios de pago, ADR 0023) y la parte 1 de P10-02 (planificador con beneficios en la API, ADR 0024) ya están implementadas, probadas y publicadas en GitHub; no las rehagas. Seguí con el resto de P10-02 (comparador y pantallas con pagar hoy / reintegro / costo final, preferencias de pago y topes, y la validación final del producto; ver "Cómo seguir con P10-02"), descrito en docs/steps/phase-10.md. Probalo con npm.cmd run verify y npm.cmd run test:db, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias. No marques como probado lo que no ejecutaste.
+> Continuá el proyecto en C:\Users\PC\Desktop\TusOfertasApp\solucionadoApp. Leé primero CLAUDE.md (o AGENTS.md) y CONTINUAR.md. Las diez fases (P0-01 a P10-02) están implementadas, probadas y publicadas en GitHub; no las rehagas. Lo que sigue es trabajo separado (ver "Cómo seguir" en CONTINUAR.md y "Después de las diez fases" en ROADMAP.md): redesplegar producción, desplegar worker y Redis, conectar una fuente real o resolver la deuda de diseño; preguntá cuál priorizar si no está claro. Verificá con npm.cmd run verify, npm.cmd run test:db y npm.cmd run test:e2e, y actualizá README, ROADMAP, CONTINUAR y CLAUDE.md. Tenés autorización para commit y push al completar cada paso; no pidas confirmaciones rutinarias, pero un deploy a producción es una acción externa: confirmalo antes. No marques como probado lo que no ejecutaste.

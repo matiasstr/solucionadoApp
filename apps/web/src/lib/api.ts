@@ -19,7 +19,7 @@ function isErrorBody(value: unknown): value is ApiErrorBody {
     && typeof (value as ApiErrorBody).error === 'string' && typeof (value as ApiErrorBody).message === 'string';
 }
 
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 interface RequestOptions {
   method?: HttpMethod;

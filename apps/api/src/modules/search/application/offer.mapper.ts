@@ -5,12 +5,13 @@ import { UNIT_PRICE_SCALE } from '../../prices/domain/price-normalizer';
 import type { CurrentPriceRecord } from '../../prices/domain/price-records';
 import type { StoreSummaryRecord } from '../../stores/domain/store-records';
 import { toStoreDto } from '../../stores/presentation/store.contracts';
-import type { OfferDto, OfferPromotionDto } from '../presentation/search.contracts';
+import type { OfferDto, OfferPaymentBenefitDto, OfferPromotionDto } from '../presentation/search.contracts';
 
 export interface OfferContext {
   readonly distanceMeters: number | null;
   readonly freshness: { readonly now: Date; readonly maxAgeDays: number };
   readonly promotion: OfferPromotionDto | null;
+  readonly paymentBenefits: readonly OfferPaymentBenefitDto[];
 }
 
 /** Una oferta siempre viaja con su procedencia, su frescura y su unidad comparable. */
@@ -39,5 +40,6 @@ export function buildOffer(
       isStale: freshness.isStale,
     },
     promotion: context.promotion,
+    paymentBenefits: [...context.paymentBenefits],
   };
 }

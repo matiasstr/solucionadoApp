@@ -5,6 +5,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import type { BaseUnit } from '../../catalog/domain/units';
 import { toAmountString } from '../../catalog/infrastructure/decimal-mapper';
 import type { DecimalLike } from '../../catalog/infrastructure/decimal-mapper';
+import type { WindowStats } from '../domain/price-analysis';
 import type { CurrentPriceRecord, PriceObservationRecord } from '../domain/price-records';
 import { PRICE_SCALE, UNIT_PRICE_SCALE } from '../domain/price-normalizer';
 
@@ -75,6 +76,13 @@ interface ObservationRow {
   importBatchId: string | null;
   observedAt: Date;
   ingestedAt: Date;
+}
+
+/** Precio actual de una serie con el resumen de su ventana base, calculado en la base. */
+export interface SeriesWindowRecord {
+  readonly latest: PriceObservationRecord;
+  /** Null si la serie no tiene cierres en la ventana. */
+  readonly stats: WindowStats | null;
 }
 
 interface CurrentPriceRow {
@@ -274,9 +282,41 @@ export class ProductPriceRepository {
   ): Promise<CurrentPriceRecord[]> {
     if (!productIds.length) return [];
     // Sin sucursales (o lista vacía) devuelve el precio actual de todas.
-    const storeIds = options.storeIds?.length ? [...options.storeIds] : null;
+    const storeIds = options.storeIds?.length ? [...new Set(options.storeIds)] : null;
     const precedence = [...(options.sourcePrecedence ?? [])];
-    const products = [...productIds];
+    const products = [...new Set(productIds)];
+    if (storeIds) {
+      // Con sucursales conocidas (P10-02): la última observación de cada par por el índice
+      // (productId, storeId, observedAt DESC), sin ordenar toda la historia. Mismo orden y desempate.
+      const rows = await this.prisma.$queryRaw<CurrentPriceRow[]>`
+        SELECT c.*
+        FROM unnest(${products}::uuid[]) AS product("id")
+        CROSS JOIN unnest(${storeIds}::uuid[]) AS store("id")
+        CROSS JOIN LATERAL (
+          SELECT
+            p."id"::text AS "id",
+            p."productId"::text AS "productId",
+            p."storeId"::text AS "storeId",
+            p."price"::text AS "price",
+            p."unitPrice"::text AS "unitPrice",
+            p."unitPriceUnit"::text AS "unitPriceUnit",
+            p."currency"::text AS "currency",
+            p."source" AS "source",
+            p."observedAt" AS "observedAt",
+            p."ingestedAt" AS "ingestedAt"
+          FROM "ProductPrice" p
+          WHERE p."productId" = product."id" AND p."storeId" = store."id"
+          ORDER BY
+            p."observedAt" DESC,
+            array_position(${precedence}::text[], p."source") NULLS LAST,
+            p."ingestedAt" DESC,
+            p."source" ASC,
+            p."id" ASC
+          LIMIT 1
+        ) c
+        ORDER BY c."productId"::uuid, c."storeId"::uuid`;
+      return rows.map(toCurrentRecord);
+    }
     const rows = await this.prisma.$queryRaw<CurrentPriceRow[]>`
       SELECT DISTINCT ON (p."productId", p."storeId")
         p."id"::text AS "id",
@@ -355,6 +395,104 @@ export class ProductPriceRepository {
         AND (${stores}::uuid[] IS NULL OR p."storeId" = ANY (${stores}::uuid[]))
       ORDER BY p."productId", p."storeId", p."source", p."observedAt" DESC, p."ingestedAt" DESC, p."id" ASC`;
     return rows.map((row) => ({ ...row, unitPriceUnit: row.unitPriceUnit as BaseUnit }));
+  }
+
+  /**
+   * Precio actual de cada serie (producto + sucursal + fuente) observado desde `since`, con el
+   * resumen de sus cierres diarios en la ventana base (P10-02): los `windowDays` días argentinos
+   * anteriores al día de ese precio, dentro de `[windowStart, until)`. Mismo criterio que
+   * `dailyCloses` + `summarizeCloses` (día argentino UTC−3, cierre = última observación con
+   * desempate por ingesta e id, mínimo con el día más reciente), pero sin traer las
+   * observaciones a memoria: una fila por serie, sin tope que deje series sin historia.
+   */
+  async findCurrentWithWindowStats(
+    productIds: readonly string[],
+    storeIds: readonly string[],
+    query: { since: Date; windowStart: Date; until: Date; windowDays: number },
+  ): Promise<SeriesWindowRecord[]> {
+    if (!productIds.length || !storeIds.length) return [];
+    const products = [...productIds];
+    const stores = [...storeIds];
+    const rows = await this.prisma.$queryRaw<
+      (Omit<ObservationRow, 'price' | 'unitPrice'> & {
+        price: string;
+        unitPrice: string;
+        daysWithData: number | null;
+        observations: number | null;
+        sum: string | null;
+        lowest: string | null;
+        lowestDate: string | null;
+        highest: string | null;
+      })[]
+    >`
+      WITH latest AS (
+        SELECT DISTINCT ON (p."productId", p."storeId", p."source")
+          p."id", p."productId", p."storeId", p."source", p."price", p."unitPrice", p."unitPriceUnit", p."currency",
+          p."idempotencyKey", p."importBatchId", p."observedAt", p."ingestedAt",
+          ((p."observedAt" AT TIME ZONE 'UTC') - interval '3 hours')::date AS "currentDay"
+        FROM "ProductPrice" p
+        WHERE p."productId" = ANY (${products}::uuid[])
+          AND p."storeId" = ANY (${stores}::uuid[])
+          AND p."observedAt" >= ${query.since}
+        ORDER BY p."productId", p."storeId", p."source", p."observedAt" DESC, p."ingestedAt" DESC, p."id" ASC
+      ),
+      ranked AS (
+        SELECT p."productId", p."storeId", p."source", d."day", p."unitPrice",
+          row_number() OVER (
+            PARTITION BY p."productId", p."storeId", p."source", d."day"
+            ORDER BY p."observedAt" DESC, p."ingestedAt" DESC, p."id" ASC
+          ) AS "position",
+          count(*) OVER (PARTITION BY p."productId", p."storeId", p."source", d."day") AS "observations"
+        FROM "ProductPrice" p
+        JOIN latest l ON l."productId" = p."productId" AND l."storeId" = p."storeId" AND l."source" = p."source"
+        CROSS JOIN LATERAL (SELECT ((p."observedAt" AT TIME ZONE 'UTC') - interval '3 hours')::date AS "day") d
+        WHERE p."productId" = ANY (${products}::uuid[])
+          AND p."storeId" = ANY (${stores}::uuid[])
+          AND p."observedAt" >= ${query.windowStart}
+          AND p."observedAt" < ${query.until}
+          AND d."day" BETWEEN l."currentDay" - ${query.windowDays}::int AND l."currentDay" - 1
+      ),
+      closes AS (
+        SELECT "productId", "storeId", "source", "day", "unitPrice", "observations",
+          min("unitPrice") OVER (PARTITION BY "productId", "storeId", "source") AS "lowest"
+        FROM ranked
+        WHERE "position" = 1
+      ),
+      stats AS (
+        SELECT "productId", "storeId", "source",
+          count(*)::int AS "daysWithData",
+          sum("observations")::int AS "observations",
+          sum("unitPrice")::text AS "sum",
+          min("unitPrice")::text AS "lowest",
+          max("unitPrice")::text AS "highest",
+          (max("day") FILTER (WHERE "unitPrice" = "lowest"))::text AS "lowestDate"
+        FROM closes
+        GROUP BY "productId", "storeId", "source"
+      )
+      SELECT
+        l."id"::text AS "id",
+        l."productId"::text AS "productId",
+        l."storeId"::text AS "storeId",
+        l."price"::text AS "price",
+        l."unitPrice"::text AS "unitPrice",
+        l."unitPriceUnit"::text AS "unitPriceUnit",
+        l."currency"::text AS "currency",
+        l."source" AS "source",
+        l."idempotencyKey" AS "idempotencyKey",
+        l."importBatchId" AS "importBatchId",
+        l."observedAt" AS "observedAt",
+        l."ingestedAt" AS "ingestedAt",
+        s."daysWithData", s."observations", s."sum", s."lowest", s."lowestDate", s."highest"
+      FROM latest l
+      LEFT JOIN stats s ON s."productId" = l."productId" AND s."storeId" = l."storeId" AND s."source" = l."source"
+      ORDER BY l."productId", l."storeId", l."source"`;
+    return rows.map(({ daysWithData, observations, sum, lowest, lowestDate, highest, ...row }) => ({
+      latest: { ...row, unitPriceUnit: row.unitPriceUnit as BaseUnit },
+      stats:
+        daysWithData && sum !== null && lowest !== null && lowestDate !== null && highest !== null
+          ? { daysWithData, observations: observations ?? 0, sum, lowest, lowestDate, highest }
+          : null,
+    }));
   }
 
   /** Historia de un producto en una sucursal, de la más reciente a la más antigua. */

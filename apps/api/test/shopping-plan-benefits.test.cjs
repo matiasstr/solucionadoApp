@@ -274,7 +274,10 @@ test('compra mínima: conviene llevar un producto más caro a la visita que alca
   assert.equal(at(lineOnly, 'c-x').storeId, 'a');
   const result = plan(scenario);
   assert.equal(at(result, 'c-x').storeId, 'b');
-  assert.ok(at(result, 'c-x').reasonCodes.includes('BASKET_BENEFIT_CHOICE'));
+  // A también es una visita del plan: no es "sumar una visita", es el mínimo de la compra en B.
+  assert.deepEqual(at(result, 'c-x').reasonCodes, ['BASKET_BENEFIT_CHOICE']);
+  assert.match(at(result, 'c-x').reason, /^En Sucursal a el \d{2}\/\d{2} cuesta \$100,00 menos, pero comprándolo acá entra en "Promo b-minimo" \(descuento en la caja\)/);
+  assert.doesNotMatch(at(result, 'c-x').reason, /sumar esa visita/);
   assert.equal(result.totals.payToday, '2300.00');
   assert.equal(result.visits.find((visit) => visit.storeId === 'b').payment.base, '2000.00');
   assertTotalsClose(result);

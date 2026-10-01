@@ -25,7 +25,8 @@ export function AlertsView() {
       <h1 className="page-title">Alertas de precio</h1>
       <p className="page-lead">
         Te avisamos acá cuando un producto que seguís llega a tu precio o está más barato que de costumbre cerca tuyo.
-        Revisamos las alertas cuando procesamos precios nuevos; no enviamos emails ni mensajes al celular.
+        Revisamos las alertas cuando procesamos precios nuevos; no enviamos emails ni mensajes al celular. El precio de
+        un aviso es el de góndola: no incluye descuentos de bancos, billeteras ni programas de socios.
       </p>
       <Inbox />
       <Rules />

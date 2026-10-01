@@ -6,22 +6,31 @@ Aplicación web para ayudar a las personas en Argentina a gastar menos en sus co
 
 Fase 1 completa (**P0-01, P1-01 a P1-04**): monorepo Next.js/NestJS, base de datos operativa y autenticación de punta a punta. Incluye portada adaptable, TanStack Query, API health (liveness y readiness de DB), configuración validada, errores centralizados, logging JSON, migración inicial PostgreSQL/PostGIS con constraints de dominio y pruebas de integración contra una base real. Se puede crear una cuenta en `/register`, ingresar en `/login`, recuperar la sesión al recargar y cerrar sesión; `/inicio` es el área privada, honesta sobre lo que todavía falta (ver ADR [0003](docs/architecture-decisions/0003-auth-sessions.md) y [0007](docs/architecture-decisions/0007-web-auth-same-origin.md)).
 
-**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). **P3-01** agrega la búsqueda (nombre, marca o EAN, con filtros de cadena, localidad y radio) y la comparación de alternativas por unidad base con sus promociones: el formato completo de las respuestas está en [docs/API.md](docs/API.md). **P3-02** cierra la fase 3 con las pantallas: portada con buscador, `/buscar` y `/producto/[id]`, todas públicas y con los filtros en la URL. **P4-01** agrega la API privada de rutinas de compra y despensa, con ownership en cada consulta y cantidades normalizadas a la unidad del canónico ([ADR 0011](docs/architecture-decisions/0011-routines-inventory-ownership.md)); **P4-02** cierra la fase 4 con las pantallas privadas: onboarding (`/onboarding`), compras habituales (`/mis-compras`), despensa (`/mi-despensa`) y preferencias (`/preferencias`) ([ADR 0012](docs/architecture-decisions/0012-onboarding-private-pages.md)). **P5-01** abre la fase 5 con el cálculo de necesidades netas y candidatos de compra del planificador ([ADR 0013](docs/architecture-decisions/0013-planner-needs-candidates.md)) , **P5-02** agrega el optimizador determinista con costo efectivo, base habitual y ahorro estimado ([ADR 0014](docs/architecture-decisions/0014-planner-optimizer.md)) y **P5-03** cierra la fase 5: planes guardados con `/shopping-plans` y la pantalla `/plan-semanal` con el cronograma por día y sucursal ([ADR 0015](docs/architecture-decisions/0015-saved-plans.md)). **P6-01** agrega el historial de precios por sucursal y fuente con su análisis (normal, buena oferta, caro, mínimo de la ventana, desactualizado o datos insuficientes) en `GET /products/:id/price-history` ([ADR 0016](docs/architecture-decisions/0016-price-history-analysis.md)) y **P6-02** cierra la fase 6: el historial se ve como gráfico en `/producto/[id]` y el resumen privado `/dashboard` muestra próxima compra, ahorro **estimado** (un plan por período) y oportunidades en los productos habituales ([ADR 0017](docs/architecture-decisions/0017-dashboard-estimated-savings.md)). **P7-01** abre la fase 7 con la arquitectura de importación: contratos de proveedores, normalización estricta, identidad por fuente y EAN, lotes con backpressure y un comando manual con un proveedor simulado y otro de archivo ([ADR 0018](docs/architecture-decisions/0018-import-pipeline.md)), y **P7-02** la cierra con ejecuciones registradas, cuarentena, reintentos, reanudación y descargas solo de hosts permitidos ([ADR 0019](docs/architecture-decisions/0019-import-runs-recovery.md), guía para proveedores en [docs/IMPORTS.md](docs/IMPORTS.md)); todavía no hay una fuente real conectada. **P8-01** abre la fase 8 con jobs en Redis/BullMQ: un worker aparte del API HTTP procesa importaciones de precios y promociones y la generación de planes semanales, con ids idempotentes, reintentos y comandos manuales ([ADR 0020](docs/architecture-decisions/0020-jobs-bullmq-worker.md)); **P8-02** cierra la fase 8: programaciones en hora argentina sin duplicados entre réplicas, reporte operativo (retraso de colas, último éxito por fuente, ejecuciones colgadas, frescura de precios), fallos agotados con reintento manual seguro, imágenes Docker y [runbook](docs/RUNBOOK.md) ([ADR 0021](docs/architecture-decisions/0021-job-scheduling-operations.md)); el worker todavía no está desplegado. **P9-01** abre la fase 9 con alertas de precio (objetivo por unidad, mínimo del mes o buena oferta) y una bandeja de avisos dentro de la app: API `/alerts` y `/notifications` y job `CHECK_PRICE_ALERTS` que avisa sin repetir ni duplicar ([ADR 0022](docs/architecture-decisions/0022-price-alerts-notifications.md)), y **P9-02** cierra la fase 9 con las pantallas: crear alertas desde el producto y el buscador, bandeja en `/alertas`, contador en el menú y últimos avisos en el resumen. **P10-01** abre la fase 10 con los beneficios de pago: monto fijo o porcentaje, descuento en caja o reintegro con plazo, topes por compra, semana, mes o campaña compartidos entre promociones, elegibilidad según los bancos y medios declarados (sin pedir datos de tarjeta) y `POST /benefits/evaluate`, que explica qué aplica, qué está condicionado y qué no corresponde ([ADR 0023](docs/architecture-decisions/0023-payment-benefits-engine.md)); el plan y las pantallas todavía no los usan. **Ningún precio es real** y el ahorro siempre es **estimado**.
+**P2-01** agrega el catálogo del backend: categorías jerárquicas, productos canónicos y presentaciones concretas, cadenas y sucursales, historia de precios append-only, conversión de unidades y precio por unidad base con aritmética decimal exacta ([ADR 0008](docs/architecture-decisions/0008-catalog-prices-demo-data.md)), más un dataset **DEMO** reproducible (`npm.cmd run db:seed`). **P2-02** lo expone por HTTP: productos, canónicos, sucursales y precios actuales por sucursal, con paginación por cursor, filtros estrictos, consultas por cercanía en kilómetros y procedencia/frescura en cada precio. **P2-03** cierra la fase 2 con el motor de promociones simples (`PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE`), promociones demo y `GET /promotions` ([ADR 0009](docs/architecture-decisions/0009-promotion-engine.md)). **P3-01** agrega la búsqueda (nombre, marca o EAN, con filtros de cadena, localidad y radio) y la comparación de alternativas por unidad base con sus promociones: el formato completo de las respuestas está en [docs/API.md](docs/API.md). **P3-02** cierra la fase 3 con las pantallas: portada con buscador, `/buscar` y `/producto/[id]`, todas públicas y con los filtros en la URL. **P4-01** agrega la API privada de rutinas de compra y despensa, con ownership en cada consulta y cantidades normalizadas a la unidad del canónico ([ADR 0011](docs/architecture-decisions/0011-routines-inventory-ownership.md)); **P4-02** cierra la fase 4 con las pantallas privadas: onboarding (`/onboarding`), compras habituales (`/mis-compras`), despensa (`/mi-despensa`) y preferencias (`/preferencias`) ([ADR 0012](docs/architecture-decisions/0012-onboarding-private-pages.md)). **P5-01** abre la fase 5 con el cálculo de necesidades netas y candidatos de compra del planificador ([ADR 0013](docs/architecture-decisions/0013-planner-needs-candidates.md)) , **P5-02** agrega el optimizador determinista con costo efectivo, base habitual y ahorro estimado ([ADR 0014](docs/architecture-decisions/0014-planner-optimizer.md)) y **P5-03** cierra la fase 5: planes guardados con `/shopping-plans` y la pantalla `/plan-semanal` con el cronograma por día y sucursal ([ADR 0015](docs/architecture-decisions/0015-saved-plans.md)). **P6-01** agrega el historial de precios por sucursal y fuente con su análisis (normal, buena oferta, caro, mínimo de la ventana, desactualizado o datos insuficientes) en `GET /products/:id/price-history` ([ADR 0016](docs/architecture-decisions/0016-price-history-analysis.md)) y **P6-02** cierra la fase 6: el historial se ve como gráfico en `/producto/[id]` y el resumen privado `/dashboard` muestra próxima compra, ahorro **estimado** (un plan por período) y oportunidades en los productos habituales ([ADR 0017](docs/architecture-decisions/0017-dashboard-estimated-savings.md)). **P7-01** abre la fase 7 con la arquitectura de importación: contratos de proveedores, normalización estricta, identidad por fuente y EAN, lotes con backpressure y un comando manual con un proveedor simulado y otro de archivo ([ADR 0018](docs/architecture-decisions/0018-import-pipeline.md)), y **P7-02** la cierra con ejecuciones registradas, cuarentena, reintentos, reanudación y descargas solo de hosts permitidos ([ADR 0019](docs/architecture-decisions/0019-import-runs-recovery.md), guía para proveedores en [docs/IMPORTS.md](docs/IMPORTS.md)); todavía no hay una fuente real conectada. **P8-01** abre la fase 8 con jobs en Redis/BullMQ: un worker aparte del API HTTP procesa importaciones de precios y promociones y la generación de planes semanales, con ids idempotentes, reintentos y comandos manuales ([ADR 0020](docs/architecture-decisions/0020-jobs-bullmq-worker.md)); **P8-02** cierra la fase 8: programaciones en hora argentina sin duplicados entre réplicas, reporte operativo (retraso de colas, último éxito por fuente, ejecuciones colgadas, frescura de precios), fallos agotados con reintento manual seguro, imágenes Docker y [runbook](docs/RUNBOOK.md) ([ADR 0021](docs/architecture-decisions/0021-job-scheduling-operations.md)); el worker todavía no está desplegado. **P9-01** abre la fase 9 con alertas de precio (objetivo por unidad, mínimo del mes o buena oferta) y una bandeja de avisos dentro de la app: API `/alerts` y `/notifications` y job `CHECK_PRICE_ALERTS` que avisa sin repetir ni duplicar ([ADR 0022](docs/architecture-decisions/0022-price-alerts-notifications.md)), y **P9-02** cierra la fase 9 con las pantallas: crear alertas desde el producto y el buscador, bandeja en `/alertas`, contador en el menú y últimos avisos en el resumen. **P10-01** abre la fase 10 con los beneficios de pago: monto fijo o porcentaje, descuento en caja o reintegro con plazo, topes por compra, semana, mes o campaña compartidos entre promociones, elegibilidad según los bancos y medios declarados (sin pedir datos de tarjeta) y `POST /benefits/evaluate`, que explica qué aplica, qué está condicionado y qué no corresponde ([ADR 0023](docs/architecture-decisions/0023-payment-benefits-engine.md)). **P10-02** cierra la fase 10 y el producto. El plan cobra cada visita como una compra con esos beneficios: pagar hoy, reintegro estimado y costo después del reintegro, sin contar reintegros como ahorro. El comparador muestra los beneficios de banco con sus condiciones. Preferencias y onboarding permiten declarar medios de pago e informar topes ya usados. El resumen y las alertas analizan todas las series de la zona sin tope oculto ([ADR 0024](docs/architecture-decisions/0024-plan-payment-benefits.md), [ADR 0025](docs/architecture-decisions/0025-price-queries-at-scale.md)). **Ningún precio es real** y el ahorro siempre es **estimado**.
+
+**Qué está demostrado y qué falta.** Las diez fases funcionales están implementadas y probadas con datos **DEMO** (seed) y **MOCK** (importador simulado): unitarios, integración con PostgreSQL/PostGIS y Redis reales, E2E en Edge del recorrido registro → rutina → despensa → comparación → historial → alerta → medios de pago → plan, y un benchmark local con ~259.000 precios ([RUNBOOK](docs/RUNBOOK.md#tiempos-de-respuesta-benchmark-local)). Siguen pendientes, como trabajo aparte:
+- **Fuente real de precios y promociones**: los conectores implementados son el proveedor simulado y archivos o descargas JSON Lines.
+- **Worker y Redis desplegados**: sin ellos, en producción no corren importaciones programadas, planes semanales ni alertas.
+- **Redespliegue de producción**: tiene todo hasta P8-01.
+- **Avisos fuera de la app**: no hay email ni push.
 
 Para retomar con otro modelo o sesión, leer **[CONTINUAR.md](CONTINUAR.md)**. Los 25 pasos, sus dependencias y estado están en [ROADMAP.md](ROADMAP.md); cada fase tiene instrucciones y criterios de aceptación en [docs/steps](docs/steps/).
 
 ## Stack y arquitectura
 
-Next.js + TypeScript + App Router + Tailwind CSS + TanStack Query; NestJS modular; PostgreSQL/PostGIS + Prisma. Desarrollo con npm workspaces y Docker Compose. Redis/BullMQ y despliegue Cloud Run se incorporan en etapas posteriores.
+Next.js + TypeScript + App Router + Tailwind CSS + TanStack Query; NestJS modular; PostgreSQL/PostGIS + Prisma; Redis + BullMQ para jobs en un worker aparte del API HTTP. Desarrollo con npm workspaces y Docker Compose. Web y API publicadas en Vercel con Supabase; el worker está preparado (imagen y runbook) pero no desplegado.
 
 ```mermaid
 flowchart LR
-  Sources[Fuentes de precios] --> Importers[Adaptadores e importadores]
-  Importers --> Normalizer[Normalización por lotes]
-  Normalizer --> DB[(PostgreSQL + PostGIS)]
-  DB --> API[NestJS]
+  Sources[Proveedor simulado / JSON Lines] --> Importers[Importadores por lotes]
+  Importers --> DB[(PostgreSQL + PostGIS)]
+  Jobs[Comando jobs] --> Redis[(Redis)]
+  Redis --> Worker[Worker: importaciones, planes semanales, alertas]
+  Worker --> Importers
+  Worker --> DB
+  DB --> API[NestJS /api]
   API --> Web[Next.js]
-  Needs[Rutinas + inventario + preferencias] --> Optimizer[Optimizador determinista]
+  Needs[Rutinas + despensa + preferencias de pago] --> Optimizer[Optimizador + motor de beneficios]
   DB --> Optimizer
   Optimizer --> API
 ```
@@ -60,7 +69,7 @@ npm.cmd run db:deploy
 npm.cmd run dev
 ```
 
-Abrir la [web local](http://127.0.0.1:3000) (crear cuenta en `/register`), [API health](http://localhost:3001/api/health) y [readiness](http://localhost:3001/api/health/ready). La web reenvía `/api/*` a la API (`API_ORIGIN` en `apps/web/.env.local`): el navegador usa un solo origen y la cookie de sesión es first-party. `/api/health` confirma solamente que el proceso está vivo (no consulta la DB); `/api/health/ready` ejecuta una consulta real y responde 503 `{status:"unavailable"}` si PostgreSQL no está disponible. La API exige `DATABASE_URL` válida para arrancar, pero conecta de forma diferida. API usa puerto 3001, web 3000. El buscador y auth se implementan en pasos siguientes.
+Abrir la [web local](http://127.0.0.1:3000) (crear cuenta en `/register`), [API health](http://localhost:3001/api/health) y [readiness](http://localhost:3001/api/health/ready). La web reenvía `/api/*` a la API (`API_ORIGIN` en `apps/web/.env.local`): el navegador usa un solo origen y la cookie de sesión es first-party. `/api/health` confirma solamente que el proceso está vivo (no consulta la DB); `/api/health/ready` ejecuta una consulta real y responde 503 `{status:"unavailable"}` si PostgreSQL no está disponible. La API exige `DATABASE_URL` válida para arrancar, pero conecta de forma diferida. API usa puerto 3001, web 3000. Para ver precios hace falta el dataset DEMO (`npm.cmd run db:seed`).
 
 Servicios de datos:
 
@@ -86,9 +95,28 @@ npm.cmd run build
 npm.cmd audit
 ```
 
-`npm.cmd run test:e2e` corre los E2E de auth, de búsqueda/comparación, de cuenta (onboarding, compras, despensa y preferencias), de plan, de historial y de alertas en Edge real (`playwright-core`, sin descargar navegadores) contra `npm.cmd run dev` ya iniciado; el de búsqueda necesita `npm.cmd run db:seed` y no escribe datos, el de auth y el de cuenta crean cuentas ficticias `e2e-*@example.com`. Las capturas quedan en `.cache/verification/p1-04`, `p3-02` y `p4-02`. Con la API o la web en otro puerto, definir `E2E_BASE_URL`. `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS y Redis reales (ver abajo). Web se comprueba además por build y revisión visual de esas capturas.
+`npm.cmd run test:e2e` corre los E2E de auth, de búsqueda/comparación, de cuenta (onboarding, compras, despensa y preferencias), de plan, de historial, de alertas y el recorrido completo con beneficios de pago (`journey.e2e.cjs`: registro, medios de pago, rutina, despensa, comparación, historial, alerta, topes usados, plan y móvil) en Edge real (`playwright-core`, sin descargar navegadores) contra `npm.cmd run dev` ya iniciado; el de búsqueda necesita `npm.cmd run db:seed` y no escribe datos, el de auth y el de cuenta crean cuentas ficticias `e2e-*@example.com`. Las capturas quedan en `.cache/verification/` (por paso, por ejemplo `p10-02`). Los tiempos de respuesta con un dataset grande se miden con `apps/api/scripts/bench-api.cjs` ([RUNBOOK](docs/RUNBOOK.md#tiempos-de-respuesta-benchmark-local)). Con la API o la web en otro puerto, definir `E2E_BASE_URL`. `npm.cmd test` no requiere DB: verifica health/readiness caído, headers, CORS, validación de entorno, errores y redacción de secretos. `npm.cmd run test:db` es la suite de integración con PostgreSQL/PostGIS y Redis reales (ver abajo). Web se comprueba además por build y revisión visual de esas capturas.
 
 Para ejecutar los builds, usar dos terminales: `npm.cmd run start --workspace=@tusofertas/api` y `npm.cmd run start --workspace=@tusofertas/web`. Los scripts `db:validate`, `db:generate` y `db:format` no crean tablas. Dependencias transitivas corregidas y su mantenimiento están documentadas en [ADR 0005](docs/architecture-decisions/0005-dependency-patches.md).
+
+## Catálogo de endpoints
+
+Todas las rutas van con el prefijo `/api`. El formato estable de cada respuesta está en **[docs/API.md](docs/API.md)**, y los contratos en [`packages/shared`](packages/shared/src/index.ts).
+
+| Grupo | Rutas | Sesión |
+| --- | --- | --- |
+| Salud | `GET /health`, `GET /health/ready` | No |
+| Autenticación y perfil | `POST /auth/register\|login\|refresh\|logout`, `GET/PATCH /users/me` (zona, distancia, sucursales, medios de pago, bancos, membresías) | `/auth` con CSRF; perfil con Bearer |
+| Catálogo y búsqueda | `GET /products`, `/products/:id`, `/canonical-products`, `/canonical-products/:id` | No |
+| Precios y comparación | `GET /products/:id/prices`, `/products/:id/price-history`, `/canonical-products/:id/prices` (con `promotion` y `paymentBenefits` por oferta) | No |
+| Comercios y promociones | `GET /stores`, `/stores/:id`, `/promotions`, `/promotions/:id` | No |
+| Beneficios de pago | `POST /benefits/evaluate`, `GET /benefit-usage`, `PUT/DELETE /benefit-usage/:promotionId` | Bearer |
+| Rutinas y despensa | `/shopping-routines` (+ `/:id`, `/:id/items`, `/:id/items/:itemId`), `/inventory` (+ `/:id`) | Bearer |
+| Planes | `POST /shopping-plans/generate` (con `Idempotency-Key`), `GET /shopping-plans`, `GET/PATCH /shopping-plans/:id` | Bearer |
+| Resumen | `GET /dashboard` | Bearer |
+| Alertas y avisos | `GET/POST /alerts`, `PATCH/DELETE /alerts/:id`, `GET /notifications`, `PATCH /notifications/:id/read` | Bearer |
+
+Los jobs (importaciones, planes semanales, alertas) se operan por comando, no por HTTP ([RUNBOOK](docs/RUNBOOK.md)).
 
 ## API de autenticación y perfil
 
@@ -110,8 +138,8 @@ Errores: `{statusCode, error, message, fields?}`; `fields` nombra propiedades, n
 | Ruta | Qué hace |
 | --- | --- |
 | `/` | Portada con el buscador: comparar **no requiere cuenta** |
-| `/buscar` | Resultados con precio, precio por kilo o litro, sucursal y promoción; filtros de cadena y localidad |
-| `/producto/[id]` | Ficha con el producto exacto por sucursal y las alternativas equivalentes, ordenables por envase, unidad base o distancia |
+| `/buscar` | Resultados con precio, precio por kilo o litro, sucursal, promoción y el primer beneficio de banco ("no incluido en el precio"); filtros de cadena y localidad |
+| `/producto/[id]` | Ficha con el producto exacto por sucursal y las alternativas equivalentes, ordenables por envase, unidad base o distancia; cada oferta lista los beneficios de banco, billetera o socios con todas sus condiciones (P10-02), el historial y la creación de alertas |
 
 Decisiones de estas pantallas:
 
@@ -127,12 +155,12 @@ Requieren sesión; lo que se carga queda en la API (`/shopping-routines`, `/inve
 
 | Ruta | Qué hace |
 | --- | --- |
-| `/onboarding` | Cuatro pasos que se pueden omitir: zona (ubicación exacta opcional), distancia y sucursales, productos habituales, resumen. Registrarse lleva acá |
+| `/onboarding` | Cuatro pasos que se pueden omitir: zona (ubicación exacta opcional), distancia y sucursales (con medios de pago opcionales), productos habituales, resumen. Registrarse lleva acá |
 | `/mis-compras` | Listas de compra: cantidad por compra, unidad y frecuencia de cada necesidad; presentación, marcas y reemplazos en "Más opciones"; lo que hay en la despensa al lado |
 | `/mi-despensa` | Saldo aproximado de lo que hay en casa; no se descuenta solo |
-| `/preferencias` | Zona, ubicación exacta, distancia máxima y sucursales por compra |
+| `/preferencias` | Zona, ubicación exacta, distancia máxima, sucursales por compra, **medios de pago, bancos y programas de socios** (sin datos de tarjeta) y **topes de beneficios ya usados** en el mes, la semana o la campaña |
 | `/dashboard` | Resumen: próxima compra, ahorro estimado de esta semana, del mes y acumulado (solo planes en uso o hechos, uno por período), oportunidades en tus productos habituales cerca y "sin compras registradas" |
-| `/plan-semanal` | Genera el plan de la semana y lo muestra por día y sucursal: qué comprar, cuánto, a qué precio estimado y por qué; ahorro estimado frente a una sola sucursal, faltantes, avisos y planes anteriores. Se puede marcar "en uso" o "hecho" |
+| `/plan-semanal` | Genera el plan de la semana y lo muestra por día y sucursal: qué comprar, cuánto, a qué precio estimado y por qué. Muestra lo que **se paga en las cajas**, el **reintegro estimado** y el **costo después del reintegro**, el beneficio de cada compra con sus condiciones y lo que depende de un dato no informado. También el ahorro estimado frente a una sola sucursal (sin reintegros), faltantes, avisos, criterios y planes anteriores. Se puede marcar "en uso" o "hecho" |
 | `/alertas` | Alertas de precio (P9-02): bandeja de avisos con "Nuevo", marcar leído y avisos anteriores; alertas con qué vigilan, su última revisión en palabras, pausar, reanudar y borrar. El menú muestra los avisos sin leer y el resumen los últimos |
 | `/inicio` | Resumen de la cuenta y aviso para terminar el onboarding si quedó a medias |
 
@@ -195,7 +223,7 @@ Los importes de ese ejemplo son **ficticios** (`source: "demo-seed"`): no son pr
 
 ## Promociones
 
-Cuatro tipos calculables: `PERCENTAGE` (porcentaje sobre las unidades elegibles), `SECOND_UNIT` (una unidad con descuento por cada par completo), `TWO_FOR_ONE` (se cobran `cantidad - floor(cantidad / 2)`) y `FIXED_PRICE` (precio final por unidad al alcanzar la cantidad mínima). `BANK_DISCOUNT` está modelado pero **no se aplica** hasta P10-01. Decisiones en [ADR 0009](docs/architecture-decisions/0009-promotion-engine.md).
+Cuatro tipos calculables: `PERCENTAGE` (porcentaje sobre las unidades elegibles), `SECOND_UNIT` (una unidad con descuento por cada par completo), `TWO_FOR_ONE` (se cobran `cantidad - floor(cantidad / 2)`) y `FIXED_PRICE` (precio final por unidad al alcanzar la cantidad mínima). `priceLine` no aplica `BANK_DISCOUNT` ni nada que dependa de banco, medio de pago o membresía: eso lo cobra el motor por compra (P10-01) con lo que la persona declaró, en el plan y en `POST /benefits/evaluate` (P10-02). Decisiones en [ADR 0009](docs/architecture-decisions/0009-promotion-engine.md) y [ADR 0023](docs/architecture-decisions/0023-payment-benefits-engine.md).
 
 El calculador vive en el dominio (`priceLine`), no en la API: recibe precio unitario, cantidad y modalidad de venta, y devuelve el total, el ahorro y **la evaluación de cada promoción considerada, aplique o no**. Reglas que sostiene:
 
@@ -205,7 +233,7 @@ El calculador vive en el dominio (`priceLine`), no en la API: recibe precio unit
 - **Vigencia `[validFrom, validUntil)`** sobre instantes UTC, pero los días elegibles se leen en `America/Argentina/Buenos_Aires`: un domingo a las 21:00 en Argentina es lunes en UTC y vale el día argentino.
 - **El redondeo monetario ocurre una sola vez**, sobre el total de la línea.
 
-`GET /promotions` informa; no afirma que a quien consulta le corresponda el beneficio. El campo `automatic` distingue las que el sistema calcula solo de las que dependen del usuario o de compras previas. El seed carga 9 promociones demo: activas, una futura, una vencida, una solo los martes, una con mínimo de compra y una bancaria que nunca se aplica sola.
+`GET /promotions` informa; no afirma que a quien consulta le corresponda el beneficio. El campo `automatic` distingue las que el sistema calcula solo de las que dependen del usuario o de compras previas. El seed carga 12 promociones demo: activas, una futura, una vencida, una solo los martes, una con mínimo de compra y cuatro de pago. Esas cuatro son: 25% con crédito del Banco Demo con tope por compra; un reintegro del 30% los miércoles y un 20% con débito, que comparten el tope mensual del Banco Demo; y $1.500 con billetera virtual con compra mínima.
 
 ## Planificador: necesidades, candidatos, optimizador y plan guardado
 
@@ -326,6 +354,15 @@ El precio actual de un producto en una sucursal es su observación más reciente
 **P2-02** expone estos datos por HTTP y **P2-03** agrega promociones demo. No hay precios reales disponibles todavía.
 
 **Historial (P6-01).** `GET /products/:id/price-history` devuelve una serie por sucursal y fuente con un punto por día argentino (la última observación del día; los huecos no se rellenan) y analiza el precio actual contra los 30 días **anteriores**: promedio por día, mínimo con su fecha y máximo. Etiquetas con precedencia fija: desactualizado (`STALE`), datos insuficientes (menos de 7 días), mínimo de la ventana (`HISTORIC_LOW`, por debajo del mínimo; igualarlo no alcanza), buena oferta (< 85 % del promedio), caro (> 115 %) o normal. Formato en [docs/API.md](docs/API.md#get-productsidprice-history).
+
+## Limitaciones conocidas
+
+- **Datos**: todos los precios y promociones son ficticios (DEMO o MOCK). No hay una fuente real conectada ni garantía de stock: una observación no es disponibilidad.
+- **Ahorro**: siempre estimado con los últimos precios observados; los reintegros se muestran aparte y nunca se suman al ahorro. Marcar un plan como hecho no registra una compra real.
+- **Beneficios**: dependen de lo que la persona declara; lo no declarado queda condicionado. No se valida ninguna tarjeta ni cuenta bancaria.
+- **Planificador**: búsqueda exacta acotada a los candidatos recortados; con muchas combinaciones el plan es aproximado y lo dice (`HEURISTIC`, `BASKET_BENEFITS_APPROXIMATED`). La distancia es en línea recta.
+- **Escala**: medida con ~259.000 precios en una máquina de desarrollo ([ADR 0025](docs/architecture-decisions/0025-price-queries-at-scale.md)); no hay pruebas de carga ni de concurrencia de producción.
+- **Producción**: web y API en Vercel con todo hasta P8-01, sin dataset DEMO; worker y Redis sin desplegar; avisos solo dentro de la app.
 
 ## Calidad y evolución
 

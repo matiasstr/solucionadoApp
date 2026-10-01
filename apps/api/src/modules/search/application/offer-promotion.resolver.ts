@@ -3,10 +3,12 @@ import { DecimalValue } from '../../catalog/domain/decimal';
 import { toBaseQuantity } from '../../catalog/domain/units';
 import type { ProductRecord } from '../../catalog/domain/catalog-records';
 import { UNIT_PRICE_SCALE } from '../../prices/domain/price-normalizer';
+import { conditionsOf, dependsOnPayer } from '../../promotions/domain/benefit-conditions';
 import { minimumQuantityFor, priceLine } from '../../promotions/domain/promotion-calculator';
+import { argentineIsoWeekday, isWithinValidity, matchesTarget } from '../../promotions/domain/promotion-eligibility';
 import type { PromotionRule } from '../../promotions/domain/promotion.types';
 import type { StoreSummaryRecord } from '../../stores/domain/store-records';
-import type { OfferPromotionDto } from '../presentation/search.contracts';
+import type { OfferPaymentBenefitDto, OfferPromotionDto } from '../presentation/search.contracts';
 
 /**
  * Traduce las reglas promocionales vigentes en el beneficio concreto de una oferta.
@@ -61,5 +63,30 @@ export class OfferPromotionResolver {
       }
     }
     return best;
+  }
+
+  /**
+   * Beneficios que dependen de la persona (banco, medio de pago, membresía) vigentes en la
+   * sucursal para este producto (P10-02). No cambian el precio de la oferta: se informan con
+   * sus condiciones, los del día primero y después por id.
+   */
+  paymentBenefits(product: ProductRecord, store: StoreSummaryRecord, rules: readonly PromotionRule[], instant: Date): OfferPaymentBenefitDto[] {
+    const target = {
+      storeId: store.id,
+      chainId: store.chainId,
+      productId: product.id,
+      canonicalProductId: product.canonicalProductId,
+    };
+    const weekday = argentineIsoWeekday(instant);
+    return rules
+      .filter((rule) => dependsOnPayer(rule) && isWithinValidity(rule, instant) && matchesTarget(rule, target))
+      .map((rule) => ({
+        id: rule.id,
+        name: rule.name,
+        availableToday: !rule.eligibleWeekdays.length || rule.eligibleWeekdays.includes(weekday),
+        conditions: conditionsOf(rule),
+        terms: rule.terms,
+      }))
+      .sort((a, b) => Number(b.availableToday) - Number(a.availableToday) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 }

@@ -28,7 +28,7 @@ const ANCHOR = latestObservationAnchor();
 const CABA = 'Ciudad Autónoma de Buenos Aires';
 // Caballito: Coto Caballito a 0 m, Lanús fuera de 5 km.
 const ORIGIN = { latitude: -34.6187, longitude: -58.4407 };
-const OFFER_KEYS = ['product', 'matchType', 'store', 'price', 'currency', 'unitPrice', 'unitPriceUnit', 'unitPricePer100g', 'source', 'freshness', 'promotion'];
+const OFFER_KEYS = ['product', 'matchType', 'store', 'price', 'currency', 'unitPrice', 'unitPriceUnit', 'unitPricePer100g', 'source', 'freshness', 'promotion', 'paymentBenefits'];
 
 let app;
 let server;
@@ -237,6 +237,17 @@ describe('GET /api/canonical-products/:id/prices — comparación', () => {
     assert.equal(Number(carrefour.promotion.total).toFixed(2), (Number(carrefour.price) * 0.8).toFixed(2));
     assert.ok(Number(carrefour.promotion.promotionalUnitPrice) < Number(carrefour.unitPrice));
     assert.deepEqual(carrefour.promotion.eligibleWeekdays, []);
+    // P10-02: el descuento bancario de la cadena se informa con sus condiciones y no cambia el precio ni la promoción.
+    const bank = carrefour.paymentBenefits.find((benefit) => benefit.id === demoPromotionId('carrefour-banco-25'));
+    assert.ok(bank, 'el 25% con crédito del Banco Demo alcanza a toda la cadena');
+    assert.equal(bank.availableToday, true);
+    assert.deepEqual(
+      [bank.conditions.type, bank.conditions.discountPercentage, bank.conditions.paymentMethod, bank.conditions.bank, bank.conditions.discountCap, bank.conditions.capPeriod, bank.conditions.timing],
+      ['BANK_DISCOUNT', '25.00', 'CREDIT_CARD', 'Banco Demo', '5000.00', 'PURCHASE', 'IMMEDIATE'],
+    );
+    assert.ok(arroz.body.offers.every((offer) => offer.paymentBenefits.every((benefit) => benefit.id !== demoPromotionId('carrefour-arroz-20'))), 'una promoción automática no figura como beneficio de pago');
+    const others = arroz.body.offers.filter((offer) => !offer.store.chainName.startsWith('Carrefour'));
+    assert.ok(others.every((offer) => offer.paymentBenefits.every((benefit) => benefit.id !== demoPromotionId('carrefour-banco-25'))), 'otras cadenas no lo reciben');
 
     // 2x1 de cadena: hay que llevar dos y se paga una.
     const fideos = await get(`/api/canonical-products/${demoCanonicalProductId('fideos-secos')}/prices?limit=50`).expect(200);
