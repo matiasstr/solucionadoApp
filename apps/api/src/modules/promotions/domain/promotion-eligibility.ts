@@ -48,10 +48,10 @@ export function matchesTarget(rule: PromotionRule, target: PromotionTarget): boo
 }
 
 /**
- * Motivo por el que la promoción no corresponde, o `null` si es elegible.
- * No evalúa cantidades ni importes: eso lo decide el calculador.
+ * Vigencia, alcance y día de la semana: lo que no depende de la persona (P10-01 lo reutiliza
+ * en el motor de beneficios, que sí conoce sus preferencias y topes).
  */
-export function promotionSkipReason(
+export function calendarOrScopeSkipReason(
   rule: PromotionRule,
   target: PromotionTarget,
   instant: Date,
@@ -65,6 +65,20 @@ export function promotionSkipReason(
   if (rule.eligibleWeekdays.length && !rule.eligibleWeekdays.includes(argentineIsoWeekday(instant))) {
     return 'WEEKDAY_NOT_ELIGIBLE';
   }
+  return null;
+}
+
+/**
+ * Motivo por el que la promoción no corresponde, o `null` si es elegible.
+ * No evalúa cantidades ni importes: eso lo decide el calculador.
+ */
+export function promotionSkipReason(
+  rule: PromotionRule,
+  target: PromotionTarget,
+  instant: Date,
+): PromotionSkipReason | null {
+  const calendarOrScope = calendarOrScopeSkipReason(rule, target, instant);
+  if (calendarOrScope) return calendarOrScope;
   // Banco, medio de pago y membresía dependen del usuario: no se asumen.
   if (rule.type === 'BANK_DISCOUNT' || rule.bank || rule.paymentMethod) return 'PAYMENT_CONDITIONED';
   if (rule.membershipProgram) return 'MEMBERSHIP_CONDITIONED';

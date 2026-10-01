@@ -4,7 +4,7 @@
  * tal como viene) y el normalizador los convierte o los rechaza con motivo.
  */
 import type { MeasurementUnit, SaleMode } from '../../catalog/domain/units';
-import type { DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
 
 /** Separador decimal del proveedor. Con `,` el punto solo puede separar miles (`1.234,56`). */
 export type DecimalSeparator = ',' | '.';
@@ -79,6 +79,13 @@ export interface RawPromotionRecord {
   readonly minimumSpend?: string | null;
   readonly discountCap?: string | null;
   readonly capPeriod?: string | null;
+  /** P10-01: monto fijo de un descuento bancario (en lugar del porcentaje). */
+  readonly discountAmount?: string | null;
+  /** `IMMEDIATE` (en caja, por defecto) o `REFUND`; también `inmediato`/`reintegro`. */
+  readonly benefitTiming?: string | null;
+  readonly refundDelayDays?: number | null;
+  /** Tope compartido entre promociones de la fuente (por ejemplo, el mensual de un banco). */
+  readonly capGroup?: string | null;
   readonly eligibleWeekdays?: readonly number[] | null;
   readonly terms?: string | null;
   readonly validFrom: string;
@@ -144,6 +151,10 @@ export interface NormalizedPromotion {
   readonly minimumSpend: string | null;
   readonly discountCap: string | null;
   readonly capPeriod: DiscountCapPeriod | null;
+  readonly discountAmount: string | null;
+  readonly benefitTiming: BenefitTiming;
+  readonly refundDelayDays: number | null;
+  readonly capGroup: string | null;
   readonly eligibleWeekdays: readonly number[];
   readonly terms: string | null;
   readonly validFrom: Date;

@@ -1,6 +1,6 @@
 # API de Tus Ofertas
 
-Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas, despensa, planes de compra, alertas y avisos. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
+Formato estable de las respuestas públicas de lectura (catálogo, precios, promociones y comercios) y de la API privada de rutinas, despensa, planes de compra, alertas, avisos y beneficios de pago. Los contratos TypeScript están en [`packages/shared/src/index.ts`](../packages/shared/src/index.ts); acá se documentan parámetros, límites y forma de la respuesta. Autenticación y perfil están en el [README](../README.md#api-de-autenticación-y-perfil).
 
 Todos los ejemplos salieron del dataset **DEMO** (`npm.cmd run db:seed`): los precios son ficticios y no representan ofertas reales de esas cadenas.
 
@@ -299,9 +299,12 @@ Filtros: `storeId`, `chainId`, `productId`, `canonicalProductId`, `type`, `activ
   "discountPercentage": "20.00",
   "fixedPrice": null,
   "requiredQuantity": null,
+  "discountAmount": null,
+  "benefit": { "timing": "IMMEDIATE", "refundDelayDays": null },
+  "stackable": false,
   "conditions": {
     "paymentMethod": null, "bank": null, "membershipProgram": null,
-    "minimumSpend": null, "discountCap": null, "capPeriod": null, "eligibleWeekdays": []
+    "minimumSpend": null, "discountCap": null, "capPeriod": null, "capGroup": null, "eligibleWeekdays": []
   },
   "automatic": true,
   "terms": null,
@@ -316,7 +319,56 @@ Filtros: `storeId`, `chainId`, `productId`, `canonicalProductId`, `type`, `activ
 - `automatic: false` significa que el sistema **no** puede calcularla solo (banco, medio de pago, membresía o tope que abarca varias compras). Se informa para que la persona decida, no para prometer un ahorro.
 - `eligibleWeekdays` usa ISO 1 = lunes … 7 = domingo y se interpreta en hora argentina; vacío significa todos los días.
 
-Tipos: `PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE` y `BANK_DISCOUNT` (modelado, sin aplicar hasta P10-01). La semántica exacta de cada uno está en [ADR 0009](architecture-decisions/0009-promotion-engine.md).
+- P10-01: `discountAmount` es el monto fijo de un `BANK_DISCOUNT` (en lugar del porcentaje); `benefit.timing` dice si el beneficio es en caja (`IMMEDIATE`) o un reintegro posterior (`REFUND`, con `refundDelayDays` si la fuente lo informa); `stackable` si se acumula con otra promoción acumulable; `conditions.capGroup` agrupa promociones que comparten el tope.
+
+Tipos: `PERCENTAGE`, `SECOND_UNIT`, `TWO_FOR_ONE`, `FIXED_PRICE` y `BANK_DISCOUNT`. La semántica exacta de cada uno está en [ADR 0009](architecture-decisions/0009-promotion-engine.md). El buscador y el plan todavía aplican solo lo que no depende de la persona; los beneficios de pago con sus preferencias y topes se evalúan con `POST /benefits/evaluate` ([ADR 0023](architecture-decisions/0023-payment-benefits-engine.md)).
+
+## Beneficios de pago (privados)
+
+Requieren sesión; `Cache-Control: no-store`. Decisiones en [ADR 0023](architecture-decisions/0023-payment-benefits-engine.md).
+
+| Método y ruta | Cuerpo | Resultado |
+| --- | --- | --- |
+| `POST /benefits/evaluate` | `{ purchases: [{ storeId, date, lines: [{ productId, quantity }] }] }`: hasta 10 compras y 100 líneas | `200` con la evaluación; no guarda nada |
+| `GET /benefit-usage` | — | `200 { items: [{ capKey, periodKey, consumed, updatedAt }] }`: lo informado por la persona |
+| `PUT /benefit-usage/:promotionId` | `{ consumed, date? }` | `200` con `capKey`, `periodKey`, `limit` y `remaining`. Lo ya usado de ese tope **fuera de la app** en el período que contiene `date` (hoy por defecto). Un tope por compra no se arrastra: `400 CAP_NOT_TRACKABLE` |
+| `DELETE /benefit-usage/:promotionId?date=` | — | `204`; el saldo vuelve a ser desconocido |
+
+**Evaluación.** Cada compra se cobra con los precios actuales de la sucursal (`lines[].priceSource`, `observedAt`, `isStale`). Los productos sin precio quedan en `missingPrices`, no se inventan. Usa las promociones vigentes ese día (mediodía argentino) y las preferencias de pago del perfil (`paymentMethods`, `banks`, `membershipPrograms`). El orden:
+1. Una promoción del producto por línea.
+2. Un beneficio de pago por compra, sobre las líneas de su alcance. Una línea con promoción queda afuera salvo que las dos sean acumulables (`stackable`).
+3. Compra mínima, porcentaje o monto, tope.
+4. Redondeo.
+
+Errores: `400 STORE_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `QUANTITY_INVALID` (envasados en unidades enteras), `DATE_INVALID`, `TOO_MANY_LINES`.
+
+- `result.purchases[]`: `regularTotal`, `productDiscount`, `paymentDiscount` (en caja), **`payToday`** (lo que se paga), **`refundEstimated`** (reintegro posterior, con `payment.refundDelayDays`) y `costAfterRefund`.
+- `result.evaluations[]`: cada promoción considerada, con `layer` (`PRODUCT`/`PAYMENT`), `status` y `reason`:
+  - `APPLIED`;
+  - `NOT_CHOSEN` (`BETTER_PROMOTION`, `ONE_PAYMENT_BENEFIT_PER_PURCHASE`);
+  - `CONDITIONAL`: depende de algo no informado (`BANK_NOT_DECLARED`, `PAYMENT_METHOD_NOT_DECLARED`, `MEMBERSHIP_NOT_DECLARED`, `CAP_REMAINING_UNKNOWN`). Trae el importe posible, que **no** se suma;
+  - `NOT_ELIGIBLE`: `BANK_NOT_ELIGIBLE`, `PAYMENT_METHOD_NOT_ELIGIBLE`, `WEEKDAY_NOT_ELIGIBLE`, `EXPIRED`, `MINIMUM_SPEND_NOT_REACHED`, `NOT_STACKABLE`, `CAP_EXHAUSTED`, `NO_SAVINGS`, ….
+
+  También trae el estado del tope (`limit`, `consumedOutside`, `usedBefore`, `remaining`).
+- `result.totals.conditionalAmount`: beneficio extra posible si se confirmara lo que falta. Por compra cuenta el mejor, no la suma.
+- `result.caps[]`: cada tope usado, con su período (`2026-W40`, `2026-10`, `CAMPAIGN` o la compra) y cuánto se usó en esta evaluación.
+
+Ejemplo real (DEMO, miércoles; débito y Banco Demo y Billetera Demo declarados; $2.000 del tope mensual informados). Un 2x1 de fideos (no acumulable), el reintegro de Coto sobre el resto y $1.500 en Jumbo:
+
+```json
+{
+  "totals": { "regularTotal": "41911.88", "productDiscount": "1443.08", "paymentDiscount": "1500.00", "payToday": "38968.80", "refundEstimated": "5734.45", "costAfterRefund": "33234.35", "conditionalAmount": "0.00" },
+  "purchases": [
+    { "purchaseId": "compra-1", "payToday": "20557.92", "refundEstimated": "5734.45", "costAfterRefund": "14823.47",
+      "payment": { "name": "Reintegro del 30% con débito del Banco Demo los miércoles (DEMO)", "timing": "REFUND", "refundDelayDays": 30, "base": "19114.84", "amount": "5734.45" } },
+    { "purchaseId": "compra-2", "payToday": "18410.88", "refundEstimated": "0.00",
+      "payment": { "name": "$1.500 de descuento pagando con Billetera Demo (DEMO)", "timing": "IMMEDIATE", "refundDelayDays": null, "base": "19910.88", "amount": "1500.00" } }
+  ]
+}
+```
+
+Sin preferencias declaradas, esos dos beneficios aparecen `CONDITIONAL` (`BANK_NOT_DECLARED`). Con las preferencias pero sin informar el consumo del tope mensual, el reintegro queda `CAP_REMAINING_UNKNOWN`.
+
 
 ## Rutinas y despensa (privadas)
 
@@ -574,4 +626,4 @@ Un aviso es un snapshot: un precio nuevo no lo cambia. `data` trae el motivo, el
 
 ## Qué todavía no expone la API
 
-Importadores de fuentes reales, avisos fuera de la app (email o push) y promociones bancarias aplicadas (fase 10). Los jobs se operan por comando, no por HTTP ([RUNBOOK](RUNBOOK.md)). El estado por paso está en [ROADMAP.md](../ROADMAP.md).
+Importadores de fuentes reales, avisos fuera de la app (email o push) y el uso de los beneficios de pago dentro del plan y el comparador (P10-02). Los jobs se operan por comando, no por HTTP ([RUNBOOK](RUNBOOK.md)). El estado por paso está en [ROADMAP.md](../ROADMAP.md).

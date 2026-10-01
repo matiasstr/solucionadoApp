@@ -7,7 +7,7 @@
  * Ningún precio de acá puede presentarse como una consulta real.
  */
 import type { BaseUnit, MeasurementUnit, SaleMode } from '../modules/catalog/domain/units';
-import type { DiscountCapPeriod, PaymentMethod, PromotionType } from '../modules/promotions/domain/promotion.types';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionType } from '../modules/promotions/domain/promotion.types';
 
 export const DEMO_SOURCE = 'demo-seed';
 export const DEMO_SUFFIX = ' (DEMO)';
@@ -193,6 +193,12 @@ export interface DemoPromotion {
   readonly minimumSpend?: string;
   readonly discountCap?: string;
   readonly capPeriod?: DiscountCapPeriod;
+  /** P10-01: monto fijo, reintegro, plazo, tope compartido y acumulación. */
+  readonly discountAmount?: string;
+  readonly benefitTiming?: BenefitTiming;
+  readonly refundDelayDays?: number;
+  readonly capGroup?: string;
+  readonly isStackable?: boolean;
   readonly eligibleWeekdays?: readonly number[];
   readonly terms?: string;
   /** Inicio de la vigencia, en días desde el ancla (negativo = pasado). */
@@ -213,6 +219,11 @@ export const DEMO_PROMOTIONS: readonly DemoPromotion[] = [
   { key: 'disco-belgrano-minimo', name: '10% en toda la sucursal comprando más de $20.000', type: 'PERCENTAGE', storeKey: 'disco-belgrano', discountPercentage: '10.00', minimumSpend: '20000.00', validFromDays: -3, validUntilDays: 9 },
   // Modelada pero nunca aplicada automáticamente: depende del banco del usuario (P10-01).
   { key: 'carrefour-banco-25', name: '25% con tarjeta de crédito del Banco Demo', type: 'BANK_DISCOUNT', chainKey: 'carrefour', discountPercentage: '25.00', paymentMethod: 'CREDIT_CARD', bank: 'Banco Demo', discountCap: '5000.00', capPeriod: 'PURCHASE', terms: 'Tope de $5.000 por compra. Condiciones ficticias.', validFromDays: -2, validUntilDays: 10 },
+  // Beneficios de pago (P10-01): reintegro con tope mensual compartido entre dos cadenas del
+  // mismo banco, y un monto fijo con compra mínima. Se aplican solo si la persona declaró el medio.
+  { key: 'coto-banco-reintegro-miercoles', name: 'Reintegro del 30% con débito del Banco Demo los miércoles', type: 'BANK_DISCOUNT', chainKey: 'coto', discountPercentage: '30.00', paymentMethod: 'DEBIT_CARD', bank: 'Banco Demo', discountCap: '8000.00', capPeriod: 'MONTH', capGroup: 'banco-demo-mensual', benefitTiming: 'REFUND', refundDelayDays: 30, isStackable: true, eligibleWeekdays: [3], terms: 'Tope mensual de $8.000 compartido con otras promociones del Banco Demo. Reintegro en 30 días. Condiciones ficticias.', validFromDays: -5, validUntilDays: 25 },
+  { key: 'vea-banco-demo-20', name: '20% con débito del Banco Demo', type: 'BANK_DISCOUNT', chainKey: 'vea', discountPercentage: '20.00', paymentMethod: 'DEBIT_CARD', bank: 'Banco Demo', discountCap: '8000.00', capPeriod: 'MONTH', capGroup: 'banco-demo-mensual', terms: 'Comparte el tope mensual de $8.000 del Banco Demo. No acumulable con otras promociones. Condiciones ficticias.', validFromDays: -5, validUntilDays: 25 },
+  { key: 'jumbo-billetera-1500', name: '$1.500 de descuento pagando con Billetera Demo', type: 'BANK_DISCOUNT', chainKey: 'jumbo', discountAmount: '1500.00', paymentMethod: 'WALLET', bank: 'Billetera Demo', minimumSpend: '15000.00', terms: 'Compra mínima de $15.000. Condiciones ficticias.', validFromDays: -2, validUntilDays: 12 },
   { key: 'coto-aceite-futura', name: 'Aceite Del Sur 900 ml con 30% (próximamente)', type: 'PERCENTAGE', chainKey: 'coto', productKey: 'aceite-delsur-900ml', discountPercentage: '30.00', validFromDays: 10, validUntilDays: 20 },
   { key: 'jumbo-gaseosa-vencida', name: 'Gaseosa Del Plata 2,25 L con 25% (vencida)', type: 'PERCENTAGE', chainKey: 'jumbo', productKey: 'gaseosa-cola-225', discountPercentage: '25.00', validFromDays: -40, validUntilDays: -10 },
 ];

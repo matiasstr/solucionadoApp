@@ -7,6 +7,8 @@
 export type PromotionType = 'PERCENTAGE' | 'SECOND_UNIT' | 'TWO_FOR_ONE' | 'FIXED_PRICE' | 'BANK_DISCOUNT';
 export type DiscountCapPeriod = 'PURCHASE' | 'WEEK' | 'MONTH' | 'CAMPAIGN';
 export type PaymentMethod = 'CASH' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'TRANSFER' | 'WALLET';
+/** Descuento en caja o reintegro posterior (P10-01): cambia cuánto se paga hoy, no cuánto cuesta al final. */
+export type BenefitTiming = 'IMMEDIATE' | 'REFUND';
 
 export const PROMOTION_TYPES: readonly PromotionType[] = [
   'PERCENTAGE',
@@ -44,6 +46,13 @@ export interface PromotionRule {
   readonly minimumSpend: string | null;
   readonly discountCap: string | null;
   readonly capPeriod: DiscountCapPeriod | null;
+  /** Monto fijo de descuento (solo `BANK_DISCOUNT`, en lugar del porcentaje). */
+  readonly discountAmount: string | null;
+  readonly benefitTiming: BenefitTiming;
+  /** Plazo informado del reintegro; null = la fuente no lo dice. */
+  readonly refundDelayDays: number | null;
+  /** Promociones con el mismo grupo comparten el tope (por ejemplo, el tope mensual de un banco). */
+  readonly capGroup: string | null;
   readonly eligibleWeekdays: readonly number[];
   readonly isStackable: boolean;
   readonly terms: string | null;

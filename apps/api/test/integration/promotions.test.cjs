@@ -33,7 +33,8 @@ const ANCHOR = latestObservationAnchor();
 const MS_PER_DAY = 86_400_000;
 const daysFromAnchor = (days) => new Date(ANCHOR.getTime() + days * MS_PER_DAY);
 
-const PROMOTION_KEYS = ['id', 'name', 'type', 'scope', 'discountPercentage', 'fixedPrice', 'requiredQuantity', 'conditions', 'automatic', 'terms', 'source', 'validFrom', 'validUntil'];
+// P10-01 agregó `discountAmount`, `benefit` (en caja o reintegro) y `stackable`.
+const PROMOTION_KEYS = ['id', 'name', 'type', 'scope', 'discountPercentage', 'fixedPrice', 'requiredQuantity', 'discountAmount', 'benefit', 'stackable', 'conditions', 'automatic', 'terms', 'source', 'validFrom', 'validUntil'];
 
 let app;
 let server;
@@ -111,6 +112,10 @@ describe('seed de promociones', () => {
         minimumSpend: null,
         discountCap: null,
         capPeriod: null,
+        discountAmount: null,
+        benefitTiming: 'IMMEDIATE',
+        refundDelayDays: null,
+        capGroup: null,
         eligibleWeekdays: [],
         isStackable: false,
         terms: null,
@@ -170,6 +175,7 @@ describe('GET /api/promotions', () => {
     assert.equal(bank.body.conditions.paymentMethod, 'CREDIT_CARD');
     assert.equal(bank.body.conditions.discountCap, '5000.00');
     assert.equal(bank.body.conditions.capPeriod, 'PURCHASE');
+    assert.deepEqual([bank.body.benefit, bank.body.stackable, bank.body.discountAmount, bank.body.conditions.capGroup], [{ timing: 'IMMEDIATE', refundDelayDays: null }, false, null, null]);
 
     const weekday = await get(`/api/promotions/${demoPromotionId('vea-detergente-martes')}`).expect(200);
     assert.deepEqual(weekday.body.conditions.eligibleWeekdays, [2]);
@@ -184,8 +190,9 @@ describe('GET /api/promotions', () => {
     const byStore = await get(`/api/promotions?storeId=${demoStoreId('carrefour-almagro')}`).expect(200);
     assert.deepEqual(idsOf(byStore), [demoPromotionId('carrefour-arroz-20')]);
 
+    // Coto: el 2x1 y, desde P10-01, el reintegro de los miércoles del Banco Demo.
     const byChain = await get(`/api/promotions?chainId=${demoChainId('coto')}`).expect(200);
-    assert.deepEqual(idsOf(byChain), [demoPromotionId('coto-fideos-2x1')]);
+    assert.deepEqual(idsOf(byChain).sort(), [demoPromotionId('coto-fideos-2x1'), demoPromotionId('coto-banco-reintegro-miercoles')].sort());
 
     const byProduct = await get(`/api/promotions?productId=${demoProductId('leche-vallealto-sachet')}`).expect(200);
     assert.deepEqual(idsOf(byProduct), [demoPromotionId('jumbo-leche-segunda-50')]);

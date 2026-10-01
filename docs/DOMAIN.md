@@ -79,13 +79,13 @@ Una promoción apunta a **una sucursal o una cadena**, nunca ambas. Puede apunta
 | `SECOND_UNIT` | Porcentaje de descuento sobre una unidad por cada par completo del mismo producto. |
 | `TWO_FOR_ONE` | Unidades cobradas = `cantidad - floor(cantidad / 2)` del mismo producto. |
 | `FIXED_PRICE` | Precio final por unidad de venta al alcanzar `requiredQuantity`, si se exige un mínimo. |
-| `BANK_DISCOUNT` | Porcentaje sujeto a banco, medio de pago, mínimo y tope informados. |
+| `BANK_DISCOUNT` | Porcentaje **o monto fijo** (`discountAmount`) sujeto a banco, medio de pago, mínimo y tope; en caja o como reintegro posterior (`benefitTiming`, `refundDelayDays`). |
 
-Estas fórmulas describen la implementación futura; no existe motor promocional todavía. Las promociones por pares inicialmente solo soportan paquetes enteros del mismo SKU. Combinaciones entre productos, acumulación y beneficios ambiguos se excluyen del cálculo automático hasta implementarlos explícitamente.
+Implementado en P2-03 (ADR 0009) y, para los beneficios de pago, en P10-01 (ADR 0023): una promoción del producto por línea y un beneficio de pago por compra, sobre las líneas de su alcance; se acumulan solo si **las dos** son acumulables. Las promociones por pares solo soportan paquetes enteros del mismo SKU. Combinaciones entre productos y beneficios ambiguos siguen fuera del cálculo automático.
 
-`eligibleWeekdays=[]` permite todos los días. `minimumSpend` se evalúa sobre el subtotal elegible de la compra en una sucursal. `discountCap` limita el beneficio; `capPeriod` distingue compra, semana, mes y campaña. Para topes que abarcan varias compras hace falta conocer el beneficio ya utilizado: hasta tener ese estado no se debe prometer el descuento como ahorro garantizado. `terms` es texto informativo, nunca código ejecutable ni una condición que el planificador pueda inferir por sí mismo.
+`eligibleWeekdays=[]` permite todos los días. `minimumSpend` se evalúa sobre el subtotal elegible de la compra en una sucursal. `discountCap` limita el beneficio; `capPeriod` distingue compra, semana, mes y campaña; `capGroup` hace que varias promociones compartan el mismo tope (por ejemplo, el mensual de un banco). Un tope por compra es de la compra entera, no de cada ítem. Para topes que abarcan varias compras hace falta conocer el beneficio ya utilizado fuera de la app (`BenefitCapUsage`, informado por la persona): sin ese dato el beneficio queda **condicionado** y no se suma como ahorro. `terms` es texto informativo, nunca código ejecutable ni una condición que el planificador pueda inferir por sí mismo.
 
-Banco, medio de pago y membresía deben coincidir con las preferencias declaradas por el usuario. Preferencias vacías no significan elegibilidad universal. `isStackable=false` es el valor inicial; `true` tampoco habilita acumulación hasta definir compatibilidades. El precio regular queda en `ProductPrice`; una promoción no reescribe la historia.
+Banco, medio de pago y membresía deben coincidir con las preferencias declaradas por el usuario: declarado y distinto es **no elegible**; no declarado es **desconocido** (condicionado), nunca elegibilidad universal. `isStackable=false` es el valor inicial; un beneficio de pago se acumula con la promoción de una línea solo si ambas son `true`. El precio regular queda en `ProductPrice`; una promoción no reescribe la historia.
 
 ## Rutinas e inventario
 

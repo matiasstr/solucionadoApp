@@ -17,6 +17,9 @@ export type PromotionErrorCode =
   | 'FIXED_PRICE_REQUIRED'
   | 'FIXED_PRICE_NOT_ALLOWED'
   | 'BANK_CONDITION_REQUIRED'
+  | 'DISCOUNT_AMOUNT'
+  | 'REFUND'
+  | 'CAP_GROUP'
   | 'REQUIRED_QUANTITY'
   | 'MINIMUM_SPEND'
   | 'DISCOUNT_CAP'
@@ -35,7 +38,8 @@ export class PromotionValidationError extends Error {
 }
 
 const MAX_REQUIRED_QUANTITY = 100;
-const PERCENTAGE_TYPES: readonly PromotionType[] = ['PERCENTAGE', 'SECOND_UNIT', 'BANK_DISCOUNT'];
+const PERCENTAGE_TYPES: readonly PromotionType[] = ['PERCENTAGE', 'SECOND_UNIT'];
+const MAX_REFUND_DELAY_DAYS = 180;
 
 function positiveAmount(value: string, code: PromotionErrorCode, field: string): DecimalValue {
   let amount: DecimalValue;
@@ -78,8 +82,21 @@ export function validatePromotionRule(rule: PromotionRule): void {
     ]);
   }
 
+  // Un descuento bancario es por porcentaje **o** por monto fijo (P10-01).
+  if (rule.type === 'BANK_DISCOUNT') {
+    if ((rule.discountPercentage === null) === (rule.discountAmount === null)) {
+      throw new PromotionValidationError('DISCOUNT_AMOUNT', 'Un descuento bancario es por porcentaje o por monto, uno solo.', [
+        'discountPercentage',
+        'discountAmount',
+      ]);
+    }
+    if (rule.discountAmount !== null) positiveAmount(rule.discountAmount, 'DISCOUNT_AMOUNT', 'discountAmount');
+  } else if (rule.discountAmount !== null) {
+    throw new PromotionValidationError('DISCOUNT_AMOUNT', `El tipo ${rule.type} no lleva monto de descuento.`, ['discountAmount']);
+  }
+
   const needsPercentage = PERCENTAGE_TYPES.includes(rule.type);
-  if (needsPercentage) {
+  if (needsPercentage || (rule.type === 'BANK_DISCOUNT' && rule.discountPercentage !== null)) {
     if (rule.discountPercentage === null) {
       throw new PromotionValidationError('PERCENTAGE_REQUIRED', `El tipo ${rule.type} necesita un porcentaje.`, [
         'discountPercentage',
@@ -134,6 +151,22 @@ export function validatePromotionRule(rule: PromotionRule): void {
     ]);
   }
   if (rule.discountCap !== null) positiveAmount(rule.discountCap, 'DISCOUNT_CAP', 'discountCap');
+  if (rule.capGroup !== null && (rule.discountCap === null || !rule.capGroup.trim())) {
+    throw new PromotionValidationError('CAP_GROUP', 'Compartir un tope exige tenerlo.', ['capGroup', 'discountCap']);
+  }
+
+  // El reintegro es un beneficio de pago; su plazo solo existe si es reintegro.
+  if (rule.benefitTiming === 'REFUND' && rule.type !== 'BANK_DISCOUNT') {
+    throw new PromotionValidationError('REFUND', 'Solo un beneficio de pago puede ser un reintegro.', ['benefitTiming']);
+  }
+  if (rule.refundDelayDays !== null) {
+    if (rule.benefitTiming !== 'REFUND') {
+      throw new PromotionValidationError('REFUND', 'El plazo de reintegro solo va en un reintegro.', ['refundDelayDays']);
+    }
+    if (!Number.isInteger(rule.refundDelayDays) || rule.refundDelayDays < 1 || rule.refundDelayDays > MAX_REFUND_DELAY_DAYS) {
+      throw new PromotionValidationError('REFUND', `El plazo de reintegro va de 1 a ${MAX_REFUND_DELAY_DAYS} días.`, ['refundDelayDays']);
+    }
+  }
 
   const weekdays = rule.eligibleWeekdays;
   if (weekdays.length > 7 || new Set(weekdays).size !== weekdays.length) {

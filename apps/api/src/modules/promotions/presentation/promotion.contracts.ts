@@ -6,7 +6,7 @@
  * medio de pago, membresía o de un tope que abarca varias compras.
  */
 import type { DecimalString } from '../../catalog/presentation/catalog.contracts';
-import type { DiscountCapPeriod, PaymentMethod, PromotionRule, PromotionType } from '../domain/promotion.types';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionRule, PromotionType } from '../domain/promotion.types';
 
 export interface PromotionScopeDto {
   /** Exactamente uno de los dos tiene valor. */
@@ -24,6 +24,8 @@ export interface PromotionConditionsDto {
   minimumSpend: DecimalString | null;
   discountCap: DecimalString | null;
   capPeriod: DiscountCapPeriod | null;
+  /** P10-01: promociones con el mismo grupo comparten el tope. */
+  capGroup: string | null;
   /** ISO 1 = lunes … 7 = domingo; vacío significa todos los días. */
   eligibleWeekdays: number[];
 }
@@ -37,6 +39,12 @@ export interface PromotionDto {
   /** Precio final por unidad de venta, no el total del lote. */
   fixedPrice: DecimalString | null;
   requiredQuantity: number | null;
+  /** P10-01: monto fijo de un descuento bancario (en lugar del porcentaje). */
+  discountAmount: DecimalString | null;
+  /** En caja o reintegro posterior (con plazo en días si la fuente lo informa). */
+  benefit: { timing: BenefitTiming; refundDelayDays: number | null };
+  /** Se acumula con otra promoción solo si las dos lo declaran (ADR 0023). */
+  stackable: boolean;
   conditions: PromotionConditionsDto;
   /** false cuando el beneficio depende de datos del usuario o de compras previas. */
   automatic: boolean;
@@ -68,6 +76,9 @@ export const toPromotionDto = (rule: PromotionRule): PromotionDto => ({
   discountPercentage: rule.discountPercentage,
   fixedPrice: rule.fixedPrice,
   requiredQuantity: rule.requiredQuantity,
+  discountAmount: rule.discountAmount,
+  benefit: { timing: rule.benefitTiming, refundDelayDays: rule.refundDelayDays },
+  stackable: rule.isStackable,
   conditions: {
     paymentMethod: rule.paymentMethod,
     bank: rule.bank,
@@ -75,6 +86,7 @@ export const toPromotionDto = (rule: PromotionRule): PromotionDto => ({
     minimumSpend: rule.minimumSpend,
     discountCap: rule.discountCap,
     capPeriod: rule.capPeriod,
+    capGroup: rule.capGroup,
     eligibleWeekdays: [...rule.eligibleWeekdays],
   },
   automatic: isAutomatic(rule),

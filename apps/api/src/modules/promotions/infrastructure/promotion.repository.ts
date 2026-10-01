@@ -5,7 +5,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { toAmountString } from '../../catalog/infrastructure/decimal-mapper';
 import type { DecimalLike } from '../../catalog/infrastructure/decimal-mapper';
 import { validatePromotionRule } from '../domain/promotion-rule';
-import type { DiscountCapPeriod, PaymentMethod, PromotionRule, PromotionType } from '../domain/promotion.types';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionRule, PromotionType } from '../domain/promotion.types';
 
 /** Escalas de las columnas: porcentaje Decimal(5,2); importes Decimal(14,2). */
 const PERCENTAGE_SCALE = 2;
@@ -53,6 +53,10 @@ interface PromotionRow {
   minimumSpend: DecimalLike | null;
   discountCap: DecimalLike | null;
   capPeriod: string | null;
+  discountAmount: DecimalLike | null;
+  benefitTiming: string;
+  refundDelayDays: number | null;
+  capGroup: string | null;
   eligibleWeekdays: number[];
   isStackable: boolean;
   terms: string | null;
@@ -79,6 +83,10 @@ const toRule = (row: PromotionRow): PromotionRule => ({
   minimumSpend: row.minimumSpend ? toAmountString(row.minimumSpend, MONEY_SCALE) : null,
   discountCap: row.discountCap ? toAmountString(row.discountCap, MONEY_SCALE) : null,
   capPeriod: row.capPeriod as DiscountCapPeriod | null,
+  discountAmount: row.discountAmount ? toAmountString(row.discountAmount, MONEY_SCALE) : null,
+  benefitTiming: row.benefitTiming as BenefitTiming,
+  refundDelayDays: row.refundDelayDays,
+  capGroup: row.capGroup,
   eligibleWeekdays: row.eligibleWeekdays,
   isStackable: row.isStackable,
   terms: row.terms,
@@ -104,6 +112,10 @@ const toData = (input: PromotionInput) => ({
   minimumSpend: input.minimumSpend,
   discountCap: input.discountCap,
   capPeriod: input.capPeriod,
+  discountAmount: input.discountAmount,
+  benefitTiming: input.benefitTiming,
+  refundDelayDays: input.refundDelayDays,
+  capGroup: input.capGroup,
   eligibleWeekdays: [...input.eligibleWeekdays],
   isStackable: input.isStackable,
   terms: input.terms,

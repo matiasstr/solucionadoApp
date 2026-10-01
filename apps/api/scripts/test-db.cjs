@@ -47,6 +47,8 @@ const INTEGRATION_FILES = [
   'test/integration/dashboard.test.cjs',
   // Crea sucursales y presentaciones propias en Rosario y precios con fuente `alertas-test`.
   'test/integration/alerts.test.cjs',
+  // Beneficios de pago (P10-01): crea usuarios, consumo de topes y promociones importadas propias.
+  'test/integration/benefits.test.cjs',
   'test/integration/imports.test.cjs',
   // Necesita Redis (docker compose): usa un prefijo propio y lo borra al terminar.
   'test/integration/jobs.test.cjs',

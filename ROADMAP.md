@@ -67,7 +67,7 @@ Crear el diseño persistente y comenzar la fase 1 con el bootstrap del monorepo.
 | P8-02 | Programación, recuperación y operación de jobs | P8-01, P6-01 | COMPLETO |
 | P9-01 | Reglas de alertas y notificaciones dentro de la app | P8-02, P6-02 | COMPLETO |
 | P9-02 | UI, preferencias, deduplicación y pruebas de entrega | P9-01 | COMPLETO |
-| P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | PENDIENTE |
+| P10-01 | Promociones bancarias, medios de pago, topes y elegibilidad | P2-03, P5-03 | COMPLETO |
 | P10-02 | Integración del planificador, UI y validación final del producto | P10-01, P9-02 | PENDIENTE |
 
 ## Estado de la fase 2 (catálogo y datos) — COMPLETA
@@ -166,7 +166,13 @@ Verificado: `npm.cmd run verify` (184/184 unitarios, 8 nuevos: reglas, presentac
 
 Verificado al cerrar la fase: `npm.cmd run verify`, `npm.cmd run test:db` y `npm.cmd run test:e2e` (49/49 en Edge, 4 nuevos de alertas: del buscador al formulario con el foco; regla → precio que cruza el umbral → job real con el worker → aviso → leído → recarga, con contador y resumen; alerta borrada antes de la revisión no avisa; otra cuenta no ve nada; se ajustaron dos E2E existentes por el nuevo link de las tarjetas). Capturas en `.cache/verification/p9-02` y revisión visual en escritorio y móvil.
 
-**Siguiente: P10-01** (elegibilidad y beneficios avanzados: bancos, medios de pago, topes, reintegros).
+## Estado de la fase 10 (beneficios y experiencia completa) — EN CURSO
+
+**P10-01 — COMPLETO.** Migración `20261001120000_payment_benefits`: `Promotion.discountAmount`, `benefitTiming` (`IMMEDIATE`/`REFUND`), `refundDelayDays`, `capGroup` (con `CHECK`: porcentaje **o** monto, reintegro solo de pago con plazo 1 a 180, grupo con tope) y tabla `BenefitCapUsage` (consumo de topes informado). Elegibilidad en tres estados según las preferencias declaradas (`payer-eligibility.ts`: elegible, no elegible, desconocido = condicionado). Motor puro por compra (`benefit-engine.ts`): una promoción del producto por línea, un beneficio de pago por compra sobre la base elegible, acumulación solo si ambas son acumulables, compra mínima, porcentaje o monto, topes por compra/semana/mes/campaña compartidos entre ítems, visitas y promociones del grupo, lo informado fuera de la app o saldo desconocido, redondeo HALF_UP; explica cada promoción (`APPLIED`, `NOT_CHOSEN`, `CONDITIONAL`, `NOT_ELIGIBLE`) y separa pagar hoy, reintegro y costo final. API `POST /benefits/evaluate` y `GET/PUT/DELETE /benefit-usage`; `GET /promotions` con `discountAmount`, `benefit`, `stackable` y `capGroup`. Importador y seed DEMO con tres promociones de pago nuevas. Decisiones en [ADR 0023](docs/architecture-decisions/0023-payment-benefits-engine.md).
+
+Verificado: `npm.cmd run verify` (196/196 unitarios, 12 nuevos del motor: preferencias, compra con tope y redondeo, reintegro, elegibilidad con día y vigencia horaria y mínimo, acumulación, topes semanal y mensual entre visitas, tope compartido por un grupo, tope por compra entre ítems, reproducibilidad, períodos, reglas e importación) y `npm.cmd run test:db` (159/159 en 15 archivos, 7 nuevos de beneficios con DEMO y dos ajustes del contrato de `/promotions`). Prueba manual con el API y el DEMO: sin preferencias todo condicionado; con débito y billetera, $1.500 en caja y el reintegro de Coto condicionado por el tope; con $2.000 informados, reintegro de $5.734,45 en 30 días sobre lo que no tenía 2x1.
+
+**Siguiente: P10-02** (beneficios en el plan, comparador y pantallas; validación final del producto).
 
 ## Deuda de diseño (pedida por el usuario el 2026-09-29)
 

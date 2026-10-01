@@ -4,6 +4,7 @@ import { ConfigModule } from './config/config.module';
 import type { ApiConfig } from './config/environment';
 import { DatabaseModule } from './database/database.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
+import { BenefitsModule } from './modules/benefits/benefits.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
@@ -37,6 +38,7 @@ export class AppModule {
         ShoppingPlansModule,
         DashboardModule,
         AlertsModule,
+        BenefitsModule,
       ],
       controllers: [HealthController],
     };

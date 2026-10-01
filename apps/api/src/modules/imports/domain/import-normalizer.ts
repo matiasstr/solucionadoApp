@@ -7,7 +7,7 @@
 import { DecimalValue } from '../../catalog/domain/decimal';
 import type { MeasurementUnit, SaleMode } from '../../catalog/domain/units';
 import { PROMOTION_TYPES } from '../../promotions/domain/promotion.types';
-import type { DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
+import type { BenefitTiming, DiscountCapPeriod, PaymentMethod, PromotionType } from '../../promotions/domain/promotion.types';
 import type {
   DecimalSeparator,
   Normalized,
@@ -36,6 +36,10 @@ const UNIT_ALIASES: Readonly<Record<string, MeasurementUnit>> = {
   l: 'L', lt: 'L', lts: 'L', litro: 'L', litros: 'L',
   ml: 'ML', cc: 'ML', mililitro: 'ML', mililitros: 'ML',
   u: 'UNIT', un: 'UNIT', unid: 'UNIT', unidad: 'UNIT', unidades: 'UNIT', unit: 'UNIT',
+};
+const BENEFIT_TIMING_ALIASES: Readonly<Record<string, BenefitTiming>> = {
+  immediate: 'IMMEDIATE', inmediato: 'IMMEDIATE', 'en caja': 'IMMEDIATE',
+  refund: 'REFUND', reintegro: 'REFUND',
 };
 const SALE_MODE_ALIASES: Readonly<Record<string, SaleMode>> = {
   packaged: 'PACKAGED', envasado: 'PACKAGED',
@@ -215,6 +219,7 @@ export function normalizePromotionRecord(
     fixedPrice: optionalDecimal(raw.fixedPrice, options.separator),
     minimumSpend: optionalDecimal(raw.minimumSpend, options.separator),
     discountCap: optionalDecimal(raw.discountCap, options.separator),
+    discountAmount: optionalDecimal(raw.discountAmount, options.separator),
   };
   if (Object.values(decimals).some((value) => value === undefined)) {
     return reject(position, 'PROMOTION_INVALID', 'Un importe o porcentaje no es un número válido.', externalId);
@@ -223,6 +228,12 @@ export function normalizePromotionRecord(
   if (paymentMethod && !PAYMENT_METHODS.includes(paymentMethod)) return reject(position, 'PROMOTION_INVALID', 'Medio de pago desconocido.', externalId);
   const capPeriod = raw.capPeriod?.trim() ? (raw.capPeriod.trim() as DiscountCapPeriod) : null;
   if (capPeriod && !CAP_PERIODS.includes(capPeriod)) return reject(position, 'PROMOTION_INVALID', 'Período de tope desconocido.', externalId);
+  const timing = BENEFIT_TIMING_ALIASES[(raw.benefitTiming ?? 'IMMEDIATE').trim().toLowerCase()];
+  if (!timing) return reject(position, 'PROMOTION_INVALID', 'Momento del beneficio desconocido (en caja o reintegro).', externalId);
+  const refundDelayDays = raw.refundDelayDays ?? null;
+  if (refundDelayDays !== null && !Number.isInteger(refundDelayDays)) {
+    return reject(position, 'PROMOTION_INVALID', 'El plazo de reintegro debe ser un número de días.', externalId);
+  }
   const validFrom = parseObservedAt(raw.validFrom ?? '');
   const validUntil = parseObservedAt(raw.validUntil ?? '');
   if (!validFrom || !validUntil) return reject(position, 'PROMOTION_INVALID', 'Vigencia inválida.', externalId);
@@ -251,6 +262,10 @@ export function normalizePromotionRecord(
       minimumSpend: decimals.minimumSpend ?? null,
       discountCap: decimals.discountCap ?? null,
       capPeriod,
+      discountAmount: decimals.discountAmount ?? null,
+      benefitTiming: timing,
+      refundDelayDays,
+      capGroup: text(raw.capGroup, 120),
       eligibleWeekdays: [...new Set(weekdays)].sort(),
       terms: raw.terms?.trim() || null,
       validFrom,

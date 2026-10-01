@@ -131,6 +131,11 @@ export class PromotionImporter {
       minimumSpend: promotion.minimumSpend,
       discountCap: promotion.discountCap,
       capPeriod: promotion.capPeriod,
+      discountAmount: promotion.discountAmount,
+      benefitTiming: promotion.benefitTiming,
+      refundDelayDays: promotion.refundDelayDays,
+      // Un tope compartido es de esta fuente: el grupo no se cruza con el de otra.
+      capGroup: promotion.capGroup ? `${source}:${promotion.capGroup}` : null,
       eligibleWeekdays: promotion.eligibleWeekdays,
       isStackable: false,
       terms: promotion.terms,

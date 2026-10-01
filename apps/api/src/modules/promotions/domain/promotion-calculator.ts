@@ -146,6 +146,22 @@ function computeOutcome(
   }
 }
 
+/**
+ * Total de una línea con la promoción, sin elegibilidad, mínimo ni tope (P10-01): el motor de
+ * beneficios decide esas condiciones con las preferencias y los topes de la persona.
+ * Devuelve el motivo si el tipo no aplica a esa línea (por peso, cantidad, sin ahorro).
+ */
+export function lineOutcome(
+  rule: PromotionRule,
+  line: PromotionLine,
+): { readonly regularTotal: DecimalValue; readonly total: DecimalValue } | PromotionSkipReason {
+  const { unitPrice, quantity } = parseLine(line);
+  const regularTotal = unitPrice.multiply(quantity);
+  const outcome = computeOutcome(rule, line, unitPrice, quantity, regularTotal);
+  if (typeof outcome === 'string') return outcome;
+  return { regularTotal, total: outcome.total };
+}
+
 function evaluate(
   rule: PromotionRule,
   line: PromotionLine,

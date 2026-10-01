@@ -94,6 +94,8 @@ Jobs (P8-01, [ADR 0020](architecture-decisions/0020-jobs-bullmq-worker.md)): `sr
 
 Alertas (P9-01, [ADR 0022](architecture-decisions/0022-price-alerts-notifications.md)): `alerts/domain/` evalúa y decide en funciones puras (`alert-evaluation.ts`, `alert-rules.ts`, `notification-content.ts`); `EvaluatePriceAlertsUseCase` lee precios con `prices/application/current-price-analysis.ts` (compartido con el dashboard) y aplica cada resultado con la regla bloqueada. El job `CHECK_PRICE_ALERTS` corre en el worker; el API solo administra reglas y la bandeja. El único canal es dentro de la app.
 
+Beneficios de pago (P10-01, [ADR 0023](architecture-decisions/0023-payment-benefits-engine.md)): `promotions/domain/benefit-engine.ts` cobra compras completas (promoción del producto por línea, un beneficio de pago por compra, topes compartidos por período y grupo) con la elegibilidad de `payer-eligibility.ts`; el módulo `benefits` lo expone (`POST /benefits/evaluate`) y guarda el consumo de topes informado. `priceLine` sigue siendo el cálculo de línea del buscador y del planificador hasta P10-02.
+
 ## API, cliente y entorno
 
 - API bajo `/api`; endpoints del pedido se agregan a ese prefijo. Fechas ISO, importes y cantidades decimales como strings. IDs UUID. Paginación con límite máximo y orden estable.

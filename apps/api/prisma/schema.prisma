@@ -45,6 +45,12 @@ enum PaymentMethod {
   WALLET
 }
 
+// Cuándo llega el beneficio de una promoción de pago (P10-01, ADR 0023).
+enum BenefitTiming {
+  IMMEDIATE
+  REFUND
+}
+
 enum DiscountCapPeriod {
   PURCHASE
   WEEK
@@ -95,6 +101,7 @@ model User {
   shoppingPlans            ShoppingPlan[]
   priceAlertRules          PriceAlertRule[]
   notifications            Notification[]
+  benefitCapUsages         BenefitCapUsage[]
 }
 
 model RefreshSession {
@@ -343,6 +350,13 @@ model Promotion {
   minimumSpend       Decimal?           @db.Decimal(14, 2)
   discountCap        Decimal?           @db.Decimal(14, 2)
   capPeriod          DiscountCapPeriod?
+  // P10-01: monto fijo de descuento (solo BANK_DISCOUNT, en lugar del porcentaje).
+  discountAmount     Decimal?           @db.Decimal(14, 2)
+  // Descuento en caja o reintegro posterior (con plazo en días si la fuente lo informa).
+  benefitTiming      BenefitTiming      @default(IMMEDIATE)
+  refundDelayDays    Int?
+  // Promociones que comparten un mismo tope (por ejemplo, el tope mensual de un banco).
+  capGroup           String?            @db.VarChar(120)
   // ISO 1=lunes ... 7=domingo; vacío significa todos los días.
   eligibleWeekdays   Int[]              @default([])
   isStackable        Boolean            @default(false)
@@ -542,4 +556,20 @@ model Notification {
 
   @@unique([ruleId, eventKey])
   @@index([userId, createdAt(sort: Desc), id])
+}
+
+// Beneficio de un tope ya usado fuera de la app, informado por la persona (P10-01, ADR 0023).
+// Sin fila para un período, el saldo del tope es desconocido y el beneficio no se promete.
+model BenefitCapUsage {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  // `group:<capGroup>` o `promotion:<id>`: el mismo tope compartido por varias promociones.
+  capKey    String   @db.VarChar(160)
+  // `2026-W40`, `2026-10` o `CAMPAIGN`.
+  periodKey String   @db.VarChar(20)
+  consumed  Decimal  @db.Decimal(14, 2)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, capKey, periodKey])
 }

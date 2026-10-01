@@ -158,6 +158,8 @@ export interface ProductPricesDto {
 /** Promociones simples (P2-03). Refleja los contratos del módulo `promotions`. */
 export type PromotionType = 'PERCENTAGE' | 'SECOND_UNIT' | 'TWO_FOR_ONE' | 'FIXED_PRICE' | 'BANK_DISCOUNT';
 export type DiscountCapPeriod = 'PURCHASE' | 'WEEK' | 'MONTH' | 'CAMPAIGN';
+/** P10-01: descuento en caja o reintegro posterior. */
+export type BenefitTiming = 'IMMEDIATE' | 'REFUND';
 
 export interface PromotionScopeDto {
   /** Exactamente uno de los dos tiene valor. */
@@ -175,6 +177,8 @@ export interface PromotionConditionsDto {
   minimumSpend: DecimalString | null;
   discountCap: DecimalString | null;
   capPeriod: DiscountCapPeriod | null;
+  /** P10-01: promociones con el mismo grupo comparten el tope. */
+  capGroup: string | null;
   /** ISO 1 = lunes … 7 = domingo; vacío significa todos los días. */
   eligibleWeekdays: number[];
 }
@@ -188,6 +192,12 @@ export interface PromotionDto {
   /** Precio final por unidad de venta, no el total del lote. */
   fixedPrice: DecimalString | null;
   requiredQuantity: number | null;
+  /** P10-01: monto fijo de un descuento bancario (en lugar del porcentaje). */
+  discountAmount: DecimalString | null;
+  /** En caja o reintegro posterior (con plazo en días si la fuente lo informa). */
+  benefit: { timing: BenefitTiming; refundDelayDays: number | null };
+  /** Se acumula con otra promoción solo si las dos lo declaran. */
+  stackable: boolean;
   conditions: PromotionConditionsDto;
   /**
    * false cuando el beneficio depende del banco, del medio de pago, de una
@@ -752,4 +762,85 @@ export interface NotificationPageDto {
   items: NotificationDto[];
   page: { limit: number; nextCursor: string | null };
   unreadCount: number;
+}
+
+/** Evaluación de beneficios de una canasta (P10-01, `POST /benefits/evaluate`). */
+export interface EvaluateBenefitsRequest {
+  purchases: { storeId: string; date: string; lines: { productId: string; quantity: DecimalString }[] }[];
+}
+
+export type BenefitStatus = 'APPLIED' | 'NOT_CHOSEN' | 'CONDITIONAL' | 'NOT_ELIGIBLE';
+
+export interface BenefitCapStatusDto {
+  key: string;
+  periodKey: string;
+  limit: DecimalString;
+  /** Usado fuera de la app en el período; null = no se informó. */
+  consumedOutside: DecimalString | null;
+  usedBefore: DecimalString;
+  /** null = saldo desconocido: el beneficio queda condicionado. */
+  remaining: DecimalString | null;
+}
+
+export interface BenefitEvaluationDto {
+  promotionId: string;
+  name: string;
+  type: PromotionType;
+  layer: 'PRODUCT' | 'PAYMENT';
+  purchaseId: string;
+  lineId: string | null;
+  status: BenefitStatus;
+  /** Código del motivo (`BANK_NOT_DECLARED`, `CAP_REMAINING_UNKNOWN`, `NOT_STACKABLE`, …). */
+  reason: string | null;
+  amount: DecimalString | null;
+  timing: BenefitTiming;
+  refundDelayDays: number | null;
+  cap: BenefitCapStatusDto | null;
+}
+
+export interface BenefitPurchaseResultDto {
+  purchaseId: string;
+  regularTotal: DecimalString;
+  productDiscount: DecimalString;
+  paymentDiscount: DecimalString;
+  payToday: DecimalString;
+  refundEstimated: DecimalString;
+  costAfterRefund: DecimalString;
+  lines: { lineId: string; regularTotal: DecimalString; productPromotionId: string | null; productDiscount: DecimalString; total: DecimalString }[];
+  payment: { promotionId: string; name: string; timing: BenefitTiming; refundDelayDays: number | null; base: DecimalString; amount: DecimalString } | null;
+}
+
+export interface BenefitsEvaluationDto {
+  payer: { paymentMethods: PaymentMethod[]; banks: string[]; memberships: string[]; declared: boolean };
+  purchases: {
+    purchaseId: string;
+    storeId: string;
+    storeName: string;
+    chainName: string;
+    date: string;
+    lines: { lineId: string; productId: string; productName: string; quantity: DecimalString; unitPrice: DecimalString; unitPriceUnit: BaseUnit; priceSource: string; observedAt: string; isStale: boolean }[];
+    missingPrices: { lineId: string; productId: string }[];
+  }[];
+  result: {
+    purchases: BenefitPurchaseResultDto[];
+    totals: {
+      regularTotal: DecimalString;
+      productDiscount: DecimalString;
+      paymentDiscount: DecimalString;
+      payToday: DecimalString;
+      refundEstimated: DecimalString;
+      costAfterRefund: DecimalString;
+      /** Beneficios posibles que dependen de algo no informado: no están sumados. */
+      conditionalAmount: DecimalString;
+    };
+    evaluations: BenefitEvaluationDto[];
+    caps: { key: string; periodKey: string; limit: DecimalString; consumedOutside: DecimalString | null; usedHere: DecimalString }[];
+  };
+}
+
+export interface BenefitUsageEntryDto {
+  capKey: string;
+  periodKey: string;
+  consumed: DecimalString;
+  updatedAt: string;
 }
